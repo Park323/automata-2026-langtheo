@@ -1,0 +1,19 @@
+# Claude Code (machine-local settings)
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Environment
+.env
+
+# OS
+.DS_Store
+
+# Simulation outputs
+outputs/
+results/
+logs/
