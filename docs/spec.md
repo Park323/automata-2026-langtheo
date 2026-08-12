@@ -616,6 +616,20 @@ AP로만 성립합니다. 예산은 이월되지만 **AP는 이월되지 않으�
 
 `facility`는 국토가 벙커면 자국민만, 요격기면 전 인류를 살립니다.
 국토가 `null`이면 이 투자가 용도를 확정합니다 (2.3).
+
+> **요격기에는 타국도 낼 수 있습니다.** 2.3이 *"3국 전체가 내야 도달 가능"*이라고
+> 하는데 투자가 자국 국토에만 가능하면 **유치국 혼자 내게 되어 구조적으로 도달
+> 불가능**합니다 (사전 스윕에서 발견). `invest` 에 대상 국가를 지정합니다.
+>
+> ```json
+> { "type": "invest", "target": "facility", "country": "B", "amount": 5 }
+> ```
+>
+> **벙커는 자국에만** 낼 수 있습니다. 타국 요격기 투자는 남의 땅이므로 국토를
+> 점유하지 않습니다.
+>
+> 그리고 **이것이 조율의 실체입니다** — 어느 나라에 낼지 합의해야 하고,
+> 합의가 어긋나면 투자가 여러 부지로 쪼개져 어느 것도 임계에 닿지 않습니다.
 `national`은 국토를 점유하지 않습니다 (3.2).
 
 턴당 시설 투자에는 `facility.cap_per_turn` 상한이 있습니다.
@@ -1240,31 +1254,36 @@ def build_caps(cfg):
 caps, mults = build_caps(cfg)
 마지막 = world.generations - 1
 
-# ★1 세대 구조를 지키는 핵심 assert
-# 마지막 세대 3국이 전력을 다해도 도달 불가해야 한다.
-# 이게 없으면 미루기가 '옳은 전략'이 되어 세대 구조가 무의미해진다.
-assert thresholds.interceptor > 3 * caps[마지막]
+# 임계값은 **진척 단위**다. 소득을 그대로 비교하면 안 된다.
+def to_progress(income_amount):
+    return income_amount * facility.eff * world.success_prob
 
-# 벙커: 한 세대 한 국가가 '가능은 하되 전력을 쏟아야' 하는 수준
-assert thresholds.bunker <= caps[0]
-assert thresholds.bunker >= thresholds.bunker_min_ratio * caps[0]
+A = to_progress(3 * caps[마지막])          # 마지막 세대 3국 전력
+B = to_progress(sum(caps))                 # 한 나라의 전 세대 총력
+C = to_progress(3 * sum(caps))             # 세 나라의 전 세대 총력
 
-# ★2 시간 축을 분리한 부담 비교 — 실측으로 판정한다 (아래 설명)
+# ★A 미루기 방지 — 마지막 세대 3국이 전력을 다해도 도달 불가
+assert thresholds.interceptor > A
+# ★B 조율 강제 — 한 나라가 전 세대를 다 써도 도달 불가
+assert thresholds.interceptor > B
+# ★C 도달 가능 — 세 나라가 모으면 가능. 0.6 은 정책계수(전액 투입은 비현실적)
+assert thresholds.interceptor < C * 0.6
+
+assert thresholds.bunker <= to_progress(caps[0])
+assert thresholds.bunker >= thresholds.bunker_min_ratio * to_progress(caps[0])
+
+# ★D 시간 축을 분리한 부담 비교 — 실측으로 판정 (아래 설명)
 벙커_1인부담   = thresholds.bunker / (world.agents_per_country * world.lifespan)
 요격기_1인부담 = thresholds.interceptor / (
     3 * world.agents_per_country * world.lifespan * world.generations)
 
 if not (벙커_1인부담 > 요격기_1인부담):
     raise ConfigError(
-        f"벙커_1인부담({벙커_1인부담:.2f}) ≤ 요격기_1인부담({요격기_1인부담:.2f})\n"
+        f"벙커_1인부담({벙커_1인부담:.2f}) <= 요격기_1인부담({요격기_1인부담:.2f})\n"
         f"  최대_multiplier(마지막) = {mults[마지막]:.2f}, generations = {world.generations}\n"
-        f"  → 성장이 세대 수를 앞질렀습니다. growth_coef 를 낮추거나 generations 를 늘리세요.\n"
-        f"  → 또는 bunker 를 상한({caps[0]:.0f}) 쪽으로 올리세요."
+        f"  → 성장이 세대 수를 앞질렀습니다. growth_coef 를 낮추거나 generations 를 늘리세요."
     )
 
-# 소통 비용의 순서. 국제는 언어를 배워도 국내보다 비싸다 (5.6)
-assert costs.comm_domestic < costs.comm_intl_learner
-assert ap.learn <= turn.action_points          # 학습이 한 턴에 가능해야 함
 # 학습 유인이 존재하려면 AI 경로가 원문 경로보다 비싸야 한다.
 # 손익분기 식이 이 차이로 나누므로 스윕 하한에서도 반드시 성립해야 한다.
 assert knob.comm_intl_ai > costs.comm_intl_learner        # 스윕 플랜 전 구간에서 검사
@@ -1282,6 +1301,25 @@ assert warm_glow.rate < 1 / costs.happiness_price
 
 `저축_필요턴`이 `lifespan`에 육박하면 그 세대는 학습에 생애를 다 씁니다.
 그 자체가 관측 대상이지만, 전 조건에서 그렇다면 노브 범위를 넓혀야 합니다.
+
+#### 왜 부등식이 셋인가 — 사전 밸런스 스윕에서 드러난 것
+
+처음에는 ★A 하나뿐이었습니다. `tools/balance/sweep.py` 로 파라미터 공간을 훑어보니
+**어떤 조합에서도 전 인류 생존이 일어나지 않았습니다.** 원인이 둘이었습니다.
+
+**단위 오류.** 임계값은 진척 단위인데 assert 는 소득 단위로 비교하고 있었습니다.
+`진척 = 소득 × facility_eff × success_prob` 이므로 `success_prob = 0.3` 이면
+실제 요구량이 3배 이상 부풀려집니다.
+
+**빠진 부등식 둘.**
+
+| | 없으면 |
+|---|---|
+| **B** 한 나라가 전 세대를 다 써도 불가 | 한 나라가 혼자 해낼 수 있어 **조율이 무의미**해짐 |
+| **C** 세 나라가 모으면 가능 | 도달 자체가 불가능해 **전 조건에서 회피율 0** |
+
+**A · B · C 가 임계값이 놓여야 할 창(window)을 만듭니다.** A만으로는 창이 정의되지
+않고, 창 밖 조합이 assert 를 통과해 버립니다.
 
 #### 왜 시간 축을 분리해야 하는가 (★2)
 
@@ -1349,7 +1387,8 @@ assert warm_glow.rate < 1 / costs.happiness_price
 | # | 이름 | 층 | 산출 |
 |---|---|---|---|
 | 1 | 언어 학습자 비율 | — | 마지막 세대에서 `known_langs` ≥ 2 인 에이전트 / 전체 |
-| 2 | 재앙 회피율 | — | run별 생존 판정 (1/0), 시드 평균 |
+| 2 | **재앙 회피율** | — | **요격기 임계 도달 = 전 인류 생존** (1/0), 시드 평균 |
+| 2' | 생존 인구 비율 | — | 요격 실패 시 벙커로 살아남은 국가 비율 (연속값) |
 | 3 | 정책 전환 유발율 | — | **메시지를 받은 그 사람이** 다음 턴에 `propose_vote` 한 건수<br>÷ **국제 메시지를 1건 이상 받은 (사람, 턴) 쌍의 수** |
 | **4a** | AI 경로 의도 실패율 | 1 | AI 경로 메시지 중 `intent` ≠ `understood` 비율 |
 | **4c** | **국내 경로 의도 실패율** | **0** | 자국 내 메시지만. **번역 없는 기저선** |
@@ -1398,6 +1437,7 @@ assert warm_glow.rate < 1 / costs.happiness_price
 | **4a** | 조건 간 **거의 불변** (같은 번역기니까) | 크게 흔들리면 **번역 장치 불안정** — 진단 신호 |
 | **4c** | 조건 간 **거의 불변**, 그리고 4a보다 **낮음** | 4c ≈ 4a 면 번역이 오해를 만들지 못한 것 |
 | **6a** | 조건 간 **거의 불변**, 그리고 4a보다 **낮음** | ← 사실은 통과하고 의도만 깎인다 |
+| 2 vs 2' | 2는 낮고 2'는 중간 | **각자 벙커만 파고 인류는 멸망** 이 그림 |
 | `6a'` | 대개 표기 변환 (단어 수사 → 아라비아 숫자) | 값이 안 맞는 숫자가 생기면 **환각** |
 | **4b** | 노브가 커질수록 **감소** | 사회 전체의 오해량이 줄어드는 것 |
 | 1 · 2 · 5 | 노브가 커질수록 증가 | |
