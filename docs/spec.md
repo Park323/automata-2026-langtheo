@@ -262,10 +262,11 @@ A3 → A6 → A9 ...
 {
   "reasoning": "왜 이렇게 했는지 한 문장",
 
+  "action": "work",
+
   "spend": {
     "happiness": 0,
-    "facility":  0,
-    "learn":     null
+    "facility":  0
   },
 
   "message": {
@@ -288,8 +289,8 @@ A3 → A6 → A9 ...
 | 필드 | 설명 |
 |---|---|
 | `reasoning` | **필수.** 사후 분류의 감사 표면 |
+| `action` | **주 행동 1개.** 아래 4.3 참조. 매 턴 하나만 |
 | `spend.facility` | 자국 국토 시설에 투자. 국토가 `null`이면 이 투자가 용도를 확정 |
-| `spend.learn` | 배울 언어 코드 또는 `null` |
 | `message.kind` | `"say"` 또는 `"ask"` (되묻기 — 비용이 다름) |
 | `message.intent` | **채널을 타지 않습니다.** 로그에만 남아 채점에 쓰입니다 |
 | `message.translate_instruction` | 번역기에 줄 지시. 자유 텍스트 또는 `null`(→ `"번역하라"`).<br>AI 경유일 때만 유효. **시스템이 덧붙이지 않습니다** (5.2) |
@@ -302,23 +303,56 @@ A3 → A6 → A9 ...
 
 ### 4.3 행동과 비용
 
-| 행동 | 비용 키 | 비고 |
+**예산은 저절로 생기지 않습니다.** 벌어야 합니다.
+그래서 **말하는 턴은 버는 턴이 아닙니다** — 소통의 기회비용이 실재합니다.
+
+#### 주 행동 (매 턴 정확히 하나)
+
+| `action` | 효과 | 비용 키 |
 |---|---|---|
-| 대기 | `turn_base` | 아무것도 안 해도 소모 |
-| 자국 내 소통 | `comm_domestic` | 원문 직통 |
-| 국제 소통 — 수신자 언어를 앎 | `comm_intl_learner` | 원문 직통 |
-| 국제 소통 — 모름 | `comm_intl_ai` | **2단 번역.** ← 노브 |
-| 되묻기 (`kind: "ask"`) | `ask_clarification` | 비용 + 다음 턴 소비 |
-| 언어 학습 (신규) | `learn_new` | 일시불. 분할 불가 |
-| 언어 학습 (계승) | `learn_inherit` | **자기 선대**가 알던 언어일 때 (3.3) |
-| 행복 구매 | `happiness_unit` | 사적 재화 |
-| 시설 투자 | 자유 (턴당 상한) | 확률적으로 진척 |
-| 다수결 발의 | `propose_vote` | 발의 턴에 자국민 투표, 과반으로 확정 |
+| `work` | `work_income` 만큼 예산 획득. **확정적** | — |
+| `speak` | 메시지 1건 발신 | 경로에 따라 아래 |
+| `ask` | 되묻기 1건 발신 (`kind: "ask"`) | `ask_clarification` + 경로 비용 |
+| `learn` | 언어 1개 습득 | `learn_new` 또는 `learn_inherit` |
+| `propose_vote` | 국토 용도 발의 → 자국민 투표 | `propose_vote` |
+| `idle` | 아무것도 안 함 | — |
+
+모든 주 행동은 `turn_base`를 추가로 소모합니다. **`idle`도 마찬가지입니다.**
+
+#### 소통 경로별 비용 (`speak` / `ask` 선택 시)
+
+| 경로 | 비용 키 |
+|---|---|
+| 자국 내 | `comm_domestic` |
+| 국제 — 수신자가 발신자 언어를 앎 | `comm_intl_learner` |
+| 국제 — 모름 | `comm_intl_ai` ← **노브** |
+
+#### 지출 (주 행동과 무관하게 가능)
+
+돈이 있으면 언제든 배분할 수 있습니다.
+
+| 항목 | 비고 |
+|---|---|
+| 행복 구매 | 사적 재화. **확정적** |
+| 시설 투자 | 턴당 상한 있음. **확률적으로만** 진척 |
+
+#### 확실 vs 불확실
+
+```
+노동   확정 소득     ← 확실
+행복   확정 소비     ← 확실
+시설   확률적 진척   ← 불확실
+```
+
+**벌이를 확률적으로 만들지 마세요.** 노이즈가 두 배가 되고, 무엇보다 이 대비가
+흐려져 무임승차 유혹이 약해집니다.
+
+#### 계승
 
 **계승은 계보 단위입니다** (3.3). 국가에 학습자가 있어도 **내 선대**가 몰랐으면 전액입니다.
 한 계보에서 한 세대만 끊겨도 그 계보는 다시 전액 — **비가역성이 여기서 나옵니다.**
 
-**국제 소통 경로 결정**
+#### 국제 소통 경로 결정
 
 ```
 수신자가 발신자의 모국어를 안다  →  원문 직통
@@ -496,8 +530,11 @@ thresholds:
   interceptor: ?
   bunker:      ?
 
+income:
+  work_income: ?           # work 1회당 획득. 확정적
+  initial_budget: ?        # 세대 시작 시 보유액 (0이면 첫 턴은 사실상 work 강제)
+
 budget:
-  per_agent_per_turn: ?
   facility_cap_per_turn: ?
 
 world:
@@ -528,18 +565,24 @@ run:
 ### 검증 — 로드 시 assert
 
 ```python
-총자원 = budget.per_agent_per_turn * agents_per_country * lifespan
+# 한 국가가 전원 매 턴 work만 했을 때의 이론적 상한
+국가_최대자원 = income.work_income * agents_per_country * lifespan
 
-assert thresholds.interceptor > 총자원          # 혼자선 불가
-assert thresholds.bunker      <= 총자원         # 우리끼리는 가능
+assert thresholds.interceptor > 국가_최대자원   # 혼자선 절대 불가
+assert thresholds.bunker      <= 국가_최대자원  # 우리끼리는 가능
 assert 벙커_분담금 > 요격기_분담금               # 벙커가 더 비싸야 함
 
-손익분기 = costs.learn_new / (knob.comm_intl_ai - costs.comm_intl_learner)
-# 이 값이 lifespan보다 크면 그 조건에서는 학습이 산술적으로 불가능.
-# 실패가 아니라 의도된 구간일 수 있으므로 assert 하지 말고 로그로 남길 것.
+손익분기_턴 = costs.learn_new / (knob.comm_intl_ai - costs.comm_intl_learner)
+노동_필요턴  = costs.learn_new / income.work_income
+# 학습의 실질 비용 = 노동_필요턴 만큼 아무것도 못 함 + 그 턴들의 기회비용
+# 두 값 모두 로그로 남길 것. assert 하지 않는다 —
+# 학습이 산술적으로 불가능한 구간도 의도된 조건일 수 있음.
 ```
 
-마지막 식을 매 실행 시 출력하세요. **노브 4단계가 교차점을 포위하는지 즉시 보입니다.**
+**두 식을 매 실행 시 출력하세요.** 노브 4단계가 교차점을 포위하는지 즉시 보입니다.
+
+`노동_필요턴`이 `lifespan`에 육박하면 그 세대는 학습에 생애를 다 씁니다.
+그 자체가 관측 대상이지만, 전 조건에서 그렇다면 노브 범위를 넓혀야 합니다.
 
 ---
 
@@ -649,3 +692,19 @@ python -m langtheo report --experiment {id}      # 집계 + 표
 ### 12.5 지표 3의 조작적 정의
 
 "의견을 바꿨다"를 `spend` 배분 방향 전환으로 잡았습니다. 이게 적절한지 확인 필요.
+
+### 12.6 캘리브레이션 대상이 늘었습니다
+
+노동을 행동으로 만들면서 맞출 값이 하나 더 생겼습니다.
+
+```
+thresholds.interceptor / thresholds.bunker / income.work_income
+success_prob / costs.learn_new / world.lifespan
+```
+
+`work_income`이 너무 낮으면 전원이 계속 일만 하다 끝나고(소통 0), 너무 높으면 노동이
+무의미해집니다. 목표는 **재앙 회피율 40~60%**이며, 8/18에 이 여섯을 함께 봐야 합니다.
+
+**지켜볼 것:** 되묻기 비율이 전 조건에서 0이면 "라벨이 검증 행동을 바꾸는가"를 관측할 수
+없습니다. 신호 하나를 잃습니다 — 다만 그 자체도 결과입니다.
+*"희소성 아래에서 검증은 사치가 된다."*
