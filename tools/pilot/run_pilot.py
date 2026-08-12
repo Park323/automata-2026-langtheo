@@ -173,13 +173,16 @@ def report(raw_path):
     def bar(title): print(f"\n{'='*78}\n{title}\n{'='*78}")
 
     # ── 선택 기준 1: 숫자 보존 (필수 하한)
-    bar("① 숫자 보존 — 필수 하한. 어긋나면 지표 6a 가 대조군을 못 한다")
-    print(f"{'모델':<46} {'숫자 보존율':>11} {'실패 건':>7}")
+    bar("① 수치 소실·변조 — 필수 하한. 어긋나면 지표 6a 가 대조군을 못 한다")
+    print(f"{'모델':<46} {'소실·변조':>9} {'추가(표기변환)':>13}")
     for m in models:
-        rs = [r for r in base if r["numbers_src"]]
-        rs = [r for r in rs if r["model"] == m]
-        ok = sum(1 for r in rs if r["numbers_src"] == r["numbers_out"])
-        print(f"{m:<46} {ok/len(rs)*100:>10.1f}% {len(rs)-ok:>7}")
+        rs = [r for r in base if r["model"] == m and r["numbers_src"]]
+        if not rs: continue
+        # 부분집합 검사. 집합 일치로 재면 단어 수사 → 아라비아 숫자 변환에 오탐이 난다
+        lost = sum(1 for r in rs if not set(r["numbers_src"]) <= set(r["numbers_out"]))
+        added = sum(1 for r in rs if set(r["numbers_out"]) - set(r["numbers_src"]))
+        print(f"{m:<46} {lost:>4}/{len(rs):<4} {added:>8}/{len(rs)}")
+    print("\n  소실·변조가 0 이어야 지표 6a 가 대조군으로 성립. 추가는 개별 확인 대상")
 
     # ── 선택 기준 2: 3언어 균형
     bar("② 3언어 균형 — 방향 간 편차. 작을수록 좋다 (국가 비대칭 방지)")
