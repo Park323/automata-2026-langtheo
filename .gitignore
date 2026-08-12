@@ -17,3 +17,5 @@ venv/
 outputs/
 results/
 logs/
+
+.env.localruns/

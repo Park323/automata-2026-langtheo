@@ -1,0 +1,92 @@
+{
+  "_note": "docs/pilot/sentences.md 의 기계 판독용 사본. 둘을 함께 고칠 것.",
+  "sentences": [
+    { "id": "S1", "tests": ["condition", "tense", "subject"], "has_numbers": true,
+      "ja": "他の二国が先に確約すれば、30を出します。",
+      "zh": "如果另外两国先承诺，我们也出30。",
+      "fr": "Si les deux autres pays s'engagent d'abord, nous verserons 30 également." },
+
+    { "id": "S2", "tests": ["hedge"], "has_numbers": false,
+      "ja": "検討させていただきます。",
+      "zh": "我们会研究一下。",
+      "fr": "Nous allons l'examiner." },
+
+    { "id": "S3", "tests": ["hedge", "subject"], "has_numbers": false,
+      "ja": "確かではありませんが、進捗は半分ほどかと思われます。",
+      "zh": "不太确定，进展大概一半左右。",
+      "fr": "Je n'en suis pas certain, mais l'avancement serait d'environ la moitié." },
+
+    { "id": "S4", "tests": ["subject", "tense"], "has_numbers": false,
+      "ja": "用地を決められませんでした。",
+      "zh": "用地还没定下来。",
+      "fr": "Nous n'avons pas pu choisir le site." },
+
+    { "id": "S5", "tests": ["tense"], "has_numbers": false,
+      "ja": "我々は迎撃機に投資しました。",
+      "zh": "我们投资拦截器。",
+      "fr": "Nous avons investi dans l'intercepteur." },
+
+    { "id": "S6", "tests": ["hedge", "condition"], "has_numbers": false,
+      "ja": "出せるかもしれませんが、予算が厳しいです。",
+      "zh": "我们可能出，但预算紧张。",
+      "fr": "Nous pourrions verser, mais le budget est serré." },
+
+    { "id": "S7", "tests": [], "has_numbers": true,
+      "ja": "閾値は120、現在は45です。残りは75です。",
+      "zh": "阈值是120，现在45。还差75。",
+      "fr": "Le seuil est de 120, actuellement 45. Il reste 75." },
+
+    { "id": "S8", "tests": ["subject"], "has_numbers": false,
+      "ja": "国が反対しています。",
+      "zh": "国家反对。",
+      "fr": "Les pays s'opposent." },
+
+    { "id": "S9", "tests": ["condition", "subject"], "has_numbers": false,
+      "ja": "先に出さないのであれば、こちらも出しません。",
+      "zh": "如果你们不先出，我们也不出。",
+      "fr": "Si vous ne versez pas d'abord, nous ne verserons pas non plus." },
+
+    { "id": "S10", "tests": ["condition", "hedge", "tense", "subject"], "has_numbers": false,
+      "ja": "我が国の用地はまだ用途が決まっておらず、シェルターにするか迎撃機にするかで国内の意見が分かれています。ただ、他国が迎撃機を引き受けてくれるのであれば、こちらはシェルターに傾くと思います。",
+      "zh": "我国的用地还没决定用途，国内对于建避难所还是建拦截器意见分歧。不过，如果别的国家愿意承担拦截器，我们可能会倾向于避难所。",
+      "fr": "L'usage de notre terrain n'est pas encore décidé, et les avis divergent dans le pays entre l'abri et l'intercepteur. Cependant, si un autre pays prenait en charge l'intercepteur, nous pencherions plutôt pour l'abri." }
+  ],
+
+  "instruction_variants": {
+    "null":    null,
+    "precise": "正確に、省略せずに訳すこと。",
+    "concise": "簡潔にまとめて訳すこと。"
+  },
+
+  "instruction_test_subset": ["S1", "S2", "S6", "S10"],
+
+  "markers": {
+    "_note": "domains/meteor/lexicon/markers.yaml 의 기계 판독용 사본. 둘을 함께 고칠 것.",
+    "_match": "longest_first — 긴 표지부터 매칭하고 겹친 구간은 소비한다",
+
+    "condition": {
+      "ja": { "regex": ["ば(?=、|$|\\s)", "たら(?=、|$|\\s)", "なら(ば)?", "であれば", "場合", "限り"] },
+      "zh": { "literal": ["如果", "要是", "假如", "倘若", "的话", "只要", "除非", "若"] },
+      "fr": { "literal": ["à condition que", "au cas où", "pourvu que", "à moins que", "sinon", "si "] }
+    },
+
+    "hedge": {
+      "ja": { "literal": ["かもしれ", "でしょう", "と思われ", "ようです", "ような", "ほど", "ぐらい", "くらい", "確かで", "おそらく", "恐らく", "検討", "難しい", "厳しい", "善処", "前向きに"] },
+      "zh": { "literal": ["不太确定", "可能", "也许", "大概", "左右", "应该", "恐怕", "似乎", "好像", "研究一下", "考虑一下", "有困难"] },
+      "fr": { "literal": ["peut-être", "il se peut", "sans doute", "à peu près", "environ", "sembl", "paraît", "examiner", "délicat"],
+              "regex": ["\\b\\w+rai[st]\\b", "\\b\\w+rions\\b", "\\b\\w+riez\\b", "\\b\\w+raient\\b"] }
+    },
+
+    "tense": {
+      "ja": { "regex": ["ませんでした", "ました", "でした", "ています", "ます(?=。|$)"] },
+      "zh": { "literal": ["已经", "正在", "了", "过", "会", "将"] },
+      "fr": { "regex": ["\\b(ai|as|a|avons|avez|ont)\\s+\\w+é\\b", "\\b(suis|es|est|sommes|êtes|sont)\\s+\\w+é", "\\b\\w+(rons|rez|ront)\\b", "\\b\\w+(rai|ras|ra)\\b"] }
+    },
+
+    "subject": {
+      "ja": { "literal": ["私たち", "われわれ", "我が国", "我々", "当方", "こちら", "弊国", "私"] },
+      "zh": { "literal": ["我们", "我国", "咱们", "你们", "贵国", "他们", "我", "你"] },
+      "fr": { "literal": ["notre pays", "elles ", "elle ", "nous ", "vous ", "ils ", "il ", "je ", "j'", "on "] }
+    }
+  }
+}
