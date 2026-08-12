@@ -396,22 +396,23 @@ A3 → A6 → A9 ...
   B2 — 우리말을 읽을 수 있다고 함 (12턴 전, B2 본인의 말)
   그 밖은 모름
 
-행동 비용 (매 턴 하나만 고를 수 있음)
-  work             0    → 예산 +12
-  speak (자국)      1
-  speak (국제·원문)  2
-  speak (국제·AI)    5
-  ask              2    + 위 경로 비용
-  learn (신규)      50
-  learn (계승)      10
-  propose_vote     0.5
-  idle             0
-  ※ 어느 것을 고르든 매 턴 기본 0.2 가 추가로 소모됩니다
+이번 턴 수입: +12 (자국 생산 배수 반영). 기본 지출: -0.2
+예산이 허락하는 한 여러 행동을 할 수 있습니다. 메시지는 한 턴에 3건까지.
 
-지출 (행동과 별개로 가능)
-  행복 구매    1 지불 → 행복 +1
-  국가 투자    1 지불 → 행복 +0.05, 다음 세대부터 자국 생산 배수 상승
-  시설 투자    1 지불 → 행복 +0.05, 자국 시설 진척에 기여
+행동 비용
+  speak (자국)       1
+  speak (국제·원문)   2   상대가 못 읽으면 전달되지 않음. 비용은 그대로 나감
+  speak (국제·AI)     5
+  ask               2   + 위 경로 비용
+  learn (신규)       50
+  learn (계승)       10
+  propose_vote      0.5
+  invest            지정한 만큼
+
+invest 효과
+  happiness  1 지불 → 행복 +1
+  national   1 지불 → 행복 +0.05, 다음 세대부터 자국 생산 배수 상승
+  facility   1 지불 → 행복 +0.05, 자국 시설 진척에 기여
 
 메시지는 100자까지 전달됩니다. 그 이후는 전달되지 않습니다.
 
@@ -465,30 +466,27 @@ A3 → A6 → A9 ...
 
 ### 4.2 응답 스키마
 
-**주 행동은 `action` 하나로 표현합니다.** 나머지 필드는 해당 `action`일 때만 채웁니다.
+**한 턴에 여러 행동을 할 수 있습니다.** 예산이 허락하는 만큼입니다.
+행동 목록을 **한 번의 LLM 호출로** 계획하게 합니다 — 행동마다 호출하면 비싸고
+병렬 추론 구조와도 맞지 않습니다.
 
 ```json
 {
   "reasoning": "왜 이렇게 했는지 한 문장",
 
-  "action": "speak",
+  "actions": [
+    { "type": "speak", "to": "B2", "route": "ai",
+      "text":   "자연어 본문 (모국어)",
+      "intent": "내가 전하려 한 것 한 문장",
+      "translate_instruction": null },
 
-  "message": {
-    "to":       "B2",
-    "route":    "ai",
-    "reply_to": null,
-    "text":     "자연어 본문 (모국어)",
-    "intent":   "내가 전하려 한 것 한 문장",
-    "translate_instruction": null
-  },
-  "learn_lang":  null,
-  "vote_target": null,
+    { "type": "invest", "target": "facility", "amount": 5 },
 
-  "spend": {
-    "happiness": 0,
-    "national":  0,
-    "facility":  0
-  },
+    { "type": "ask", "to": "C1", "route": "ai", "reply_to": 42,
+      "text": "...", "intent": "...", "translate_instruction": null },
+
+    { "type": "learn", "lang": "zh" }
+  ],
 
   "received": [
     { "msg_id": 1, "understood": "무슨 뜻으로 이해했는지 한 문장" }
@@ -498,58 +496,76 @@ A3 → A6 → A9 ...
 }
 ```
 
-| 필드 | 유효 조건 | 설명 |
+| 행동 `type` | 필드 | 설명 |
 |---|---|---|
-| `reasoning` | 항상 | **필수.** 사후 분류의 감사 표면 |
-| `action` | 항상 | `work` / `speak` / `ask` / `learn` / `propose_vote` / `idle` 중 하나 |
-| `message` | `speak`, `ask` | 아래 참조. 다른 action이면 `null` |
-| `message.route` | 국제 발신 시 | `"original"`(싸다·도박) 또는 `"ai"`(비싸다·안전). 자국 내면 무시 |
-| `message.reply_to` | `ask` | 되묻는 대상 `msg_id`. `speak`이면 `null` |
-| `message.intent` | `speak`, `ask` | **채널을 타지 않습니다.** 로그에만 남아 채점에 쓰입니다 |
-| `message.translate_instruction` | AI 경유일 때 | 번역기에 줄 지시. 자유 텍스트 또는 `null`(→ `"번역하라"`).<br>**시스템이 덧붙이지 않습니다** (5.2) |
-| `learn_lang` | `learn` | 배울 언어 코드 |
-| `vote_target` | `propose_vote` | `"bunker"` / `"interceptor"`. 확정 후에는 **전환 발의**(매몰비용 소실) |
-| `spend` | 항상 | 주 행동과 무관하게 배분 가능 (4.4) |
-| `received[].understood` | 항상 | **이번 턴 프롬프트에 표시된** 메시지를 어떻게 이해했는지. 채점용 |
-| `testament` | **생애 마지막 턴** | 후손에게 남길 한 문장. 그 외 턴에는 `null` |
+| `speak` | `to`, `route`, `text`, `intent`, `translate_instruction` | 한 명에게 발신 |
+| `ask` | 위 + `reply_to` | 되묻는 대상 `msg_id` 지정 |
+| `invest` | `target` (`happiness`/`national`/`facility`), `amount` | 4.4 |
+| `learn` | `lang` | 배울 언어 코드 |
+| `propose_vote` | `target` (`bunker`/`interceptor`) | 국내 전용. 확정 후에는 **전환 발의** |
 
-**검증 규칙**
+| 최상위 필드 | 설명 |
+|---|---|
+| `reasoning` | **필수.** 사후 분류의 감사 표면 |
+| `received[].understood` | **이번 턴 프롬프트에 표시된** 메시지를 어떻게 이해했는지. 채점용 |
+| `testament` | **생애 마지막 턴에만.** 후손에게 남길 한 문장 |
+
+> `route`는 국제 발신 시에만 유효합니다 — `"original"`(싸다·도박) 또는 `"ai"`(비싸다·안전).
+> `intent`는 **채널을 타지 않습니다.** 로그 전용입니다.
+> `translate_instruction`은 **시스템이 덧붙이지 않습니다** (5.2).
+
+#### 검증 규칙 — 순서가 곧 우선순위입니다
 
 ```
-action 에 대응하는 필드가 비어 있으면 → 그 턴은 idle 로 처리하고 로그에 기록
-action 과 무관한 필드가 채워져 있으면 → 무시하고 로그에 기록
-spend 합계 > budget                  → 거부하고 로그에 기록
-budget < turn_base                   → 강제 idle, 비용 면제 (아래)
+1. 턴 시작 시  budget += work_income_g ,  budget -= turn_base
+2. actions 를 배열 순서대로 처리
+3. 각 행동 직전에 잔액 확인
+     부족하면 → 그 행동부터 이후 전부 버리고 events.jsonl 에 기록
+4. 메시지 행동(speak/ask) 이 max_messages_per_turn 을 넘으면
+     초과분을 버리고 기록
+5. type 이 알 수 없거나 필수 필드가 비면 → 그 행동만 버리고 기록
 ```
 
-> **파산 교착 방지.** `turn_base`가 모든 행동에 붙으므로, 예산이 `turn_base` 아래로
-> 내려가면 `idle`조차 할 수 없어 무한 교착에 빠집니다. 이때는 **강제 `idle` + 비용 면제**로
-> 처리하고 `events.jsonl`에 기록하세요.
->
-> `initial_budget ≥ turn_base` assert만으로는 부족합니다 — 생애 중간에 예산을 다 쓰면
-> 같은 상태가 됩니다. **"파산한 세대"가 몇 턴이나 나오는지가 관측거리**이기도 합니다.
+**예산이 모자라면 뒤쪽이 잘려나가므로, 배열 순서가 곧 에이전트의 우선순위 표명이
+됩니다.** 무엇을 앞에 두는지가 관측 대상입니다.
+
+`max_messages_per_turn`은 예산과 별개의 캡입니다. 메시지마다 번역 호출이 붙으므로
+이게 없으면 **런타임 예측이 불가능**해집니다. 투자·학습에는 캡이 없습니다.
+
+**예산은 이월됩니다.** 세대 전환 시 초기화되므로(3.2) 최대 축적량은
+`lifespan × work_income_g`로 자연히 제한됩니다. 별도 상한 장치가 필요 없습니다.
+
+> 이월이 없으면 **한 턴 소득보다 비싼 것을 영원히 살 수 없습니다** — 언어 학습이
+> 대표적입니다. 저축이 가능해야 큰 지출이 성립합니다.
 
 > `intent`와 `understood`는 **에이전트끼리 절대 볼 수 없습니다.** 로그 전용입니다.
 > 이걸 프롬프트에 노출하면 왜곡이 즉시 드러나 실험이 죽습니다.
 
-### 4.3 주 행동 (매 턴 정확히 하나)
+### 4.3 행동과 비용
 
-**예산은 저절로 생기지 않습니다.** 벌어야 합니다.
-그래서 **말하는 턴은 버는 턴이 아닙니다** — 소통의 기회비용이 실재합니다.
+**예산은 매 턴 자동으로 들어옵니다.** 별도의 벌이 행동은 없습니다.
 
-| `action` | 효과 | 비용 키 |
-|---|---|---|
-| `work` | `work_income_g` 만큼 예산 획득. **확정적** | — |
-| `speak` | **한 명**에게 메시지 발신. 국제면 `route` 선택 | 경로에 따라 (5.1) |
-| `ask` | 특정 메시지를 지목해 되묻기 | `ask_clarification` + 경로 비용 |
-| `learn` | 언어 1개 습득 | `learn_new` 또는 `learn_inherit` |
-| `propose_vote` | 국토 용도 발의 → 자국민 투표. **국내 전용** | `propose_vote` |
-| `idle` | 아무것도 안 함 | — |
+```
+턴 시작 시 :  budget += work_income_g ,  budget -= turn_base
+```
 
-모든 주 행동은 `turn_base`를 추가로 소모합니다. **`idle`도 마찬가지입니다.**
+`work_income_g`는 자국의 생산 배수가 반영된 값입니다 (3.2).
+`turn_base`는 **행동 수와 무관하게 턴당 한 번**만 나갑니다.
+
+기회비용은 **예산 경쟁**의 형태로 남습니다 — **모든 메시지는 투자하지 못한 돈입니다.**
+
+| 행동 | 비용 키 |
+|---|---|
+| `speak` / `ask` — 자국 내 | `comm_domestic` |
+| `speak` / `ask` — 국제 `route: original` | `comm_intl_learner` (**실패해도 청구**) |
+| `speak` / `ask` — 국제 `route: ai` | `comm_intl_ai` ← **노브** |
+| `ask` 추가분 | `ask_clarification` (위 경로 비용에 **더해짐**) |
+| `learn` | `learn_new` 또는 `learn_inherit` |
+| `propose_vote` | `propose_vote`. **국내 전용** |
+| `invest` | 지정한 `amount` 그대로 (4.4) |
 
 `ask`는 별도 응답 규칙이 필요 없습니다. 원 발신자가 다음 턴에 `speak`으로 답하면
-됩니다. 답할지 말지도 그 사람의 선택이고, 답하는 데 또 한 턴이 듭니다.
+됩니다. 답할지 말지도 그 사람의 선택이고, 답하는 데 예산과 한 턴이 듭니다.
 
 > **`ask`는 노브에 이중으로 영향받습니다 — 의도된 것입니다.**
 > 되묻기도 메시지이므로 `ask_clarification` 위에 경로 비용이 얹힙니다.
@@ -558,11 +574,12 @@ budget < turn_base                   → 강제 idle, 비용 면제 (아래)
 
 **계승은 계보 단위입니다** (3.3). 국가에 학습자가 있어도 **내 선대**가 몰랐으면 전액입니다.
 
-### 4.4 지출 (주 행동과 무관하게 가능)
+### 4.4 지출 — `invest` 행동
 
 ![예산은 어디로 가는가 — 수혜 범위 × 수혜 시점](world-model.svg)
 
-돈이 있으면 언제든 배분할 수 있습니다. **세 갈래로 경합합니다.**
+`{"type": "invest", "target": ..., "amount": ...}` 형태로 행동 목록에 넣습니다.
+한 턴에 여러 번 넣어도 되고, **소통과 같은 예산을 두고 경합합니다.**
 
 | 항목 | 수혜 범위 | 궁극 수혜 시점 | 성질 | 즉시 보람 |
 |---|---|---|---|---|
@@ -1082,7 +1099,7 @@ knob:
   comm_intl_ai: 3          # 유일한 실험 변수. 스윕 범위는 configs/knob_sweep.yaml
 
 costs:
-  turn_base:          ?    # 모든 주 행동에 추가 소모
+  turn_base:          ?    # 턴당 1회. 행동 수와 무관
   comm_domestic:      ?    # 국내. 가장 쌈
   comm_intl_learner:  ?    # route=original 의 비용. 실패해도 청구됨
                            # comm_domestic 보다 커야 함 — 언어가 차이의 전부는 아니다
@@ -1099,8 +1116,11 @@ thresholds:
                            # 너무 싸면 전원 벙커로 몰려 실험이 죽는다
 
 income:
-  work_income:    ?        # work 1회당 획득 (기준값. multiplier 가 곱해짐)
-  initial_budget: ?        # 세대 시작 시 보유액 (0이면 첫 턴은 사실상 work 강제)
+  work_income:    ?        # 매 턴 자동 지급 (기준값. multiplier 가 곱해짐)
+  initial_budget: ?        # 세대 시작 시 보유액
+
+turn:
+  max_messages_per_turn: 3 # 예산과 별개의 캡. 번역 호출량을 예측 가능하게 유지
 
 growth:
   growth_coef:  ?          # multiplier = 1 + growth_coef × √(national_capital / growth_scale)
@@ -1154,8 +1174,9 @@ run:
 
 ```python
 def build_caps(cfg):
-    """세대별 (최대 multiplier, 국가 최대자원)을 한 번 순회로 계산.
+    """세대별 (최대 multiplier, 국가 총소득)을 한 번 순회로 계산.
 
+    income 이 자동 지급이므로 이 값은 가정이 아니라 그 세대의 실제 총소득이다.
     multiplier 는 국가 투자의 결과이므로 '직전 세대들이 전액을 국가 투자에
     쏟았다면' 을 가정한 상한이다. 상호 재귀로 쓰면 호출 수가 2^G 로 폭발하므로
     반드시 반복문으로 둔다.
@@ -1198,8 +1219,8 @@ assert costs.comm_domestic < costs.comm_intl_learner
 # 손익분기 식이 이 차이로 나누므로 스윕 하한에서도 반드시 성립해야 한다.
 assert knob.comm_intl_ai > costs.comm_intl_learner        # 스윕 플랜 전 구간에서 검사
 
-# 첫 턴에 아무 행동도 못 하는 상태를 막는다
-assert income.initial_budget >= costs.turn_base
+# 매 턴 순수입이 음수면 예산이 계속 줄어든다
+assert income.work_income > costs.turn_base
 
 # 보람으로 행복을 사는 게 직접 구매보다 유리해지면 사적 재화가 무의미해진다
 assert warm_glow.rate < 1 / costs.happiness_price
@@ -1482,12 +1503,16 @@ python -m langtheo report --experiment {id}      # 집계 + 표
 
 ```
 턴당 호출 = 에이전트 9회 + 국제·AI 메시지 수 × 1회
-100스텝 × (9 + 평균 2) ≈ 1,100회/런
-20런 ≈ 22,000회
+국제·AI 메시지 상한 = 9명 × max_messages_per_turn (전부 국제·AI 일 때)
 ```
 
-pivot 시절 추정의 **딱 절반**입니다. 실측 전이라도 이 여유를 알고 있으면
-`lifespan`을 무리하게 깎을 필요가 없습니다.
+`max_messages_per_turn = 3` 이면 최악의 경우 턴당 9 + 27 = **36회**입니다.
+현실적으로는 자국 내 메시지와 투자가 섞이므로 훨씬 적습니다.
+
+**여러 행동을 허용하면서 메시지 수가 늘 수 있으므로, 이 캡이 런타임을 결정합니다.**
+실측 시 `max_messages_per_turn` 을 함께 조정하세요 — `lifespan` 을 깎기 전에
+이쪽을 먼저 보는 게 낫습니다. 소통 자체를 줄이면 관측할 것이 사라지므로,
+**메시지 캡보다는 세대 수·수명을 조정하는 편이 안전합니다.**
 
 **세 값이 서로 묶여 있습니다.**
 
