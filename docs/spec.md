@@ -366,7 +366,11 @@ A3 → A6 → A9 ...
 자국 국토: 미정
 자국 진척: 0
 자국 생산 배수: 1.0
-자국의 언어 학습자 수: 0
+
+각 사람이 읽을 수 있는 언어
+  A2 ja   A3 ja
+  B1 zh   B2 zh, ja   B3 zh
+  C1 fr   C2 fr       C3 fr
 
 행동 비용 (매 턴 하나만 고를 수 있음)
   work             0    → 예산 +12
@@ -402,11 +406,20 @@ A3 → A6 → A9 ...
 "학습이 손해인 걸 알면서도 배우는가"라는 물음이 성립하지 않습니다.
 비용은 평가가 아니라 사실이므로 원칙 3에 어긋나지 않습니다.
 
+> **언어 능력은 공개 정보입니다.** 전략 정보가 아니라 **채널 정보**이기 때문입니다.
+> 이게 없으면 발신자는 자기 메시지가 원문으로 갈지 AI로 갈지 **보내기 전에 모르고**,
+> 비용도 사후에 확정되어 예산 계획이 불가능해집니다.
+>
+> 그리고 공개해야 5.1의 *"내가 배우면 남이 나에게 싸게 말할 수 있다"*가 작동합니다.
+> 부수적으로 두 가지가 관측 가능해집니다 —
+> **학습이 협조 신호가 되는가**(배웠다는 사실 자체가 의사 표시), 그리고
+> **학습자가 국제 소통의 허브가 되는가**(배운 사람에게 말이 몰리는가).
+
 **절대 넣지 않는 것**
 
 - 재앙까지 남은 턴
 - `success_prob`, 국가 투자 → 배수 함수, 국가 투자 → 후손 초기 행복 인과
-- 타국의 진척·예산·국토 (메시지로만 알 수 있음)
+- 타국의 **진척·예산·국토** (메시지로만 알 수 있음. **언어 능력은 예외 — 위 참조**)
 - 다른 에이전트의 내심
 - 원문과 번역문의 차이
 - **목적함수** — "행복을 극대화하라", "당신의 목표는 생존이다" 등
@@ -476,7 +489,15 @@ A3 → A6 → A9 ...
 action 에 대응하는 필드가 비어 있으면 → 그 턴은 idle 로 처리하고 로그에 기록
 action 과 무관한 필드가 채워져 있으면 → 무시하고 로그에 기록
 spend 합계 > budget                  → 거부하고 로그에 기록
+budget < turn_base                   → 강제 idle, 비용 면제 (아래)
 ```
+
+> **파산 교착 방지.** `turn_base`가 모든 행동에 붙으므로, 예산이 `turn_base` 아래로
+> 내려가면 `idle`조차 할 수 없어 무한 교착에 빠집니다. 이때는 **강제 `idle` + 비용 면제**로
+> 처리하고 `events.jsonl`에 기록하세요.
+>
+> `initial_budget ≥ turn_base` assert만으로는 부족합니다 — 생애 중간에 예산을 다 쓰면
+> 같은 상태가 됩니다. **"파산한 세대"가 몇 턴이나 나오는지가 관측거리**이기도 합니다.
 
 > `intent`와 `understood`는 **에이전트끼리 절대 볼 수 없습니다.** 로그 전용입니다.
 > 이걸 프롬프트에 노출하면 왜곡이 즉시 드러나 실험이 죽습니다.
@@ -810,7 +831,7 @@ text_written  ──절단──▶  text_sent  ──번역──▶  text_pivo
   "translate_instruction": "발신자가 번역기에 준 지시 (null이면 기본값 사용)",
 
   "intent":     "발신자가 기록한 의도 (채널 미경유)",
-  "understood": "수신자가 기록한 이해 (다음 턴)",
+  "understood": "수신자의 이해. turn+1 에 기록됨. 미기록이면 null",
 
   "numbers_sent":      [30, 5],
   "numbers_delivered": [30, 5],
@@ -820,14 +841,14 @@ text_written  ──절단──▶  text_sent  ──번역──▶  text_pivo
   "truncated":    false,
   "chars_cut":    0,
 
-  "pivot_logprob_mean":   -0.42,
-  "deliver_logprob_mean": -0.38
+  "logprob_src_to_pivot": -0.42,
+  "logprob_pivot_to_dst": -0.38
 }
 ```
 
 #### 번역 확신도 로깅 (선택 — 백엔드가 지원할 때)
 
-`*_logprob_mean`은 번역 출력 토큰의 평균 로그확률입니다.
+`logprob_*`은 번역 출력 토큰의 평균 로그확률입니다.
 **"번역이 정확하다는 확신"이 아니라 "출력이 얼마나 유창·예측 가능했나"**입니다.
 
 그래서 오히려 강한 주장이 나옵니다.
@@ -847,6 +868,21 @@ text_written  ──절단──▶  text_sent  ──번역──▶  text_pivo
 
 `numbers_*`는 정규식으로 추출한 수치 목록입니다. **`numbers_sent`는 절단 후 기준**이며
 (절단으로 사라진 숫자는 번역 손실이 아니므로), 지표 6에 씁니다.
+
+#### `understood`의 타이밍과 무응답
+
+```
+메시지가 messages.jsonl 에 기록되는 턴  = T   (발신 시점)
+수신자 프롬프트에 표시되는 턴           = T+1
+understood 가 기록되는 턴               = T+1  ← 조인 키
+```
+
+**수신자가 `understood`를 쓰지 않는 경우가 생깁니다** (무시했거나 스키마 위반).
+이때는 `null`로 두고 **지표 4의 분모에서 제외**합니다.
+
+> **측정 불가와 오해는 다릅니다.** 무응답을 실패로 세면 "스키마를 안 지킨 것"이
+> "오해한 것"으로 둔갑합니다. 대신 **무응답률을 별도 지표로 로그**하세요 —
+> 이것이 조건 간에 크게 다르면 그 자체가 편향 신호입니다.
 
 ### 6.2 사후 채점
 
@@ -884,9 +920,23 @@ text_written  ──절단──▶  text_sent  ──번역──▶  text_pivo
 | | 불확실 | 「peut-être」「il se peut」 |
 | | 조건 | 「si」「à condition que」 |
 
+**메시지 단위로 나누지 마세요 — 분모가 0이 됩니다.** 짧은 메시지 대부분은 특정 표지를
+아예 포함하지 않습니다. **코퍼스 단위로 집계하고, 방향을 나눕니다.**
+
 ```
-잔존율(자질) = count(표지, text_delivered) / count(표지, text_sent)
+소실률(자질) = Σ max(0, sent − delivered) / Σ sent          # 있던 것이 사라짐
+생성률(자질) = Σ max(0, delivered − sent) / 메시지 수        # 없던 것이 생김
 ```
+
+> **생성률이 이 프로젝트의 숨은 발견일 수 있습니다.**
+>
+> *"AI가 유보를 지운다"* 보다 **"AI가 없던 확신을 만들어낸다"** 가 훨씬 무섭습니다.
+> 없던 것이 생긴 건 원문과 대조하지 않으면 **절대 알 수 없기** 때문입니다.
+>
+> 그리고 이것이 2.1의 en pivot 논거를 **정당화에서 예측으로** 바꿉니다.
+> "영어는 주어·시제·단복수를 강제하므로 번역기가 없던 정보를 채워 넣어야 한다"고
+> 써놓고, 실제로 채워 넣는지를 잽니다. 주어가 없던 `ja` 원문이 `en`을 거치며 주어를
+> 얻고, 그것이 `zh`에 책임 소재로 도착하는지 — 측정 가능합니다.
 
 **자연어를 하나도 건드리지 않습니다.** 메시지는 끝까지 자유 텍스트고, 세는 것은
 사후 스크립트입니다. `intent`도 자유 텍스트로 유지하며, LLM은 *"같은 뜻인가"*라는
@@ -947,6 +997,8 @@ costs:
 thresholds:
   interceptor: ?
   bunker:      ?
+  bunker_min_ratio: 0.7    # bunker >= 이 비율 × 첫 세대 국가 최대자원
+                           # 너무 싸면 전원 벙커로 몰려 실험이 죽는다
 
 income:
   work_income:    ?        # work 1회당 획득 (기준값. multiplier 가 곱해짐)
@@ -967,8 +1019,6 @@ happiness:
 facility:
   eff: ?                   # 투자 1당 진척 시행 횟수 (기준값. multiplier 가 곱해짐)
   cap_per_turn: ?
-  bunker_min_ratio: 0.7    # 벙커가 첫 세대 국가 최대자원의 최소 몇 배여야 하는가
-                           # 너무 싸면 전원 벙커로 몰려 실험이 죽는다
   transition_requires_vote: true
   transition_forfeits_progress: true
 
@@ -1006,40 +1056,51 @@ run:
 ### 검증 — 로드 시 assert
 
 ```python
-# 세대 g 에서 한 국가가 도달 가능한 자원의 이론적 상한.
-# multiplier 는 국가 투자의 결과이므로, "직전 세대가 전액을 국가 투자에
-# 쏟았다면" 을 가정해 세대별로 재귀적으로 계산한다.
-def 최대_multiplier(g):
-    if g == 0:
-        return 1.0
-    cap = sum(국가_최대자원(i) for i in range(g))      # 전액을 국가 투자에 쏟은 경우
-    return 1 + growth.growth_coef * sqrt(cap / growth.growth_scale)
+def build_caps(cfg):
+    """세대별 (최대 multiplier, 국가 최대자원)을 한 번 순회로 계산.
 
-def 국가_최대자원(g):
-    return income.work_income * 최대_multiplier(g) * world.agents_per_country * world.lifespan
+    multiplier 는 국가 투자의 결과이므로 '직전 세대들이 전액을 국가 투자에
+    쏟았다면' 을 가정한 상한이다. 상호 재귀로 쓰면 호출 수가 2^G 로 폭발하므로
+    반드시 반복문으로 둔다.
+    """
+    caps, mults, total = [], [], 0.0
+    for g in range(cfg.world.generations):
+        m = 1.0 if g == 0 else 1 + cfg.growth.growth_coef * sqrt(total / cfg.growth.growth_scale)
+        cap = cfg.income.work_income * m * cfg.world.agents_per_country * cfg.world.lifespan
+        mults.append(m); caps.append(cap); total += cap
+    return caps, mults
 
+caps, mults = build_caps(cfg)
 마지막 = world.generations - 1
 
 # ★1 세대 구조를 지키는 핵심 assert
 # 마지막 세대 3국이 전력을 다해도 도달 불가해야 한다.
 # 이게 없으면 미루기가 '옳은 전략'이 되어 세대 구조가 무의미해진다.
-assert thresholds.interceptor > 3 * 국가_최대자원(마지막)
-
-# ★2 config 공간이 비어버리지 않게 하는 제약  ← 없으면 아래가 절대 만족 불가
-assert 최대_multiplier(마지막) < world.generations, (
-    "성장이 세대 수를 앞지르면 '벙커가 더 무겁다'를 만족하는 임계 조합이 없습니다. "
-    "growth_coef 를 낮추거나 generations 를 늘리세요."
-)
+assert thresholds.interceptor > 3 * caps[마지막]
 
 # 벙커: 한 세대 한 국가가 '가능은 하되 전력을 쏟아야' 하는 수준
-assert thresholds.bunker <= 국가_최대자원(0)
-assert thresholds.bunker >= facility.bunker_min_ratio * 국가_최대자원(0)   # 예: 0.7
+assert thresholds.bunker <= caps[0]
+assert thresholds.bunker >= thresholds.bunker_min_ratio * caps[0]     # 예: 0.7
 
-# ★3 시간 축을 분리한 부담 비교 — 아래 설명 참조
+# ★2 시간 축을 분리한 부담 비교 — 실측으로 판정한다 (아래 설명)
 벙커_1인부담   = thresholds.bunker / (world.agents_per_country * world.lifespan)
 요격기_1인부담 = thresholds.interceptor / (
     3 * world.agents_per_country * world.lifespan * world.generations)
-assert 벙커_1인부담 > 요격기_1인부담
+
+if not (벙커_1인부담 > 요격기_1인부담):
+    raise ConfigError(
+        f"벙커_1인부담({벙커_1인부담:.2f}) ≤ 요격기_1인부담({요격기_1인부담:.2f})\n"
+        f"  최대_multiplier(마지막) = {mults[마지막]:.2f}, generations = {world.generations}\n"
+        f"  → 성장이 세대 수를 앞질렀습니다. growth_coef 를 낮추거나 generations 를 늘리세요.\n"
+        f"  → 또는 bunker 를 상한({caps[0]:.0f}) 쪽으로 올리세요."
+    )
+
+# 학습 유인이 존재하려면 AI 경로가 원문 경로보다 비싸야 한다.
+# 손익분기 식이 이 차이로 나누므로 스윕 하한에서도 반드시 성립해야 한다.
+assert knob.comm_intl_ai > costs.comm_intl_learner        # 스윕 플랜 전 구간에서 검사
+
+# 첫 턴에 아무 행동도 못 하는 상태를 막는다
+assert income.initial_budget >= costs.turn_base
 
 # 보람으로 행복을 사는 게 직접 구매보다 유리해지면 사적 재화가 무의미해진다
 assert warm_glow.rate < 1 / costs.happiness_price
@@ -1055,7 +1116,7 @@ assert warm_glow.rate < 1 / costs.happiness_price
 `노동_필요턴`이 `lifespan`에 육박하면 그 세대는 학습에 생애를 다 씁니다.
 그 자체가 관측 대상이지만, 전 조건에서 그렇다면 노브 범위를 넓혀야 합니다.
 
-#### 왜 시간 축을 분리해야 하는가 (★3)
+#### 왜 시간 축을 분리해야 하는가 (★2)
 
 **총액으로 비교하면 모순이 납니다.**
 
@@ -1077,10 +1138,19 @@ assert warm_glow.rate < 1 / costs.happiness_price
 사슴사냥 구조가 여기서 살아납니다 — 값싸지만 남을 믿어야 하는 요격기와,
 비싸지만 우리끼리 확실한 벙커.
 
-**만족 가능 조건이 ★2입니다.** 위 부등식을 풀면 `최대_multiplier(마지막) < generations`가
-나옵니다. 이게 깨지면 어떤 임계 조합도 통과하지 못하는데, ★2가 없으면 실행 시
-assert만 터지고 원인은 드러나지 않습니다. `growth_coef`를 올리다 갑자기 아무 값도
-안 통하는 상황이 오면 범인은 `generations`입니다.
+#### 유도 조건을 assert 하지 마세요 — 실측으로 판정합니다
+
+부등식을 풀면 `최대_multiplier(마지막) < generations` 가 나오는데,
+**이건 필요조건일 뿐 충분조건이 아닙니다.**
+
+`interceptor` 를 ★1 하한보다 계수 `k > 1` 만큼 여유 있게 잡으면 실제 조건은
+`최대_multiplier(마지막) < generations / k` 로 더 빡빡해집니다.
+유도값을 assert 로 두면 **통과했는데도 ★2에서 터지는** 일이 생기고,
+"검사를 통과했으니 괜찮다"는 거짓 확신을 줍니다.
+
+**그래서 두 부담을 직접 계산해 비교하고, 실패했을 때 `최대_multiplier(마지막)`와
+`generations`를 함께 출력해 원인을 지목합니다.** 실측 비교는 항상 정확하고,
+진단 정보는 그대로 제공됩니다.
 
 ---
 
@@ -1108,7 +1178,7 @@ assert만 터지고 원인은 드러나지 않습니다. `growth_coef`를 올리
 |---|---|---|---|
 | 1 | 언어 학습자 비율 | — | 마지막 세대에서 `known_langs` ≥ 2 인 에이전트 / 전체 |
 | 2 | 재앙 회피율 | — | run별 생존 판정 (1/0), 시드 평균 |
-| 3 | 정책 전환 유발율 | — | 국제 메시지 수신 **직후 턴**에 발생한 정책 전환·투표 발의 / 국제 메시지 수 |
+| 3 | 정책 전환 유발율 | — | **메시지를 받은 그 사람이** 다음 턴에 `propose_vote` 한 건수 / 국제 메시지 수 |
 | **4a** | AI 경로 의도 실패율 | 1 | AI 경로 메시지 중 `intent` ≠ `understood` 비율 |
 | **4b** | 전체 의도 실패율 | 2 | 전체 메시지 중 같은 비율 |
 | 5 | 최종 진척도 | — | 마지막 턴 `interceptor_total` (연속값) |
@@ -1199,13 +1269,22 @@ python -m langtheo report --experiment {id}      # 집계 + 표
 조합은 `ja / zh / fr` + pivot `en`으로 확정(2.1). 다만 **7B급 모델이 이걸 감당하는지**는
 실측해야 합니다. **코드 없이 되는 일이므로 지금 해도 됩니다.**
 
-**① 왕복 손실**
+**① 왕복 손실 — 눈으로 보지 말고 사전으로 세세요**
 
 ```
-조건절·유보·확신도 표현이 담긴 문장 10개를 준비
+문장 10개를 화용 표지 사전(6.2)의 표지가 들어가도록 설계
   → ja→en→zh, zh→en→fr, fr→en→ja 등 전 경로로 왕복
-  → 무엇이 남고 무엇이 사라졌는지 눈으로 확인
+  → 사전 카운터로 소실률·생성률 산출
 ```
+
+이렇게 하면 셋을 한 번에 얻습니다.
+
+- 판정이 **주관에서 수치로** 바뀝니다
+- **사전 자체가 검증됩니다** — 표지 목록이 실제로 걸리는지
+- **채점 스크립트의 절반이 미리 완성됩니다**
+
+> 그래서 **화용 표지 사전 작성이 파일럿의 선행 작업이자 크리티컬 패스**입니다.
+> 사전을 만들고 파일럿으로 검증하는 것 — 이것이 담당자의 첫 작업입니다.
 
 **폴백 경로를 미리 정해두세요.**
 
@@ -1294,6 +1373,17 @@ world.success_prob / costs.learn_new / world.lifespan / world.generations
 1단계  growth_coef = 0 으로 끄고 나머지 일곱 개의 기본 밸런스를 맞춘다
 2단계  국가 투자를 켜고 growth_coef 만 조정한다
 ```
+
+**보험 두 겹을 미리 깔아두세요.**
+
+| 상황 | 대비 |
+|---|---|
+| 회피율이 0% 또는 100%에 붙음 | **지표 5(최종 진척도)를 주 지표로 승격.** 분석 스크립트가 처음부터 5를 1급으로 다루게 (8.3) |
+| 끝내 40~60%를 못 맞춤 | **캘리브레이션 실패 자체를 결과로 보고** |
+
+두 번째가 중요합니다. *"회피율을 목표 구간에 맞추지 못했다. 원인은 warm_glow 와
+성장률의 상호작용이었다"* 도 정당한 산출물입니다. 지난 회차 최우수상은 "어트랙터 문제"
+라는 **실패를 정직하게 보고해서** 높은 평가를 받았습니다. 숨기면 감점, 분석하면 가점입니다.
 
 **지켜볼 것:** 되묻기 비율이 전 조건에서 0이면 "라벨이 검증 행동을 바꾸는가"를 관측할 수
 없습니다. 신호 하나를 잃습니다 — 다만 그 자체도 결과입니다.
