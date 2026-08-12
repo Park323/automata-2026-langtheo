@@ -89,13 +89,16 @@ def passes_asserts(c: Cfg):
 
 # ── 정책 ───────────────────────────────────────────────────────────
 # 실제 LLM 에이전트가 어디에 떨어질지 모르므로, 공간의 꼭짓점들을 훑는다.
+# (행복, 국가투자, 자국시설, 타국요격기).  실제 갈림은 뒤 두 항에 있다.
 POLICIES = {
-    "selfish":    lambda ctx: (1.0, 0.0, 0.0),   # 전액 행복
-    "bunker":     lambda ctx: (0.2, 0.0, 0.8),   # 자국 벙커 우선
-    "altruist":   lambda ctx: (0.1, 0.0, 0.9),   # 전액 요격기
-    "freerider":  lambda ctx: (0.6, 0.0, 0.4) if ctx["others_investing"] else (0.2, 0.0, 0.8),
-    "mixed":      lambda ctx: (0.34, 0.33, 0.33),
-    "farsighted": lambda ctx: (0.2, 0.6, 0.2) if ctx["gen"] < ctx["G"] - 1 else (0.2, 0.0, 0.8),
+    "selfish":    lambda ctx: (1.0, 0.0, 0.0, 0.0),
+    "bunker":     lambda ctx: (0.2, 0.0, 0.8, 0.0),   # 자국에만
+    "altruist":   lambda ctx: (0.1, 0.0, 0.0, 0.9),   # 요격기에만
+    "hedger":     lambda ctx: (0.2, 0.0, 0.4, 0.4),   # 반반
+    "freerider":  lambda ctx: (0.4, 0.0, 0.6, 0.0) if ctx["others_investing"]
+                              else (0.2, 0.0, 0.0, 0.8),
+    "farsighted": lambda ctx: (0.2, 0.6, 0.1, 0.1) if ctx["gen"] < ctx["G"] - 1
+                              else (0.1, 0.0, 0.0, 0.9),
 }
 
 
@@ -131,18 +134,17 @@ def simulate(c: Cfg, policy, coord: float, rng: random.Random) -> float:
         for _turn in range(c.lifespan):
             for i in range(COUNTRIES):
                 budget = c.income * mult[i] * c.agents
-                w_h, w_n, w_f = policy({"gen": g, "G": c.generations,
-                                        "others_investing": others})
+                w_h, w_n, w_own, w_int = policy({"gen": g, "G": c.generations,
+                                                 "others_investing": others})
                 natl[i] += budget * w_n
-                spend = budget * w_f
-                if spend <= 0:
-                    continue
-                # 조율 성공 시 비유치국은 자국 벙커와 유치국 요격기에 반씩 낸다.
-                # 조율 실패 시 자국에만 낼 수 있다 (어디에 낼지 모르므로).
-                targets = [(i, spend)]
-                if coordinated and i != host:
-                    targets = [(i, spend * 0.5), (host, spend * 0.5)]
-                for tgt, amt in targets:
+                # 타국 요격기 몫은 유치국을 알아야 보낼 수 있다.
+                # 조율 실패 시 어디에 낼지 모르므로 자국으로 돌아온다 — 이것이 조율 실패의 실체
+                own, to_host = budget * w_own, budget * w_int
+                if not coordinated or i == host:
+                    own, to_host = own + to_host, 0.0
+                for tgt, amt in ((i, own), (host, to_host)):
+                    if amt <= 0:
+                        continue
                     n = int(amt * c.facility_eff)
                     prog[tgt] += sum(1 for _ in range(n) if rng.random() < c.success_prob)
 
@@ -152,8 +154,14 @@ def simulate(c: Cfg, policy, coord: float, rng: random.Random) -> float:
         itot = max(cand) if cand else 0.0
     if itot >= c.interceptor:
         return 1.0                          # 전 인류 생존
-    saved = sum(1 for i in range(COUNTRIES)
-                if land[i] == "bunker" and prog[i] >= c.bunker)
+    # 벙커는 완성이 아니라 깊이다. 아무리 파도 100% 에 닿지 않는다 (함정 선택지)
+    saved = 0
+    for i in range(COUNTRIES):
+        if land[i] != "bunker":
+            continue
+        p_live = 1 - math.exp(-prog[i] / c.bunker)   # bunker = 63% 지점의 깊이
+        if rng.random() < p_live:
+            saved += 1
     return saved / COUNTRIES
 
 

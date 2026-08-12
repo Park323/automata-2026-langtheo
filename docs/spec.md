@@ -170,13 +170,50 @@ interceptor_total : 전 국가 요격기 진척의 합
 
 ```
 if interceptor_total ≥ thresholds.interceptor:
-    전원 생존
-else:
-    land[c] == "bunker" 이고 progress[c] ≥ thresholds.bunker 인 국가의 국민만 생존
-    나머지 사망
+    전 인류 생존                       ← 성공하면 완전하다
+
+else:                                  ← 요격 실패. 벙커는 확률일 뿐이다
+    for c in 국가:
+        if land[c] == "bunker":
+            p = 1 − exp( −progress[c] / thresholds.bunker_scale )
+            그 나라 국민은 확률 p 로 생존
+        else:
+            사망
 ```
 
-**요격기 유치국은 벙커가 없으므로, 요격 실패 시 전원 사망합니다.**
+#### 벙커는 완성이 아니라 깊이입니다 — 함정 선택지
+
+운석이 떨어지는데 벙커로 **확실히** 산다는 것은 이상합니다.
+얼마나 깊이 팠느냐에 따라 확률이 달라질 뿐, *"일단 숨는다"* 이상은 아닙니다.
+
+```
+깊이 = scale   → 63%
+       2×      → 86%
+       3×      → 95%
+       ∞       → 100% 에 절대 닿지 않는다
+```
+
+포화 함수를 쓰는 이유가 마지막 줄입니다. **아무리 깊이 파도 확실하지 않다**가
+함정의 핵심입니다.
+
+**비대칭이 여기서 생깁니다.**
+
+```
+요격기  성공하면 확실       공공재는 성공하면 완전하다
+벙커    언제나 불확실       사적 대비책은 언제나 불완전하다
+```
+
+> **생존 확률 함수는 에이전트에게 공개하지 않습니다** (`success_prob` 과 같은 층위).
+> 그러면 *"벙커면 충분하다"* 는 판단 자체를 할 수 없고,
+> **조율을 포기할 근거가 사라집니다.**
+>
+> 발견해야 할 인과가 넷이 됩니다 — 진척 / 생산 배수 / 후손 시작점 / **벙커 생존 확률**.
+
+**요격기 유치국은 벙커가 없으므로, 요격 실패 시 확률조차 없이 전원 사망합니다.**
+
+> **사전 스윕에서 확인:** 벙커를 확정 판정으로 두면 `bunker` 정책이 회피율 0.93 으로
+> 지배해 조율이 무의미해집니다. 깊이 개념으로 바꾸니 `bunker` 0.03 / `altruist` 0.92 로
+> 뒤집히고, **노브 민감도가 0.21 → 0.40 으로 두 배**가 됐습니다.
 
 ---
 
@@ -1167,9 +1204,8 @@ costs:
 
 thresholds:
   interceptor: ?
-  bunker:      ?
-  bunker_min_ratio: 0.7    # bunker >= 이 비율 × 첫 세대 국가 최대자원
-                           # 너무 싸면 전원 벙커로 몰려 실험이 죽는다
+  bunker_scale: ?          # 생존 확률 63% 가 되는 깊이. 완성 임계가 아니다
+  bunker_min_ratio: 0.7    # bunker_scale >= 이 비율 × 첫 세대 도달 가능 진척
 
 income:
   per_turn:       ?        # 매 턴 자동 지급 (기준값. multiplier 가 곱해짐)
@@ -1269,11 +1305,11 @@ assert thresholds.interceptor > B
 # ★C 도달 가능 — 세 나라가 모으면 가능. 0.6 은 정책계수(전액 투입은 비현실적)
 assert thresholds.interceptor < C * 0.6
 
-assert thresholds.bunker <= to_progress(caps[0])
-assert thresholds.bunker >= thresholds.bunker_min_ratio * to_progress(caps[0])
+assert thresholds.bunker_scale <= to_progress(caps[0])
+assert thresholds.bunker_scale >= thresholds.bunker_min_ratio * to_progress(caps[0])
 
 # ★D 시간 축을 분리한 부담 비교 — 실측으로 판정 (아래 설명)
-벙커_1인부담   = thresholds.bunker / (world.agents_per_country * world.lifespan)
+벙커_1인부담   = thresholds.bunker_scale / (world.agents_per_country * world.lifespan)
 요격기_1인부담 = thresholds.interceptor / (
     3 * world.agents_per_country * world.lifespan * world.generations)
 
