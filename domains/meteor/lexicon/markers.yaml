@@ -1,0 +1,139 @@
+# 화용 표지 사전 v0
+#
+# docs/spec.md 6.2 — text_sent 와 text_delivered 에서 표지를 세어
+# 소실률·생성률을 규칙 기반으로 산출한다. LLM 판정을 쓰지 않는다.
+#
+#   소실률(자질) = Σ max(0, sent − delivered) / Σ sent
+#   생성률(자질) = Σ max(0, delivered − sent) / 메시지 수
+#
+# 집계는 반드시 코퍼스 단위. 메시지 단위로 나누면 분모가 0 이 된다.
+#
+# 자질 4개 중 12.7 0순위 감축 시에는 condition 과 subject 만 남긴다.
+
+meta:
+  version: 0
+  derived_from: docs/pilot/sentences.md
+  note: |
+    파일럿(12.2 ①)에서 검증하고 갱신할 것.
+    S4 의 ja→fr / zh→fr 에서 subject 생성이 잡히지 않으면 이 파일이 틀린 것이다.
+    그 방향은 fr 이 주어를 문법적으로 강제하므로 구조적으로 100% 에 가까워야 한다
+    — 양성 대조로 쓴다.
+
+# ─────────────────────────────────────────────────────────────
+# condition — 조건절
+#   조건부 동의가 확약으로 뒤집히는지를 본다. 연쇄에 가장 직결된다.
+# ─────────────────────────────────────────────────────────────
+condition:
+  ja:
+    regex:
+      - 'ば(?=、|$|\s)'          # 〜れば
+      - 'たら(?=、|$|\s)'
+      - 'なら(ば)?'
+      - 'であれば'
+      - '場合'
+      - '限り'
+  zh:
+    literal: [如果, 要是, 假如, 若, 倘若, 的话, 只要, 除非]
+    regex:
+      - '就(?=.{0,6}$)'          # 「如果…就…」 후항
+  fr:
+    literal: [si, sinon, "à condition que", "au cas où", "pourvu que", "à moins que"]
+
+# ─────────────────────────────────────────────────────────────
+# hedge — 유보 · 추정 · 완곡
+#   추정이 사실로 굳는지를 본다. ja 의 완곡 거절이 여기 포함된다.
+# ─────────────────────────────────────────────────────────────
+hedge:
+  ja:
+    literal:
+      - かもしれ
+      - でしょう
+      - と思われ
+      - ようです
+      - ような
+      - ほど
+      - ぐらい
+      - くらい
+      - 確かで
+      - おそらく
+      - 恐らく
+    # 완곡 거절 — 형태는 긍정이지만 기능은 거절. 별도 하위 태그로 센다
+    euphemistic_refusal:
+      - 検討
+      - 難しい
+      - 厳しい
+      - 善処
+      - 前向きに
+  zh:
+    literal: [可能, 也许, 大概, 左右, 应该, 不太确定, 恐怕, 似乎, 好像]
+    euphemistic_refusal: [研究一下, 考虑一下, 有困难, 不太方便]
+  fr:
+    literal: ["peut-être", "il se peut", "sans doute", environ, "à peu près", "sembler", "paraître"]
+    regex:
+      - '\b\w+rai[st]\b'         # 조건법 1·3인칭 단수 (serait, pourrait)
+      - '\b\w+rions\b'           # 조건법 1인칭 복수 (pourrions)
+      - '\b\w+riez\b'
+      - '\b\w+raient\b'
+    euphemistic_refusal: ["examiner", "étudier la question", "délicat"]
+
+# ─────────────────────────────────────────────────────────────
+# tense — 시제 · 상
+#   약속과 사실이 섞이는지를 본다. zh 는 시제가 문법화되어 있지 않아
+#   zh→ja / zh→fr 에서 생성이 일어난다.
+# ─────────────────────────────────────────────────────────────
+tense:
+  ja:
+    regex:
+      - 'ました'                 # 과거 긍정
+      - 'ませんでした'           # 과거 부정 ← 「決められませんでした」
+      - 'でした'
+      - 'ています'               # 진행·상태
+      - 'ます(?=。|$)'           # 비과거
+  zh:
+    literal: [了, 过, 会, 将, 正在, 已经]   # 상 표지만. 시제 표지 아님
+  fr:
+    regex:
+      - '\b(ai|as|a|avons|avez|ont)\s+\w+é\b'    # passé composé
+      - '\b(suis|es|est|sommes|êtes|sont)\s+\w+é'
+      - '\b\w+(rons|rez|ront)\b'                 # futur simple
+      - '\b\w+(rai|ras|ra)\b'
+
+# ─────────────────────────────────────────────────────────────
+# subject — 주체 명시   ★ 생성률의 주력
+#   책임 소재가 생기거나 사라지는지를 본다.
+#   fr 은 주어가 필수이므로 →fr 방향에서 구조적으로 생성된다.
+# ─────────────────────────────────────────────────────────────
+subject:
+  ja:
+    literal: [私, 私たち, 我々, われわれ, 当方, こちら, 弊国, 我が国]
+  zh:
+    # 긴 것부터 매칭할 것. 「我们」이 「我」에도 걸려 이중 계수되면 안 된다
+    literal: [我们, 我国, 咱们, 你们, 贵国, 他们, 我, 你]
+    plural_marker: [们, 些]      # 복수 표지. zh 는 대개 없어 →fr 에서 수가 생성된다
+  fr:
+    literal: [je, "j'", nous, vous, il, elle, ils, elles, "notre pays", "on"]
+
+# ─────────────────────────────────────────────────────────────
+# 집계 규칙
+# ─────────────────────────────────────────────────────────────
+scoring:
+  case_sensitive: false
+  count_mode: occurrences        # 등장 횟수. 유형 수(types)가 아니다
+  match: longest_first           # ★ 긴 표지부터 매칭하고 겹치는 구간은 소비한다
+                                 #   「我们」을 「我」로 이중 계수하면 subject 가 부풀려진다
+  word_boundary:                 # 라틴 문자만 단어 경계를 적용한다
+    fr: true
+    ja: false
+    zh: false
+  aggregate: corpus              # 메시지 단위 비율 금지 (분모 0)
+  directions:                    # 언어쌍 방향별로 따로 낸다
+    - ja->zh
+    - ja->fr
+    - zh->ja
+    - zh->fr
+    - fr->ja
+    - fr->zh
+  report:
+    - loss_rate                  # Σ max(0, sent − delivered) / Σ sent
+    - gen_rate                   # Σ max(0, delivered − sent) / n_messages
+    - n_messages                 # 표본 크기. 반드시 병기
