@@ -53,8 +53,9 @@ def hazard(age: int, lam: float, k: float) -> float:
     return 1.0 if s0 <= 0 else 1.0 - s1 / s0
 
 
-def expected_life(lam: float, k: float, tmax: int = 40) -> float:
-    return sum(math.exp(-((t / lam) ** k)) for t in range(1, tmax + 1))
+def expected_life(lam: float, k: float, tmax: int = 60) -> float:
+    """E[사망 나이] = Σ_(a≥0) S(a).  a=0 항을 빼면 1턴이 모자란다."""
+    return sum(math.exp(-((a / lam) ** k)) for a in range(0, tmax + 1))
 
 
 # ── 창 (spec 7장) ──────────────────────────────────────────────────

@@ -32,16 +32,20 @@ def survival(a, lam, k):
     return math.exp(-((a / lam) ** k))
 
 
-def expected_life(lam, k, tmax=40):
-    return sum(survival(t, lam, k) for t in range(1, tmax + 1))
+def expected_life(lam, k, tmax=60):
+    """E[사망 나이].  P(L > a) = S(a) 이므로 E[L] = Σ_(a≥0) S(a).
+
+    a=0 항(S(0)=1)을 빼먹으면 정확히 1턴이 모자란다. 실측 8.24 와 맞는지 확인했다.
+    """
+    return sum(survival(a, lam, k) for a in range(0, tmax + 1))
 
 
-def expected_remaining(age, lam, k, tmax=40):
-    """나이 age 에서 앞으로 더 살 것으로 기대되는 턴."""
+def expected_remaining(age, lam, k, tmax=60):
+    """나이 age 까지 살아 있을 때 앞으로 더 살 것으로 기대되는 턴."""
     s0 = survival(age, lam, k)
     if s0 <= 0:
         return 0.0
-    return sum(survival(t, lam, k) for t in range(age + 1, tmax + 1)) / s0
+    return sum(survival(age + j, lam, k) for j in range(0, tmax + 1)) / s0
 
 
 def main():

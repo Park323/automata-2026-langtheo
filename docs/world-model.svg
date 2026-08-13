@@ -8,7 +8,7 @@
   <rect x="0" y="0" width="920" height="620" fill="#ffffff"/>
 
   <text x="40" y="44" font-size="20" font-weight="600" fill="#1B1F24">예산은 어디로 가는가 — 수혜 범위 × 수혜 시점</text>
-  <text x="40" y="68" font-size="13" fill="#6B7280">세대 경계가 없습니다. 시점 축을 만드는 것은 세대가 아니라 수명의 유한성입니다 (기대 7.3턴 / 전체 50턴).</text>
+  <text x="40" y="68" font-size="13" fill="#6B7280">세대 경계가 없습니다. 시점 축을 만드는 것은 세대가 아니라 수명의 유한성입니다 (기대 8.3턴 / 전체 50턴).</text>
 
   <!-- axes -->
   <line x1="150" y1="530" x2="860" y2="530" stroke="#9AA1AC" stroke-width="1.5" marker-end="url(#ah)"/>
