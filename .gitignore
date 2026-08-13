@@ -7,8 +7,10 @@ __pycache__/
 venv/
 .venv/
 
-# Environment
+# Environment — 절대 커밋하지 않는다
 .env
+.env.*
+!.env.example
 
 # OS
 .DS_Store
@@ -17,5 +19,4 @@ venv/
 outputs/
 results/
 logs/
-
-.env.localruns/
+runs/
