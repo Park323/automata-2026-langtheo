@@ -1,80 +1,68 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 600" width="920" height="600" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic','Helvetica Neue',sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 620" width="920" height="620" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic','Helvetica Neue',sans-serif">
   <defs>
     <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#9AA1AC"/>
     </marker>
-    <marker id="ahw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#C2833B"/>
-    </marker>
   </defs>
 
-  <rect x="0" y="0" width="920" height="600" fill="#FCFCFD"/>
-  <rect x="0.5" y="0.5" width="919" height="599" fill="none" stroke="#E4E7EB"/>
+  <rect x="0" y="0" width="920" height="620" fill="#ffffff"/>
 
-  <text x="40" y="42" font-size="19" font-weight="700" fill="#1F2933">예산은 어디로 가는가 — 수혜 범위 × 수혜 시점</text>
-  <text x="40" y="63" font-size="13" fill="#7B8794">네 갈래가 같은 예산을 두고 경합한다. 공공재는 전부 즉시 소량의 보람을 돌려준다.</text>
+  <text x="40" y="44" font-size="20" font-weight="600" fill="#1B1F24">예산은 어디로 가는가 — 수혜 범위 × 수혜 시점</text>
+  <text x="40" y="68" font-size="13" fill="#6B7280">세대 경계가 없습니다. 시점 축을 만드는 것은 세대가 아니라 수명의 유한성입니다 (기대 7.3턴 / 전체 50턴).</text>
 
   <!-- axes -->
-  <line x1="115" y1="500" x2="115" y2="78" stroke="#C6CBD1" stroke-width="1.5" marker-end="url(#ah)"/>
-  <line x1="115" y1="500" x2="878" y2="500" stroke="#C6CBD1" stroke-width="1.5" marker-end="url(#ah)"/>
-  <text x="70" y="88" font-size="12" font-weight="600" fill="#7B8794">수혜 범위</text>
-  <text x="856" y="522" font-size="12" font-weight="600" fill="#7B8794" text-anchor="end">수혜 시점</text>
+  <line x1="150" y1="530" x2="860" y2="530" stroke="#9AA1AC" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="150" y1="530" x2="150" y2="110" stroke="#9AA1AC" stroke-width="1.5" marker-end="url(#ah)"/>
+  <text x="860" y="558" font-size="13" fill="#4B5563" text-anchor="end">수혜 시점 →   지금 · 내가 사는 동안 · 내가 죽은 뒤 · 재앙 시</text>
+  <text x="40" y="120" font-size="13" fill="#4B5563">수혜 범위 ↑</text>
+  <text x="40" y="140" font-size="12" fill="#9AA1AC">나 → 계보 → 자국 → 세계</text>
 
-  <!-- y ticks -->
-  <text x="103" y="145" font-size="13" fill="#52606D" text-anchor="end">전 인류</text>
-  <text x="103" y="285" font-size="13" fill="#52606D" text-anchor="end">우리 나라</text>
-  <text x="103" y="425" font-size="13" fill="#52606D" text-anchor="end">나</text>
-  <line x1="110" y1="140" x2="120" y2="140" stroke="#C6CBD1"/>
-  <line x1="110" y1="280" x2="120" y2="280" stroke="#C6CBD1"/>
-  <line x1="110" y1="420" x2="120" y2="420" stroke="#C6CBD1"/>
+  <!-- lane labels -->
+  <text x="140" y="480" font-size="12" fill="#6B7280" text-anchor="end">나만</text>
+  <text x="140" y="392" font-size="12" fill="#6B7280" text-anchor="end">내 계보</text>
+  <text x="140" y="300" font-size="12" fill="#6B7280" text-anchor="end">자국 전원</text>
+  <text x="140" y="200" font-size="12" fill="#6B7280" text-anchor="end">전 인류</text>
 
-  <!-- x ticks -->
-  <text x="215" y="526" font-size="13" fill="#52606D" text-anchor="middle">지금</text>
-  <text x="475" y="526" font-size="13" fill="#52606D" text-anchor="middle">다음 세대</text>
-  <text x="735" y="526" font-size="13" fill="#52606D" text-anchor="middle">재앙 시</text>
-  <line x1="215" y1="495" x2="215" y2="505" stroke="#C6CBD1"/>
-  <line x1="475" y1="495" x2="475" y2="505" stroke="#C6CBD1"/>
-  <line x1="735" y1="495" x2="735" y2="505" stroke="#C6CBD1"/>
+  <line x1="150" y1="440" x2="860" y2="440" stroke="#EEF0F3" stroke-width="1"/>
+  <line x1="150" y1="350" x2="860" y2="350" stroke="#EEF0F3" stroke-width="1"/>
+  <line x1="150" y1="252" x2="860" y2="252" stroke="#EEF0F3" stroke-width="1"/>
 
-  <!-- 개인 소비 -->
-  <rect x="130" y="389" width="170" height="62" rx="9" fill="#F0F2F5" stroke="#8A94A2" stroke-width="1.6"/>
-  <text x="215" y="414" font-size="15" font-weight="700" fill="#323F4B" text-anchor="middle">개인 소비</text>
-  <text x="215" y="434" font-size="11.5" fill="#7B8794" text-anchor="middle">확정 · 즉시 · 나만</text>
+  <!-- wellness -->
+  <rect x="185" y="452" width="190" height="56" rx="8" fill="#FDF2F2" stroke="#E5A3A3"/>
+  <text x="200" y="476" font-size="14" font-weight="600" fill="#8C2F2F">invest: wellness</text>
+  <text x="200" y="496" font-size="11.5" fill="#8C5050">수명 척도 λ 증가 · 확률적 · 비공개</text>
 
-  <!-- 국가 투자 -->
-  <rect x="390" y="249" width="170" height="62" rx="9" fill="#E6F4F1" stroke="#0F766E" stroke-width="1.6"/>
-  <text x="475" y="274" font-size="15" font-weight="700" fill="#0B5E57" text-anchor="middle">국가 투자</text>
-  <text x="475" y="294" font-size="11.5" fill="#3F7F78" text-anchor="middle">확정 · 다음 세대부터</text>
-  <text x="475" y="333" font-size="11.5" fill="#0F766E" text-anchor="middle">생산 배수 ↑ · 후손 초기 행복 ↑</text>
+  <!-- procreate -->
+  <rect x="400" y="364" width="200" height="56" rx="8" fill="#FBF4EC" stroke="#DDB784"/>
+  <text x="415" y="388" font-size="14" font-weight="600" fill="#8A5B18">procreate</text>
+  <text x="415" y="408" font-size="11.5" fill="#8A6A3C">즉시 사망 · 예산과 유언을 넘김</text>
 
-  <!-- 벙커 -->
-  <rect x="650" y="249" width="170" height="62" rx="9" fill="#FBF0E1" stroke="#B45309" stroke-width="1.6"/>
-  <text x="735" y="274" font-size="15" font-weight="700" fill="#8A400A" text-anchor="middle">벙커</text>
-  <text x="735" y="294" font-size="11.5" fill="#9B6B33" text-anchor="middle">자국민만 생존</text>
+  <!-- national -->
+  <rect x="185" y="272" width="200" height="56" rx="8" fill="#F0F5FB" stroke="#9DB9DA"/>
+  <text x="200" y="296" font-size="14" font-weight="600" fill="#1F4F86">invest: national</text>
+  <text x="200" y="316" font-size="11.5" fill="#42607F">생산 배수 ↑ · 즉시 발현 · 확정</text>
 
-  <!-- 요격기 -->
-  <rect x="650" y="109" width="170" height="62" rx="9" fill="#E8EEFC" stroke="#1D4ED8" stroke-width="1.6"/>
-  <text x="735" y="134" font-size="15" font-weight="700" fill="#173FA6" text-anchor="middle">요격기</text>
-  <text x="735" y="154" font-size="11.5" fill="#4A6BC4" text-anchor="middle">전 인류 생존 · 확률적</text>
-  <text x="635" y="128" font-size="11.5" fill="#4A6BC4" text-anchor="end">3국 전체가 내야</text>
-  <text x="635" y="146" font-size="11.5" fill="#4A6BC4" text-anchor="end">임계에 도달한다</text>
+  <!-- bunker -->
+  <rect x="640" y="272" width="200" height="56" rx="8" fill="#F0F5FB" stroke="#9DB9DA"/>
+  <text x="655" y="296" font-size="14" font-weight="600" fill="#1F4F86">facility — 벙커</text>
+  <text x="655" y="316" font-size="11.5" fill="#42607F">자국민만 · 깊이 확률 · 자국에만</text>
 
-  <!-- 국토 배타 badge -->
-  <line x1="735" y1="171" x2="735" y2="192" stroke="#A0A8B3" stroke-width="1.3" stroke-dasharray="3 3"/>
-  <line x1="735" y1="228" x2="735" y2="249" stroke="#A0A8B3" stroke-width="1.3" stroke-dasharray="3 3"/>
-  <rect x="642" y="192" width="186" height="36" rx="7" fill="#FFFFFF" stroke="#A0A8B3" stroke-width="1.2"/>
-  <text x="735" y="209" font-size="11.5" font-weight="600" fill="#52606D" text-anchor="middle">국토 배타 — 둘 중 하나만</text>
-  <text x="735" y="223" font-size="10.5" fill="#8A94A2" text-anchor="middle">전환 시 매몰비용 전액 소실</text>
+  <!-- interceptor -->
+  <rect x="640" y="172" width="200" height="56" rx="8" fill="#EEF7F0" stroke="#96C4A4"/>
+  <text x="655" y="196" font-size="14" font-weight="600" fill="#1C6134">facility — 요격기</text>
+  <text x="655" y="216" font-size="11.5" fill="#3F7554">전 인류 · 타국에도 낼 수 있음</text>
 
-  <!-- warm glow -->
-  <path d="M475,311 V468" fill="none" stroke="#C2833B" stroke-width="1.4" stroke-dasharray="4 4"/>
-  <path d="M735,311 V468" fill="none" stroke="#C2833B" stroke-width="1.4" stroke-dasharray="4 4"/>
-  <path d="M650,140 H600 V468" fill="none" stroke="#C2833B" stroke-width="1.4" stroke-dasharray="4 4"/>
-  <path d="M735,468 H215 V458" fill="none" stroke="#C2833B" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#ahw)"/>
-  <rect x="322" y="475" width="196" height="20" rx="5" fill="#FCFCFD"/>
-  <text x="420" y="490" font-size="11.5" font-weight="600" fill="#B0752F" text-anchor="middle">즉시 보람 (warm glow)</text>
+  <!-- coordination callout -->
+  <path d="M600 200 L636 200" stroke="#96C4A4" stroke-width="1.5" marker-end="url(#ah)"/>
+  <rect x="390" y="172" width="205" height="56" rx="8" fill="#ffffff" stroke="#C7D3C9" stroke-dasharray="4 3"/>
+  <text x="404" y="196" font-size="12.5" font-weight="600" fill="#3F7554">어느 나라에 낼지 합의</text>
+  <text x="404" y="215" font-size="11.5" fill="#6B7280">어긋나면 진척이 쪼개진다 = 조율 실패</text>
 
-  <!-- legend -->
-  <text x="40" y="566" font-size="11.5" fill="#7B8794">공공재 투자는 궁극 수혜가 미래·타인에게 가지만, 투자 즉시 소량의 행복을 돌려준다.</text>
-  <text x="40" y="583" font-size="11.5" fill="#7B8794">이것이 없으면 아무도 투자하지 않는 것이 지배 전략이 되어, 조율 실패를 관측할 기회 자체가 사라진다.</text>
+  <!-- trap note -->
+  <text x="640" y="348" font-size="11.5" fill="#8C2F2F">함정: 아무리 파도 100%에 닿지 않음</text>
+
+  <!-- bottom note -->
+  <line x1="150" y1="566" x2="860" y2="566" stroke="#EEF0F3"/>
+  <text x="150" y="590" font-size="12" fill="#6B7280">사적 재화는 행복이 아니라 <tspan font-weight="600" fill="#8C2F2F">수명</tspan>입니다. 수명은 예산과 AP 의 총량을 정하는 상위 자원이고, 그래서 공공 투자와 정면으로 경쟁합니다.</text>
+  <text x="150" y="610" font-size="12" fill="#6B7280">warm glow(즉시 보람)는 폐지했습니다 — 공공 투자에 보상을 얹으면 목적함수를 주는 것이 됩니다. 공공 투자의 보상은 실제 효과뿐입니다.</text>
 </svg>

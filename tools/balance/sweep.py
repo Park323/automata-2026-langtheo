@@ -1,275 +1,336 @@
 #!/usr/bin/env python3
-"""밸런스 사전 조정 — LLM 없이 파라미터 공간을 훑는다.
+"""밸런스 사전 조정 (Phase 0) — LLM 없이 파라미터 공간을 훑는다.
 
-세계를 만든 뒤 8개 파라미터를 맞추는 건 늦고 비싸다. 대부분은 산수와
-몬테카를로로 미리 좁힐 수 있다. LLM 에이전트 대신 규칙 기반 정책 몇 개를
-쓰고, 실제 에이전트는 그 공간 어딘가에 떨어진다고 가정한다.
+세계를 만든 뒤 파라미터를 맞추는 건 늦고 비싸다. 대부분은 산수와 몬테카를로로 미리
+좁힐 수 있다. LLM 에이전트 대신 규칙 기반 정책을 쓰고, 실제 에이전트는 그 공간
+어딘가에 떨어진다고 가정한다.
 
-  ★ 1차 기준 : 조율 성공률을 낮췄을 때 회피율이 충분히 갈리는가 (민감도)
-                노브가 결과를 못 바꾸면 회피율이 50%여도 실험은 죽는다
-    2차 기준 : 중간값이 바닥(0)·천장(1)에 붙지 않는가
+  ★ 1차 기준 : 필요 기여율 w* 가 목표(0.5)에 오는가
+                재앙 회피율은 목표로 삼을 수 없다. 시행 횟수가 많아 진척이 사실상
+                결정적이 되고 '회피율 ≈ 조율 성공률' 이 되어 파라미터로 안 움직인다
+    2차 기준 : 조율률을 낮췄을 때 회피율이 갈리는가 (민감도)
     3차 기준 : 정책 간 편차가 작은가 (강건성)
+
+세대 경계가 없다 (spec 2.2). 50턴을 통으로 돌면서 각자 다른 시점에 죽는다.
 
 이것은 세계의 '경제 구조'를 맞추는 도구이지 가설을 검증하는 도구가 아니다.
 번역 왜곡의 효과는 coord 파라미터로 추상화되어 있을 뿐 모형화되지 않았다.
 
   python3 tools/balance/sweep.py
-  python3 tools/balance/sweep.py --top 20 --seeds 60
+  python3 tools/balance/sweep.py --top 20 --seeds 30
 """
 import argparse, itertools, json, math, random
 from dataclasses import dataclass, asdict
 
 COUNTRIES = 3
+POLICY_COEF = 0.6      # 전액 투입은 비현실적. 현실적 최대 투자율
+W_TARGET = 0.5         # Phase 1 캘리브레이션 목표 (spec 12.4)
 
 
 @dataclass
 class Cfg:
     income: float
-    learn_new: float
-    lifespan: int
-    generations: int
+    total_turns: int
+    epoch_turns: int
     success_prob: float
     growth_coef: float
     growth_scale: float
+    initial_budget: float
+    surv_k: float
+    surv_lambda: float
+    wellness_gain: float
     interceptor: float
     bunker: float
     facility_eff: float
-    warm_glow: float
     agents: int = 3
 
 
-# ── 산수로 먼저 거른다 (assert. spec 7장) ──────────────────────────
-def caps(c: Cfg):
-    """세대별 (multiplier, 국가 총소득). 반복문 — 상호 재귀는 2^G 로 폭발한다."""
-    out, mults, total = [], [], 0.0
-    for g in range(c.generations):
-        m = 1.0 if g == 0 else 1 + c.growth_coef * math.sqrt(total / c.growth_scale)
-        cap = c.income * m * c.agents * c.lifespan
-        mults.append(m); out.append(cap); total += cap
-    return out, mults
+# ── 수명 ───────────────────────────────────────────────────────────
+def hazard(age: int, lam: float, k: float) -> float:
+    """나이 age 를 마칠 때 죽을 확률. S(a) = exp(-(a/lam)^k)."""
+    s0 = math.exp(-((age / lam) ** k))
+    s1 = math.exp(-(((age + 1) / lam) ** k))
+    return 1.0 if s0 <= 0 else 1.0 - s1 / s0
 
 
-def to_progress(income_amount: float, c: Cfg) -> float:
-    """소득을 기대 진척도로 환산. 임계값은 진척 단위이므로 반드시 거쳐야 한다."""
-    return income_amount * c.facility_eff * c.success_prob
+def expected_life(lam: float, k: float, tmax: int = 40) -> float:
+    return sum(math.exp(-((t / lam) ** k)) for t in range(1, tmax + 1))
 
 
+# ── 창 (spec 7장) ──────────────────────────────────────────────────
 def bounds(c: Cfg):
-    """요격기 임계가 놓여야 할 창(window). 전부 **진척 단위**로 환산한다.
+    """요격기 임계가 놓여야 할 창. 전부 **진척 단위**.
 
-    A 미루기 방지 : 마지막 세대 3국이 전력을 다해도 불가
-    B 조율 강제   : 한 나라가 전 세대를 다 써도 불가   ← 스펙에 없던 부등식
-    C 도달 가능   : 세 나라가 모으면 가능              ← 스펙에 없던 부등식
+    A 미루기 방지 : 마지막 한 주기에 3국이 전력을 다해도 불가
+    B 조율 강제   : 한 나라가 전 기간을 다 써도 불가
+    C 도달 가능   : 세 나라가 모으면 가능
+    E 지속 참여   : 한 주기가 통째로 쉬면 불가 — 양변에 같은 정책계수를 쓴다
+
+    성장은 유도에서 뺀다. 성장은 국가 투자의 결과이고 그 돈은 요격기와 경쟁하므로,
+    성장을 전제로 임계를 잡으면 "국가 투자를 안 하면 구조적으로 도달 불가" 가 된다.
     """
-    cp, _ = caps(c)
     k = c.facility_eff * c.success_prob
-    A = 3 * cp[-1] * k
-    B = sum(cp) * k                      # 1국 × 전 세대
-    C = 3 * sum(cp) * k
-    return A, B, C
+    per_turn_country = c.income * c.agents
+    whole = per_turn_country * c.total_turns
+    epoch = per_turn_country * c.epoch_turns
+    A = 3 * epoch * k
+    B = whole * k
+    C = 3 * whole * k
+    E = 3 * (whole - epoch) * k * POLICY_COEF
+    return A, B, C, E
 
 
 def passes_asserts(c: Cfg):
-    cp, mu = caps(c)
-    A, B, C = bounds(c)
+    A, B, C, E = bounds(c)
+    k = c.facility_eff * c.success_prob
+    epoch_progress = c.income * c.agents * c.epoch_turns * k
+    whole_progress = c.income * c.agents * c.total_turns * k
     if not c.interceptor > A:
         return False, "A 미루기 방지 위반"
     if not c.interceptor > B:
         return False, "B 조율 강제 위반 (한 나라가 혼자 해낼 수 있다)"
-    if not c.interceptor < C * 0.6:      # 정책계수 — 전액 투입은 비현실적
+    if not c.interceptor < C * POLICY_COEF:
         return False, "C 도달 불가"
-    if not c.bunker <= cp[0] * c.facility_eff * c.success_prob:
-        return False, "bunker 가 첫 세대 총소득으로 도달 불가"
-    b1 = c.bunker / (c.agents * c.lifespan)
-    i1 = c.interceptor / (3 * c.agents * c.lifespan * c.generations)
+    if not c.interceptor > E:
+        return False, "E 지속 참여 위반 (한 주기가 쉬어도 지어진다)"
+    if not c.bunker >= epoch_progress:
+        return False, "벙커가 한 주기로 너무 깊어진다"
+    if not c.bunker <= whole_progress:
+        return False, "벙커가 전 기간을 부어도 의미 있는 깊이에 못 간다"
+    b1 = c.bunker / (c.agents * c.epoch_turns)
+    i1 = c.interceptor / (3 * c.agents * c.total_turns)
     if not b1 > i1:
         return False, "벙커 1인부담 <= 요격기 1인부담"
     return True, ""
 
 
 # ── 정책 ───────────────────────────────────────────────────────────
-# 실제 LLM 에이전트가 어디에 떨어질지 모르므로, 공간의 꼭짓점들을 훑는다.
-# (행복, 국가투자, 자국시설, 타국요격기).  실제 갈림은 뒤 두 항에 있다.
+# 배분 = (wellness, national, 자국시설, 타국요격기).  합이 1 이 아니어도 된다 —
+# 남는 몫은 쓰지 않고 이월된다. 실제 갈림은 뒤 두 항에 있다.
 POLICIES = {
-    "selfish":    lambda ctx: (1.0, 0.0, 0.0, 0.0),
-    "bunker":     lambda ctx: (0.2, 0.0, 0.8, 0.0),   # 자국에만
-    "altruist":   lambda ctx: (0.1, 0.0, 0.0, 0.9),   # 요격기에만
-    "hedger":     lambda ctx: (0.2, 0.0, 0.4, 0.4),   # 반반
-    "freerider":  lambda ctx: (0.4, 0.0, 0.6, 0.0) if ctx["others_investing"]
-                              else (0.2, 0.0, 0.0, 0.8),
-    "farsighted": lambda ctx: (0.2, 0.6, 0.1, 0.1) if ctx["gen"] < ctx["G"] - 1
-                              else (0.1, 0.0, 0.0, 0.9),
+    "longevist":  lambda ctx: (0.9, 0.0, 0.0, 0.0),   # 내 수명에만 — happiness 를 대신한다
+    "bunker":     lambda ctx: (0.1, 0.0, 0.8, 0.0),
+    "altruist":   lambda ctx: (0.1, 0.0, 0.0, 0.8),
+    "hedger":     lambda ctx: (0.1, 0.0, 0.4, 0.4),
+    "freerider":  lambda ctx: (0.3, 0.0, 0.6, 0.0) if ctx["others_investing"]
+                              else (0.1, 0.0, 0.0, 0.8),
+    "farsighted": lambda ctx: (0.1, 0.5, 0.2, 0.2) if ctx["t"] < ctx["T"] * 0.6
+                              else (0.1, 0.0, 0.0, 0.8),
 }
 
 
-def simulate(c: Cfg, policy, coord: float, rng: random.Random) -> float:
-    """한 판. 반환 = 생존 인구 비율 (1.0 이면 전 인류 생존).
+def contrib_policy(w: float):
+    """소득의 90% 를 시설에 쓰되 그중 w 를 타국 요격기에. w* 를 재는 자."""
+    return lambda ctx: (0.0, 0.0, 0.9 * (1 - w), 0.9 * w)
 
-    coord = 3국이 요격기 부지를 하나로 모을 확률(조율 성공률).
-    조율에 성공하면 비유치국도 유치국 요격기에 낼 수 있다 (타국 투자).
-    실패하면 각자 자국에 착수해 진척이 쪼개진다.
-    번역 왜곡의 효과는 이 한 숫자로 추상화되어 있을 뿐 모형화되지 않았다.
+
+def simulate(c: Cfg, policy, coord: float, rng: random.Random):
+    """한 판. 반환 = (생존 인구 비율, 사망 횟수).
+
+    coord = 3국이 요격기 부지를 하나로 모을 확률. 조율에 성공하면 비유치국도
+    유치국 요격기에 낼 수 있다. 실패하면 각자 자국에 착수해 진척이 쪼개진다.
     """
     coordinated = rng.random() < coord
     host = rng.randrange(COUNTRIES)
 
     land = [None] * COUNTRIES
-    prog = [0.0] * COUNTRIES
-    natl = [0.0] * COUNTRIES
-    mult = [1.0] * COUNTRIES
-
     if coordinated:
         land[host] = "interceptor"
         for i in range(COUNTRIES):
             if i != host:
-                land[i] = "bunker"          # 유치를 안 맡은 나라는 자국에 벙커
+                land[i] = "bunker"
     else:
-        for i in range(COUNTRIES):          # 조율 실패 — 각자 알아서
+        for i in range(COUNTRIES):
             land[i] = "interceptor" if rng.random() < 0.5 else "bunker"
 
-    for g in range(c.generations):
-        for i in range(COUNTRIES):
-            mult[i] = 1 + c.growth_coef * math.sqrt(natl[i] / c.growth_scale) if g else 1.0
+    prog = [0.0] * COUNTRIES
+    natl = [0.0] * COUNTRIES
+    # 에이전트: (나이, lambda, 예산)
+    people = [[[0, c.surv_lambda, c.initial_budget] for _ in range(c.agents)]
+              for _ in range(COUNTRIES)]
+    deaths = 0
+
+    for t in range(c.total_turns):
         others = any(prog[j] > 0 for j in range(COUNTRIES) if land[j] == "interceptor")
-        for _turn in range(c.lifespan):
-            for i in range(COUNTRIES):
-                budget = c.income * mult[i] * c.agents
-                w_h, w_n, w_own, w_int = policy({"gen": g, "G": c.generations,
-                                                 "others_investing": others})
-                natl[i] += budget * w_n
-                # 타국 요격기 몫은 유치국을 알아야 보낼 수 있다.
-                # 조율 실패 시 어디에 낼지 모르므로 자국으로 돌아온다 — 이것이 조율 실패의 실체
-                own, to_host = budget * w_own, budget * w_int
+        for i in range(COUNTRIES):
+            mult = 1 + c.growth_coef * math.sqrt(natl[i] / c.growth_scale)
+            for a in people[i]:
+                a[2] += c.income * mult
+                w_well, w_nat, w_own, w_int = policy(
+                    {"t": t, "T": c.total_turns, "age": a[0],
+                     "others_investing": others})
+                spend = a[2]
+                well, nat = spend * w_well, spend * w_nat
+                own, to_host = spend * w_own, spend * w_int
                 if not coordinated or i == host:
                     own, to_host = own + to_host, 0.0
+                a[2] -= well + nat + own + to_host
+                a[1] += well * c.wellness_gain      # 수명 척도 증가
+                natl[i] += nat
+                eff = c.facility_eff * mult
                 for tgt, amt in ((i, own), (host, to_host)):
                     if amt <= 0:
                         continue
-                    n = int(amt * c.facility_eff)
-                    prog[tgt] += sum(1 for _ in range(n) if rng.random() < c.success_prob)
+                    n = int(amt * eff)
+                    prog[tgt] += sum(1 for _ in range(n)
+                                     if rng.random() < c.success_prob)
+        # 턴 끝 — 개인별 생존 판정. 죽으면 그 자리에 0 상태 신규
+        for i in range(COUNTRIES):
+            for j, a in enumerate(people[i]):
+                a[0] += 1
+                if rng.random() < hazard(a[0] - 1, a[1], c.surv_k):
+                    people[i][j] = [0, c.surv_lambda, c.initial_budget]
+                    deaths += 1
 
     itot = sum(prog[i] for i in range(COUNTRIES) if land[i] == "interceptor")
-    if not coordinated:                     # 쪼개져 합산되지 않는다
+    if not coordinated:
         cand = [prog[i] for i in range(COUNTRIES) if land[i] == "interceptor"]
         itot = max(cand) if cand else 0.0
     if itot >= c.interceptor:
-        return 1.0                          # 전 인류 생존
-    # 벙커는 완성이 아니라 깊이다. 아무리 파도 100% 에 닿지 않는다 (함정 선택지)
+        return 1.0, deaths
     saved = 0
     for i in range(COUNTRIES):
         if land[i] != "bunker":
             continue
-        p_live = 1 - math.exp(-prog[i] / c.bunker)   # bunker = 63% 지점의 깊이
-        if rng.random() < p_live:
+        if rng.random() < 1 - math.exp(-prog[i] / c.bunker):
             saved += 1
-    return saved / COUNTRIES
+    return saved / COUNTRIES, deaths
+
+
+def required_w(c: Cfg, seeds: int = 8, step: float = 0.05) -> float:
+    """조율이 완벽할 때 살아남는 데 필요한 최소 기여율. 1.0 초과 = 도달 불가."""
+    w = 0.0
+    while w <= 1.0 + 1e-9:
+        rng = random.Random(f"w{w:.2f}")
+        runs = [simulate(c, contrib_policy(w), 1.0, rng)[0] for _ in range(seeds)]
+        if sum(1 for x in runs if x >= 1.0) / seeds >= 0.5:
+            return w
+        w += step
+    return 1.5
 
 
 def evaluate(c: Cfg, seeds: int, coords=(0.2, 0.9)):
-    """정책 × 조율률로 회피율을 재고 민감도·강건성을 낸다."""
-    res = {}
+    res, dth = {}, []
     for cd in coords:
         per_pol = []
         for name, pol in POLICIES.items():
-            rng = random.Random(hash((name, cd)) & 0xFFFF)
+            rng = random.Random(f"{name}|{cd}")
             runs = [simulate(c, pol, cd, rng) for _ in range(seeds)]
-            per_pol.append(sum(1 for x in runs if x >= 1.0) / seeds)   # 전 인류 생존률
+            per_pol.append(sum(1 for x, _ in runs if x >= 1.0) / seeds)
+            dth += [d for _, d in runs]
         res[cd] = per_pol
     lo, hi = res[min(coords)], res[max(coords)]
     mean_lo, mean_hi = sum(lo) / len(lo), sum(hi) / len(hi)
-    mid = (mean_lo + mean_hi) / 2
-    spread = sum((x - sum(hi) / len(hi)) ** 2 for x in hi) / len(hi)
+    spread = sum((x - mean_hi) ** 2 for x in hi) / len(hi)
     return {
-        "sensitivity": mean_hi - mean_lo,       # ★ 1차 기준
-        "mid": mid,                              # 2차
-        "policy_var": spread ** 0.5,             # 3차
+        "sensitivity": mean_hi - mean_lo,
+        "mid": (mean_lo + mean_hi) / 2,
+        "policy_var": spread ** 0.5,
         "lo": mean_lo, "hi": mean_hi,
+        "deaths": sum(dth) / len(dth),
         "by_policy_hi": dict(zip(POLICIES, hi)),
     }
 
 
 # ── 스윕 ───────────────────────────────────────────────────────────
 GRID = {
-    "income":        [8, 12],
-    "learn_new":     [30, 50],
-    "lifespan":      [10, 15, 20],
-    "generations":   [3, 4, 5],
-    "success_prob":  [0.3, 0.5, 0.7],
-    "growth_coef":   [0.0, 0.3],
-    "growth_scale":  [2000],
-    "facility_eff":  [1.0],
-    "warm_glow":     [0.05],
+    "income":         [100],          # 확정 (7장 기준 단위)
+    "total_turns":    [50],           # 확정 (12.4)
+    "epoch_turns":    [10],           # 확정. 기대수명 반올림
+    "success_prob":   [0.3, 0.5, 0.7],
+    "growth_coef":    [0.3],
+    "surv_k":         [8],
+    "surv_lambda":    [8.26],
+    "wellness_gain":  [0.008],
+    "facility_eff":   [1.0],
 }
-# 임계값은 유도하되 여유 계수를 스윕한다.
-# bunker_ratio 가 낮으면 각자 벙커로 다 살아남아 조율이 무의미해진다 —
-# 스윕이 실제로 그것을 잡아냈다.
-BUNKER_RATIO = [0.85, 0.95, 1.00]
-INTERCEPT_POS = [0.15, 0.35, 0.55]   # 창 안에서의 위치
+# initial_budget 은 사망마다 새로 지급되므로 **사망이 돈을 찍어낸다.**
+# 0 과 50 을 함께 훑어 그 크기를 본다.
+INITIAL_BUDGET = [0, 50]
+GROWTH_SCALE_GENS = [0.5]        # 한 주기 국가 총소득의 배수
+BUNKER_DEPTH_EPOCHS = [1.0, 2.0, 3.0]
+INTERCEPT_POS = [0.15, 0.35, 0.55, 0.85, 0.95]
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--seeds", type=int, default=40)
+    ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--top", type=int, default=12)
     a = ap.parse_args()
 
     keys = list(GRID)
     combos = list(itertools.product(*(GRID[k] for k in keys)))
-    print(f"격자 {len(combos)}개 조합\n")
-
     ok, rejected = [], {}
     for vals in combos:
         d = dict(zip(keys, vals))
-        probe = Cfg(interceptor=1, bunker=1, **d)
-        cp, _ = caps(probe)
-        k = probe.facility_eff * probe.success_prob
-        A, B, C = bounds(Cfg(**dict(d, bunker=1, interceptor=1)))
-        for br, pos in itertools.product(BUNKER_RATIO, INTERCEPT_POS):
-            lo = max(A, B)
-            c = Cfg(**dict(d, bunker=cp[0] * k * br,
-                           interceptor=lo + (C * 0.6 - lo) * pos))
+        epoch_income = d["income"] * 3 * d["epoch_turns"]
+        for ib, gsg, bd, pos in itertools.product(
+                INITIAL_BUDGET, GROWTH_SCALE_GENS, BUNKER_DEPTH_EPOCHS, INTERCEPT_POS):
+            dd = dict(d, initial_budget=ib, growth_scale=epoch_income * gsg)
+            probe = Cfg(interceptor=1, bunker=1, **dd)
+            k = probe.facility_eff * probe.success_prob
+            A, B, C, E = bounds(probe)
+            lo = max(A, B, E)
+            c = Cfg(**dict(dd, bunker=epoch_income * k * bd,
+                           interceptor=lo + (C * POLICY_COEF - lo) * pos))
             good, why = passes_asserts(c)
             if not good:
-                k = why.split("(")[0]
-                rejected[k] = rejected.get(k, 0) + 1
+                rejected[why.split("(")[0].strip()] = \
+                    rejected.get(why.split("(")[0].strip(), 0) + 1
                 continue
             ok.append(c)
 
-    print(f"assert 통과 {len(ok)}개 / 탈락 {len(combos)-len(ok)}개")
-    for k, v in sorted(rejected.items(), key=lambda x: -x[1]):
-        print(f"   {v:>4}  {k}")
+    tried = (len(combos) * len(INITIAL_BUDGET) * len(GROWTH_SCALE_GENS)
+             * len(BUNKER_DEPTH_EPOCHS) * len(INTERCEPT_POS))
+    el = expected_life(GRID["surv_lambda"][0], GRID["surv_k"][0])
+    print(f"세대 경계 없음 · {GRID['total_turns'][0]}턴 · 기대수명 {el:.1f}턴")
+    print(f"후보 {tried}개 / assert 통과 {len(ok)}개")
+    for kk, v in sorted(rejected.items(), key=lambda x: -x[1]):
+        print(f"   {v:>4}  {kk}")
     if not ok:
         return
 
     scored = []
     for c in ok:
         m = evaluate(c, a.seeds)
+        m["w_star"] = required_w(c)
         scored.append((c, m))
-    # 민감도 우선, 바닥·천장 회피, 정책 편차 작은 순
-    scored.sort(key=lambda x: (-x[1]["sensitivity"],
-                               abs(x[1]["mid"] - 0.5),
-                               x[1]["policy_var"]))
+    scored.sort(key=lambda x: (abs(x[1]["w_star"] - W_TARGET),
+                               -x[1]["sensitivity"], x[1]["policy_var"]))
 
-    print(f"\n{'='*100}")
-    print("민감도 상위 — 조율률 0.2 → 0.9 일 때 회피율이 얼마나 갈리는가")
-    print(f"{'='*100}")
-    hdr = f"{'inc':>4}{'life':>5}{'gen':>4}{'p':>5}{'grow':>5}{'벙커비':>7}  "
-    print(hdr + f"{'민감도':>7}{'저조율':>7}{'고조율':>7}{'정책편차':>8}")
+    print(f"\n{'='*104}")
+    print(f"필요 기여율 w* 가 목표 {W_TARGET} 에 가까운 순")
+    print(f"{'='*104}")
+    print(f"{'p':>5}{'초기예산':>9}{'벙커깊이':>9}{'임계위치':>9}{'사망수':>8}  "
+          f"{'w*':>6}{'민감도':>8}{'저조율':>7}{'고조율':>7}{'정책편차':>9}")
     for c, m in scored[:a.top]:
-        cp, _ = caps(c)
-        print(f"{c.income:>4.0f}{c.lifespan:>5}{c.generations:>4}"
-              f"{c.success_prob:>5.1f}{c.growth_coef:>5.1f}{c.bunker/(cp[0]*c.facility_eff*c.success_prob):>7.2f}  "
-              f"{m['sensitivity']:>7.2f}{m['lo']:>7.2f}{m['hi']:>7.2f}{m['policy_var']:>8.2f}")
+        kk = c.facility_eff * c.success_prob
+        A, B, C, E = bounds(c)
+        lo = max(A, B, E)
+        pos = (c.interceptor - lo) / (C * POLICY_COEF - lo)
+        epoch_prog = c.income * c.agents * c.epoch_turns * kk
+        ws = "불가" if m["w_star"] > 1.0 else f"{m['w_star']:.2f}"
+        print(f"{c.success_prob:>5.1f}{c.initial_budget:>9.0f}"
+              f"{c.bunker/epoch_prog:>9.1f}{pos:>9.2f}{m['deaths']:>8.1f}  "
+              f"{ws:>6}{m['sensitivity']:>8.2f}{m['lo']:>7.2f}{m['hi']:>7.2f}"
+              f"{m['policy_var']:>9.2f}")
 
     best, bm = scored[0]
-    print(f"\n{'='*100}\n추천 조합 — 정책별 회피율 (조율률 0.9)\n{'='*100}")
-    for k, v in bm["by_policy_hi"].items():
-        print(f"  {k:<12} {v:>5.2f}")
-    cp, mu = caps(best)
-    print(f"\n  세대별 국가 총소득 : {[round(x) for x in cp]}")
-    print(f"  세대별 multiplier  : {[round(x,2) for x in mu]}")
-    print(f"  요격기 임계 {best.interceptor:.0f} / 벙커 임계 {best.bunker:.0f}")
-    print(f"  학습 저축 필요턴   : {best.learn_new/best.income:.1f} / 수명 {best.lifespan}")
+    print(f"\n{'='*104}\n추천 조합 — 정책별 회피율 (조율률 0.9)\n{'='*104}")
+    for kk, v in bm["by_policy_hi"].items():
+        print(f"  {kk:<12} {v:>5.2f}")
+    A, B, C, E = bounds(best)
+    kk = best.facility_eff * best.success_prob
+    epoch_prog = best.income * best.agents * best.epoch_turns * kk
+    print(f"\n  창 : A {A:.0f}  B {B:.0f}  E {E:.0f}  <  임계 {best.interceptor:.0f}"
+          f"  <  C×{POLICY_COEF} {C*POLICY_COEF:.0f}")
+    print(f"  현실 투자율에서 필요한 주기 수 : "
+          f"{best.interceptor/(3*epoch_prog*POLICY_COEF):.1f} / "
+          f"{best.total_turns//best.epoch_turns}")
+    print(f"  벙커 : 한 주기 전력 → 생존 {1-math.exp(-epoch_prog/best.bunker):.0%}, "
+          f"전 기간 → {1-math.exp(-epoch_prog*best.total_turns/best.epoch_turns/best.bunker):.0%}")
+    print(f"  런당 평균 사망 {bm['deaths']:.1f}회 "
+          f"(= 초기예산 {best.initial_budget:.0f} × {bm['deaths']:.0f} 만큼 돈이 새로 생김)")
     print("\n" + json.dumps(asdict(best), indent=2))
 
 
