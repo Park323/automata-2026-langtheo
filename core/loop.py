@@ -91,7 +91,9 @@ def _newborn(aid: str, country: str, lang: str, budget: float, parent_langs: set
 def _state_line(world: World) -> str:
     """재현성 검증용 정규 상태 한 줄. 키 정렬로 바이트 단위 비교가 가능하게 한다."""
     agents = {
-        aid: [a.country, a.age, round(a.budget, 6), a.alive, a.born_turn, a.born_by]
+        # lam·known_langs 도 포함해 학습·wellness 정산의 비결정성까지 재현성 검사가 잡게 한다
+        aid: [a.country, a.age, round(a.budget, 6), a.alive, a.born_turn, a.born_by,
+              round(a.lam, 6), sorted(a.known_langs)]
         for aid, a in sorted(world.agents.items())
     }
     countries = {

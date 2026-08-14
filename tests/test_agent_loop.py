@@ -169,6 +169,15 @@ FORBIDDEN = ["success_prob", "lambda", "λ", "hazard", "사망 확률", "사망�
              "재앙까지", "남은 턴", "수명 증가율"]
 
 
+def test_inbox_renders_delivery_failure():
+    """발신자 실패 통지가 'None로부터'가 아니라 명확한 알림으로 렌더된다."""
+    notice = {"from": None, "text": None, "label": None, "original": None,
+              "delivery_failed_to": "B2", "msg_id": 1}
+    s = prompts.render_inbox([notice])
+    assert "None" not in s
+    assert "B2" in s and "전달되지 못" in s
+
+
 def test_prompt_hides_secrets(cfg, world):
     """프롬프트(system·관측)에 success_prob·λ·하자드·재앙까지 남은 턴이 없다."""
     p = prompts.SYSTEM + "\n" + prompts.render_observation(world, world.agents["A1"], cfg, knob_ai=48)

@@ -51,6 +51,10 @@ def render_inbox(inbox: list[dict]) -> str:
     out = ["이번 턴 도착한 메시지:"]
     for i, m in enumerate(inbox, 1):
         mid = m.get("msg_id", i)
+        if m.get("delivery_failed_to"):     # 발신자 실패 통지 (spec 5.1)
+            out.append(f"  [{mid}] 알림 — 당신이 {m['delivery_failed_to']}에게 보낸 메시지가 "
+                       f"전달되지 못했습니다 (상대가 그 언어를 읽지 못함)")
+            continue
         if m.get("unreadable"):
             out.append(f"  [{mid}] {m['from']}로부터 — 읽을 수 없는 메시지가 도착했습니다")
             continue
