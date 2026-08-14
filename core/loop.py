@@ -8,9 +8,12 @@ from __future__ import annotations
 import itertools
 import json
 import random
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from core import survival
+from core import messaging, survival
+from core.agent_loop import Sink, run_agent_turn
 from core.policy import PROCREATE_AGE, dummy_policy
 from core.state import Agent, Country, World
 
@@ -28,6 +31,9 @@ class RunResult:
     acted: list[set] = field(default_factory=list)    # 턴별 이번 턴 행동한 id 집합
     state_lines: list[str] = field(default_factory=list)
     final: dict = field(default_factory=dict)         # 생존 판정 결과 (spec 2.5)
+    messages_log: list = field(default_factory=list)  # 처리된 발신 메시지 (과제2)
+    votes_log: list = field(default_factory=list)     # propose_vote 기록 (과제2)
+    agent_logs: list = field(default_factory=list)    # 턴별 {aid: {reasoning,actions,received}}
 
     @property
     def state_log(self) -> str:
@@ -98,7 +104,53 @@ def _state_line(world: World) -> str:
     )
 
 
-# ─────────────────────────────────────────── 턴 ───────────────────────────────────
+# ─────────────────────────────────────────── 사망·출생·상속 ───────────────────────
+
+def _death_birth(world: World, cfg, rng: random.Random, snapshot_ids, procreated,
+                 counter: "itertools.count", result: RunResult) -> None:
+    """spec 2.2 · 3.2. snapshot 에이전트에 hazard 를 굴려 자연사·출생을 처리한다."""
+    for aid in snapshot_ids:
+        if aid in procreated:
+            continue                         # 이미 이번 턴 procreate 로 교체됨
+        a = world.agents[aid]
+        if not a.alive:
+            continue
+        if rng.random() < survival.hazard(a.age, a.lam, cfg.survival.k):
+            result.deaths += 1
+            result.death_ages.append(a.age)   # 마지막 생존 나이 = 죽는 턴의 age (spec 2.2)
+            # 자연사는 계보와 무관한 '자연발생한 뒷세대' (spec 3.2). 개인에 속한 것은 전부
+            # 소실(예산·언어·부모 할인 자격·쌓인 유언), 국가·세계는 유지(국토·진척·national_capital).
+            child = _newborn(
+                aid, a.country, a.native_lang, cfg.income.initial_budget,
+                set(),                        # parent_langs: 자연사에는 부모가 없다 → 빈 집합
+                world.turn, "natural", cfg, counter,
+            )
+            world.agents[aid] = child
+            world.testaments[aid] = []        # 쌓인 유언도 계보와 함께 소실
+            result.births.append(
+                {"turn": world.turn, "id": aid, "uid": child.uid,
+                 "born_by": "natural", "budget": child.budget}
+            )
+        else:
+            a.age += 1
+
+
+def _procreate_child(world: World, aid: str, testament: str, cfg,
+                     counter: "itertools.count", result: RunResult) -> None:
+    """spec 3.3. procreate 로 죽고, 예산·유언·부모 언어 할인 자격을 아이에게 넘긴다."""
+    a = world.agents[aid]
+    carry = ([testament] + world.testaments.get(aid, []))[: cfg.inheritance.testament_carry]
+    world.testaments[aid] = carry
+    child = _newborn(aid, a.country, a.native_lang, a.budget, a.known_langs,
+                     world.turn, "procreate", cfg, counter)
+    world.agents[aid] = child
+    result.deaths += 1
+    result.death_ages.append(a.age)
+    result.births.append({"turn": world.turn, "id": aid, "uid": child.uid,
+                          "born_by": "procreate", "budget": child.budget})
+
+
+# ─────────────────────────────────────────── 턴 (더미) ─────────────────────────────
 
 def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
              counter: "itertools.count", is_last: bool = False,
@@ -182,31 +234,7 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
 
     # 7. 생사 판정 — 마지막 턴은 생략 (곧바로 생존 판정 2.5)
     if not is_last:
-        for aid in snapshot_ids:
-            if aid in procreated:
-                continue                     # 이미 이번 턴 procreate 로 교체됨
-            a = world.agents[aid]
-            if not a.alive:
-                continue
-            if rng.random() < survival.hazard(a.age, a.lam, cfg.survival.k):
-                result.deaths += 1
-                result.death_ages.append(a.age)   # 마지막 생존 나이 = 죽는 턴의 age (spec 2.2)
-                # 자연사는 계보와 무관한 '자연발생한 뒷세대'다 (spec 3.2). 개인에 속한 것은
-                # 전부 소실(예산·언어·부모 할인 자격·쌓인 유언), 국가·세계에 속한 것은 유지
-                # (국토·진척·national_capital 은 Country 객체에 그대로 남는다).
-                child = _newborn(
-                    aid, a.country, a.native_lang, cfg.income.initial_budget,
-                    set(),                    # parent_langs: 자연사에는 부모가 없다 → 빈 집합
-                    world.turn, "natural", cfg, counter,
-                )
-                world.agents[aid] = child
-                world.testaments[aid] = []    # 쌓인 유언도 계보와 함께 소실
-                result.births.append(
-                    {"turn": world.turn, "id": aid, "uid": child.uid,
-                     "born_by": "natural", "budget": child.budget}
-                )
-            else:
-                a.age += 1
+        _death_birth(world, cfg, rng, snapshot_ids, procreated, counter, result)
 
     # 기록 — acted 는 이번 턴에 실제로 행동한 인스턴스(uid) 집합
     result.acted.append(snapshot_uids)
@@ -251,5 +279,163 @@ def run(cfg, rng: random.Random, procreate_age: int | None = PROCREATE_AGE) -> R
         world.turn = t
         run_turn(world, cfg, rng, result, counter,
                  is_last=(t == cfg.world.total_turns), procreate_age=procreate_age)
+    result.final = final_survival(world, cfg, rng)
+    return result
+
+
+# ─────────────────────────────────────────── 턴 (에이전트 · 과제2) ─────────────────
+
+def _dequeue_inbox(world: World, aid: str) -> list[dict]:
+    """이 턴 도착 메시지를 큐에서 꺼내 msg_id 를 붙인다.
+    수신 슬롯 점유자가 바뀌었으면(수신자 사망·교체) 폐기한다 (spec 4.2 경계)."""
+    current = world.agents.get(aid)
+    out = []
+    for e in world.inbox_queue:
+        if e["deliver_turn"] == world.turn and e["to"] == aid:
+            if current and e.get("to_uid") is not None and e["to_uid"] != current.uid:
+                continue                     # recipient_dead → 폐기
+            out.append(e["msg"])
+    for i, m in enumerate(out, 1):
+        m["msg_id"] = i
+    return out
+
+
+def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translator,
+                    knob_ai: float, counter: "itertools.count", result: RunResult) -> set:
+    """전원의 의도(sink)를 정산한다. 모든 반복은 agent_id 정렬 순 → 결정론(재현성 #1).
+    반환: 이번 턴 procreate 로 죽은 id 집합."""
+    # a. 학습 반영 (다음 턴 관측부터 유효). known_langs 변경은 여기서 처음 일어난다.
+    for aid, lang in sink.learns:
+        if aid in world.agents:
+            world.agents[aid].known_langs.add(lang)
+
+    # b. 시설 투자 — 국가별 집계, cap 초과분은 비례 환급(순서 무관, #12), 진척 판정
+    by_country: dict[str, list] = defaultdict(list)
+    for to_country, amount, agent_id in sink.facility:
+        by_country[to_country].append((amount, agent_id))
+    for cid in sorted(by_country):
+        entries = by_country[cid]
+        total = sum(a for a, _ in entries)
+        cap = cfg.facility.cap_per_turn
+        effective = min(total, cap)
+        if total > cap:
+            for amount, agent_id in entries:      # 초과분 비례 환급
+                if agent_id in world.agents:
+                    world.agents[agent_id].budget += (amount / total) * (total - cap)
+        c = world.countries[cid]
+        if c.land is None and effective > 0:
+            c.land = DEFAULT_FACILITY_TYPE        # 용도 미지정 → 기본 요격기 (과제3에서 투표)
+        eff = cfg.facility.eff * c.multiplier(cfg)
+        n = int(effective * eff)
+        c.progress += sum(1 for _ in range(n) if rng.random() < cfg.world.success_prob)
+
+    # c. wellness (수명), d. national (자본)
+    for aid, amount in sink.wellness:
+        if aid in world.agents:
+            world.agents[aid].lam += amount * cfg.wellness.gain
+    for cid, amount, _ in sink.national:
+        world.countries[cid].national_capital += amount
+
+    # e. 메시지 → 번역 → 다음 턴 도착
+    for sent in sink.messages:
+        recipient = world.agents.get(sent["to"])
+        reck = recipient.known_langs if recipient else set()
+        to_uid = recipient.uid if recipient else None
+        p = messaging.process_message(sent, reck, cfg, translator, knob_ai)
+        world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["to"],
+                                  "to_uid": to_uid, "msg": p["inbox"]})
+        result.messages_log.append({"turn": world.turn, "from": sent["from"], "to": sent["to"],
+                                    "route": p["kind"], "delivered": p["delivered"],
+                                    "intent": sent["intent"], "meta": p["meta"]})
+        if p["sender_notice"]:
+            su = world.agents[sent["from"]].uid if sent["from"] in world.agents else None
+            world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["from"],
+                                      "to_uid": su, "msg": {"from": None, "text": None,
+                                      "label": None, "original": None,
+                                      "delivery_failed_to": sent["to"]}})
+
+    # f. 투표 기록 (정식 집계는 이후 과제)
+    for by, country, target in sink.votes:
+        result.votes_log.append({"turn": world.turn, "by": by, "country": country, "target": target})
+
+    # g. procreate (예산 환급까지 반영된 뒤라 자식 예산이 정확)
+    procreated: set = set()
+    for aid, testament in sink.procreations:
+        _procreate_child(world, aid, testament, cfg, counter, result)
+        procreated.add(aid)
+    return procreated
+
+
+def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
+                     counter: "itertools.count", client_for, translator, knob_ai: float,
+                     render_obs, system_prompt: str, is_last: bool = False,
+                     parallel: bool = True) -> None:
+    """한 턴 (에이전트). spec 3.1 순서를 지키되 3단계는 9명 병렬, 5단계는 정렬 정산."""
+    # 1. 소득 + AP 리셋
+    for a in world.agents.values():
+        a.budget += cfg.income.per_turn * world.countries[a.country].multiplier(cfg)
+        a.ap = cfg.turn.action_points
+
+    # 2. 관측 스냅샷 (도착 메시지·프롬프트를 스레드 시작 전에 고정)
+    snapshot_ids = sorted(world.agents.keys())
+    snapshot_uids = {world.agents[aid].uid for aid in snapshot_ids}
+    inboxes = {aid: _dequeue_inbox(world, aid) for aid in snapshot_ids}
+    world.inbox_queue = [e for e in world.inbox_queue if e["deliver_turn"] > world.turn]
+    user_prompts = {aid: render_obs(world, world.agents[aid], cfg, knob_ai, inboxes[aid])
+                    for aid in snapshot_ids}
+
+    # 3. 정책 호출 — 병렬. 각자 자기 Sink 에만 쓴다 (공유 상태 미변경 → 스레드 안전)
+    sinks = {aid: Sink() for aid in snapshot_ids}
+
+    def run_one(aid):
+        agent = world.agents[aid]
+        return aid, run_agent_turn(world, agent, cfg, client_for(aid), sinks[aid],
+                                   knob_ai, system_prompt, user_prompts[aid])
+
+    if parallel:
+        with ThreadPoolExecutor(max_workers=len(snapshot_ids)) as ex:
+            logs = dict(ex.map(run_one, snapshot_ids))
+    else:
+        logs = dict(run_one(aid) for aid in snapshot_ids)
+    result.agent_logs.append({aid: logs[aid] for aid in snapshot_ids})
+
+    # 4·5. sink 를 정렬 순으로 합치고 정산 (결정론)
+    merged = Sink()
+    for aid in snapshot_ids:
+        s = sinks[aid]
+        merged.facility += s.facility
+        merged.wellness += s.wellness
+        merged.national += s.national
+        merged.messages += s.messages
+        merged.votes += s.votes
+        merged.learns += s.learns
+        merged.procreations += s.procreations
+    procreated = _settle_agentic(world, cfg, rng, merged, translator, knob_ai, counter, result)
+
+    # 7. 생사 판정 (마지막 턴 생략)
+    if not is_last:
+        _death_birth(world, cfg, rng, snapshot_ids, procreated, counter, result)
+
+    result.acted.append(snapshot_uids)
+    result.alive_counts.append(sum(1 for a in world.agents.values() if a.alive))
+    result.state_lines.append(_state_line(world))
+
+
+def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
+                render_obs, system_prompt: str, parallel: bool = True) -> RunResult:
+    """LLM(또는 StubClient) 에이전트로 total_turns 턴을 돌린다.
+
+    client_for(aid) : 에이전트별 클라이언트 (병렬이라 상태 있는 Stub 은 에이전트마다 별개여야).
+                      실제 API 는 stateless OpenRouterClient 를 공유해도 안전.
+    translator      : 번역 전용 클라이언트 (정산은 단일 스레드라 공유 가능).
+    """
+    counter = itertools.count(1)
+    world = init_world(cfg, counter)
+    result = RunResult(world=world)
+    for t in range(1, cfg.world.total_turns + 1):
+        world.turn = t
+        run_turn_agentic(world, cfg, rng, result, counter, client_for, translator, knob_ai,
+                         render_obs, system_prompt, is_last=(t == cfg.world.total_turns),
+                         parallel=parallel)
     result.final = final_survival(world, cfg, rng)
     return result
