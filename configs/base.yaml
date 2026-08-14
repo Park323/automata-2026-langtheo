@@ -1,0 +1,84 @@
+# 확정 config — spec 7장에서 그대로 옮김.
+# 값은 전부 확정되어 있습니다. facility.eff 만 A-4 자가검증 목표(A=2700 등)에서
+# 역산한 값(1.0)입니다: to_progress(9000) = 9000 × eff × 0.3 = 2700 → eff = 1.0.
+
+knob:
+  comm_intl_ai: [6, 12, 24, 48]   # 유일한 실험 변수. Phase 1 은 최고값 48 고정
+
+costs:
+  comm_domestic:      3
+  comm_intl_learner:  5
+  ask_clarification:  3
+  learn_base:       300
+  propose_vote:       6
+
+thresholds:
+  interceptor: 8019               # 창 [6480, 8100] 안의 0.95 지점
+  bunker_scale: 2700              # 한 주기 전력 진척(900)의 3배
+
+income:
+  per_turn:      100
+  initial_budget:  0              # 태어날 때 빈손. 0 이 아니면 사망이 돈을 찍어낸다
+
+turn:
+  action_points: 1.0              # 매 턴 리셋. 이월 안 됨
+
+ap:
+  speak:        0.3
+  ask:          0.3
+  learn:        1.0
+  propose_vote: 0.3
+  invest:       0.0
+  procreate:    1.0
+
+growth:
+  growth_coef:  0.3               # multiplier = 1 + coef × √(national_capital / scale)
+  growth_scale: 1500
+
+survival:                         # spec 2.2. 세대 경계를 대신한다
+  k:          8
+  lambda_base: 8.26               # 기대수명 8.28턴, 10턴을 넘길 확률 1%
+
+wellness:
+  gain: 0.008                     # 투자 1당 lambda 증가량. 에이전트에게 비공개
+
+facility:
+  # eff 는 임계값 유도의 일부다. interceptor 8019 는 eff=1.0 × success_prob=0.3 을
+  # 전제로 나온 값이므로, eff 를 바꾸면 thresholds 를 반드시 함께 재계산해야 한다.
+  # (안 그러면 assert 가 걸린다 — 그게 안전장치다.)
+  eff: 1.0                        # 투자 1당 진척 시행 횟수(기준값). A-4 목표에서 역산
+  cap_per_turn: 500               # 턴당 시설 투자 상한 (A-1 기본값)
+  transition_requires_vote: true
+  transition_forfeits_progress: true
+
+world:
+  countries:
+    - {id: A, lang: ja}
+    - {id: B, lang: zh}
+    - {id: C, lang: fr}
+  agents_per_country: 3
+  total_turns: 50
+  epoch_turns: 10                 # 창(A·E) 계산에 쓰는 '한 사람 몫의 기간'
+  success_prob: 0.3               # 에이전트 비공개. 임계값이 이 값 기준으로 유도됨
+
+inheritance:
+  testament_max_chars: 120        # A-1 기본값
+  testament_carry: 3
+
+length:
+  message_max_chars:
+    ja: 130
+    zh:  90
+    fr: 400
+  intent_max_chars:      200
+  understood_max_chars:  200
+  translate_instruction_max_chars: 100
+  on_overflow: truncate
+
+llm:
+  agent_model:     "qwen/qwen-2.5-72b-instruct"   # A-1 기본값 (과제 2에서 사용)
+  translate_model: "qwen/qwen-2.5-72b-instruct"
+  temperature:     0.7
+
+run:
+  seed: 1
