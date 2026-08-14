@@ -199,7 +199,12 @@ def simulate(c: Cfg, policy, coord: float, rng: random.Random):
 
 
 def required_w(c: Cfg, seeds: int = 8, step: float = 0.05) -> float:
-    """조율이 완벽할 때 살아남는 데 필요한 최소 기여율. 1.0 초과 = 도달 불가."""
+    """조율이 완벽할 때 살아남는 데 필요한 최소 기여율. 1.0 초과 = 도달 불가.
+
+    coord=1.0 이므로 **요격기 부지가 하나로 모인** 전제다. 요격기는 부지별로 독립이고
+    판정이 max 이므로(spec 2.4), 조율이 깨지면 w* 를 넘겨도 못 짓는다.
+    따라서 이 값은 하한으로 읽어야 한다.
+    """
     w = 0.0
     while w <= 1.0 + 1e-9:
         rng = random.Random(f"w{w:.2f}")
