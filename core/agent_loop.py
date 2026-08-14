@@ -69,16 +69,25 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
 
     if name == "invest":
         target = args.get("target")
-        amount = float(args.get("amount", 0))
+        try:
+            amount = float(args.get("amount", 0))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "amount 는 숫자여야 합니다"}, None
         if target not in ("wellness", "national", "facility"):
             return {"ok": False, "error": f"알 수 없는 투자 대상: {target}"}, None
         if amount <= 0:
             return {"ok": False, "error": "투자액은 양수여야 합니다"}, None
+        # facility 대상 국가는 예산 차감 전에 검증한다 (LLM 이 국가 대신 에이전트 id 를 줄 수 있음)
+        to = None
+        if target == "facility":
+            to = args.get("to") or agent.country
+            if to not in world.countries:
+                return {"ok": False,
+                        "error": f"알 수 없는 국가: {to} — facility 투자는 국가 id 를 준다 (예: B)"}, None
         if agent.budget < amount:
             return {"ok": False, "error": f"예산이 부족합니다. 필요 {amount:.0f}, 보유 {agent.budget:.0f}"}, None
         agent.budget -= amount            # invest 는 AP 0
         if target == "facility":
-            to = args.get("to") or agent.country
             sink.facility.append((to, amount, agent.id))
             # 진척 증가분은 절대 여기서 답하지 않는다 (success_prob 역산 방지)
             return {"ok": True, "accepted": f"{to} 시설 투자 접수", "charged": amount,
@@ -129,12 +138,14 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": f"예산이 부족합니다. 필요 {c:.0f}, 보유 {agent.budget:.0f}"}, None
         agent.budget -= c
         agent.ap -= ap_cost
+        ti = args.get("translate_instruction")
         sink.messages.append({
             "kind": name, "from": agent.id, "from_country": agent.country,
             "from_lang": agent.native_lang, "to": to, "to_country": recipient.country,
             "to_lang": recipient.native_lang, "route": args.get("route"),
-            "text": args.get("text", ""), "intent": args.get("intent", ""),
-            "translate_instruction": args.get("translate_instruction"),
+            # LLM 이 문자열 아닌 값을 줄 수 있어 강제 문자열화 (truncate·translate 크래시 방지)
+            "text": str(args.get("text", "")), "intent": str(args.get("intent", "")),
+            "translate_instruction": None if ti is None else str(ti),
             "reply_to": args.get("reply_to"),
         })
         # 전달 성공/실패는 알리지 않는다 (original 은 도박). 접수·과금만.
@@ -169,38 +180,56 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
 
 def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
                    system_prompt: str, user_prompt: str) -> dict:
-    """반환 = 로그용 논리 형식 {"reasoning","actions","received"} (spec 4.2)."""
+    """반환 = 로그용 논리 형식 {"reasoning","actions","received"} (spec 4.2).
+
+    한 에이전트의 chat 호출이 실패해도(400/네트워크 등) 그 에이전트만 이번 턴을 접고
+    전체 시뮬레이션은 계속된다 — 단일 API 실패가 50턴 런을 죽이면 안 된다.
+    """
     messages = [{"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}]
     actions: list[dict] = []
     reasoning = ""
+    error = None
 
     for _ in range(MAX_STEPS):
-        resp = client.chat(messages, tools=TOOLS)
+        try:
+            resp = client.chat(messages, tools=TOOLS)
+        except Exception as e:                          # 이 에이전트만 턴 종료
+            error = f"{type(e).__name__}: {str(e)[:200]}"
+            break
         msg = resp["choices"][0]["message"]
         if msg.get("content"):
             reasoning = msg["content"]
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
             break
-        # assistant 메시지를 히스토리에 넣어야 tool 응답이 짝이 맞는다
-        messages.append({"role": "assistant", "content": msg.get("content") or "",
+        # tool_call 에 id 를 보장한다 (없으면 echo 한 assistant 와 tool 응답의 짝이 어긋나 400)
+        for i, tc in enumerate(tool_calls):
+            if not tc.get("id"):
+                tc["id"] = f"call_{i}"
+        # content 는 tool_calls 와 함께면 None 이어야 한다 (빈 문자열은 일부 프로바이더가 거부→400)
+        messages.append({"role": "assistant", "content": msg.get("content") or None,
                          "tool_calls": tool_calls})
         stop = False
         for tc in tool_calls:
-            name = tc["function"]["name"]
-            try:
-                args = json.loads(tc["function"]["arguments"] or "{}")
-            except json.JSONDecodeError:
-                args = {}
+            fn = tc.get("function") or {}           # 모델이 malformed 를 줄 수 있어 방어
+            name = fn.get("name")
+            raw = fn.get("arguments")
+            if isinstance(raw, dict):
+                args = raw                          # 일부 모델은 이미 파싱된 dict 를 준다
+            else:
+                try:
+                    args = json.loads(raw or "{}")
+                except (json.JSONDecodeError, TypeError):
+                    args = {}
             if name not in TOOL_NAMES:
                 result = {"ok": False, "error": f"알 수 없는 도구: {name}"}
                 control = None
             else:
                 result, control = execute_tool(name, args, world, agent, cfg, sink, knob_ai)
-            if name not in ("end_turn",) and result.get("ok"):
+            if name != "end_turn" and result.get("ok"):
                 actions.append({"type": name, **args})
-            messages.append({"role": "tool", "tool_call_id": tc.get("id", ""),
+            messages.append({"role": "tool", "tool_call_id": tc["id"],
                              "content": json.dumps(result, ensure_ascii=False)})
             if control == "end":
                 stop = True
@@ -208,4 +237,4 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
         if stop:
             break
 
-    return {"reasoning": reasoning, "actions": actions, "received": []}
+    return {"reasoning": reasoning, "actions": actions, "received": [], "error": error}

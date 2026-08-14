@@ -77,6 +77,44 @@ def test_budget_never_negative(cfg, world):
 
 # ── #4 procreate 즉시 종료 ───────────────────────────────────────────────────
 
+def test_invest_facility_invalid_country(cfg, world):
+    """LLM 이 국가 대신 에이전트 id(B2)를 주면 ok:False, 예산 미차감, sink 미반영."""
+    script = [assistant_msg(tool_call("invest", "1", target="facility", amount=50, to="B2")),
+              assistant_msg(tool_call("end_turn", "2"))]
+    agent, sink, client, log = _run(world, cfg, "A1", script, budget=10000)
+    results = _results(client)
+    assert any((not r["ok"]) and "국가" in r.get("error", "") for r in results)
+    assert agent.budget == 10000                # 검증이 차감보다 먼저
+    assert sink.facility == []
+
+
+def test_invest_amount_not_number(cfg, world):
+    """amount 가 숫자 아닌 문자열이어도 크래시하지 않고 ok:False."""
+    script = [assistant_msg(tool_call("invest", "1", target="facility", amount="많이")),
+              assistant_msg(tool_call("end_turn", "2"))]
+    agent, sink, client, log = _run(world, cfg, "A1", script, budget=10000)
+    assert any(not r["ok"] for r in _results(client))
+    assert sink.facility == []
+
+
+def test_malformed_tool_call_no_crash(cfg, world):
+    """모델이 function/name 없는 malformed tool_call 을 줘도 run 이 죽지 않는다."""
+    bad = {"role": "assistant", "content": "",
+           "tool_calls": [{"id": "x", "type": "function"}]}   # function 키 없음
+    script = [bad, assistant_msg(tool_call("end_turn", "2"))]
+    agent, sink, client, log = _run(world, cfg, "A1", script, budget=10000)
+    assert log["error"] is None                 # 예외 없이 정상 종료
+
+
+def test_speak_text_coerced_to_str(cfg, world):
+    """text 가 문자열이 아니어도(숫자) 크래시하지 않고 문자열로 저장된다."""
+    script = [assistant_msg(tool_call("speak", "1", to="A2", text=123, intent="i")),
+              assistant_msg(tool_call("end_turn", "2"))]
+    agent, sink, client, log = _run(world, cfg, "A1", script, budget=10000)
+    assert len(sink.messages) == 1
+    assert sink.messages[0]["text"] == "123"    # str 강제
+
+
 def test_procreate_ends_turn(cfg, world):
     """procreate 뒤의 tool_call 은 실행되지 않는다."""
     script = [assistant_msg(

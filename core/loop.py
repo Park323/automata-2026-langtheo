@@ -369,7 +369,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
 def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
                      counter: "itertools.count", client_for, translator, knob_ai: float,
                      render_obs, system_prompt: str, is_last: bool = False,
-                     parallel: bool = True) -> None:
+                     parallel: bool = True, on_turn_end=None) -> None:
     """한 턴 (에이전트). spec 3.1 순서를 지키되 3단계는 9명 병렬, 5단계는 정렬 정산."""
     # 1. 소득 + AP 리셋
     for a in world.agents.values():
@@ -419,10 +419,13 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
     result.acted.append(snapshot_uids)
     result.alive_counts.append(sum(1 for a in world.agents.values() if a.alive))
     result.state_lines.append(_state_line(world))
+    if on_turn_end is not None:
+        on_turn_end(world.turn, result)
 
 
 def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
-                render_obs, system_prompt: str, parallel: bool = True) -> RunResult:
+                render_obs, system_prompt: str, parallel: bool = True,
+                on_turn_end=None) -> RunResult:
     """LLM(또는 StubClient) 에이전트로 total_turns 턴을 돌린다.
 
     client_for(aid) : 에이전트별 클라이언트 (병렬이라 상태 있는 Stub 은 에이전트마다 별개여야).
@@ -436,6 +439,6 @@ def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
         world.turn = t
         run_turn_agentic(world, cfg, rng, result, counter, client_for, translator, knob_ai,
                          render_obs, system_prompt, is_last=(t == cfg.world.total_turns),
-                         parallel=parallel)
+                         parallel=parallel, on_turn_end=on_turn_end)
     result.final = final_survival(world, cfg, rng)
     return result
