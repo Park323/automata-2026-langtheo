@@ -32,7 +32,10 @@ ap:
   procreate:    1.0
 
 growth:
-  growth_coef:  0.3               # multiplier = 1 + coef × √(national_capital / scale)
+  # 0.3 은 조율을 생색 수준으로 만든다 — 유치국 혼자 임계의 91% 에 닿아 나머지 두 나라가
+  # 9% 만 대면 된다. 0.2 로 내리면 혼자 69% 라 31% 를 대야 하고, 성장 이득은 1.23× 로
+  # 남아 farsighted 가 여전히 의미를 갖는다. 0.15 아래면 성장이 무의미해진다.
+  growth_coef:  0.2               # multiplier = 1 + coef × √(national_capital / scale)
   growth_scale: 1500
 
 survival:                         # spec 2.2. 세대 경계를 대신한다

@@ -198,21 +198,56 @@ def simulate(c: Cfg, policy, coord: float, rng: random.Random):
     return saved / COUNTRIES, deaths
 
 
+def growth_then_build(w: float, split: int):
+    """앞 split 턴은 전액 국가 투자, 이후는 소득의 w 를 타국 요격기에.
+
+    국가 투자도 시간 축 투자다 — 초기 세대가 반드시 무언가를 해야 하고 수익은
+    뒷사람이 받는다. 그래서 이 경로는 '미루기' 가 아니다 (spec 3.2).
+    성장이 소득과 facility_eff 에 모두 곱해지므로 진척이 m^2 로 늘어난다.
+    """
+    def pol(ctx):
+        if ctx["t"] < split:
+            return (0.0, 0.9, 0.0, 0.0)
+        return (0.0, 0.0, 0.9 * (1 - w), 0.9 * w)
+    return pol
+
+
+def _min_w(c: Cfg, make_policy, seeds: int, step: float) -> float:
+    w = 0.0
+    while w <= 1.0 + 1e-9:
+        rng = random.Random(f"w{w:.2f}")
+        runs = [simulate(c, make_policy(w), 1.0, rng)[0] for _ in range(seeds)]
+        if sum(1 for x in runs if x >= 1.0) / seeds >= 0.5:
+            return w
+        w += step
+    return 1.5
+
+
 def required_w(c: Cfg, seeds: int = 8, step: float = 0.05) -> float:
     """조율이 완벽할 때 살아남는 데 필요한 최소 기여율. 1.0 초과 = 도달 불가.
 
     coord=1.0 이므로 **요격기 부지가 하나로 모인** 전제다. 요격기는 부지별로 독립이고
     판정이 max 이므로(spec 2.4), 조율이 깨지면 w* 를 넘겨도 못 짓는다.
-    따라서 이 값은 하한으로 읽어야 한다.
+
+    ⚠ 이것은 **성장을 쓰지 않는 경로**의 값이다. 국가 투자를 먼저 하면 더 적게 내도
+      되므로(required_w_growth), 세계 난이도의 보수적 상한으로 읽어야 한다.
     """
-    w = 0.0
-    while w <= 1.0 + 1e-9:
-        rng = random.Random(f"w{w:.2f}")
-        runs = [simulate(c, contrib_policy(w), 1.0, rng)[0] for _ in range(seeds)]
-        if sum(1 for x in runs if x >= 1.0) / seeds >= 0.5:
-            return w
-        w += step
-    return 1.5
+    return _min_w(c, contrib_policy, seeds, step)
+
+
+def required_w_growth(c: Cfg, seeds: int = 6, step: float = 0.05,
+                      splits=(0, 5, 10, 15, 20, 25)) -> tuple[float, int]:
+    """성장을 최적으로 태울 때의 필요 기여율과 그 배분점. (w*, split)
+
+    ★C 상한이 성장을 빼고 계산되므로 실제 용량은 C 보다 크다. 이 함수가 그 차이를
+    수치로 드러낸다.
+    """
+    best = (1.5, -1)
+    for sp in splits:
+        w = _min_w(c, lambda ww, sp=sp: growth_then_build(ww, sp), seeds, step)
+        if w < best[0]:
+            best = (w, sp)
+    return best
 
 
 def evaluate(c: Cfg, seeds: int, coords=(0.2, 0.9)):
@@ -244,7 +279,7 @@ GRID = {
     "total_turns":    [50],           # 확정 (12.4)
     "epoch_turns":    [10],           # 확정. 기대수명 반올림
     "success_prob":   [0.3, 0.5, 0.7],
-    "growth_coef":    [0.3],
+    "growth_coef":    [0.2],   # 0.3 은 유치국 혼자 91% 에 닿아 ★B 여유가 8.7% 뿐
     "surv_k":         [8],
     "surv_lambda":    [8.26],
     "wellness_gain":  [0.008],
@@ -300,6 +335,7 @@ def main():
     for c in ok:
         m = evaluate(c, a.seeds)
         m["w_star"] = required_w(c)
+        m["w_star_growth"], m["split"] = required_w_growth(c)
         scored.append((c, m))
     scored.sort(key=lambda x: (abs(x[1]["w_star"] - W_TARGET),
                                -x[1]["sensitivity"], x[1]["policy_var"]))
