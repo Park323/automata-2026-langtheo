@@ -16,8 +16,15 @@ def hazard(age: int, lam: float, k: float) -> float:
     """나이 age 에서 age+1 로 가는 동안 죽을 확률.
 
     = 1 − S(age+1)/S(age).  조건부 확률이므로 S(age) 로 나눈다.
+
+    ⚠ S(age) 는 나이 20 근처에서 언더플로로 0 이 된다. 더미(최대 11)에선 안 닿지만
+      과제 2 에서 wellness 로 λ 가 커지면 실제로 도달하므로 0 나눗셈을 방어한다.
+      S(age)=0 이면 그 나이까지 살아있을 확률이 사실상 0 이니 사망 확정(1.0).
     """
-    return 1.0 - survival(age + 1, lam, k) / survival(age, lam, k)
+    s0 = survival(age, lam, k)
+    if s0 <= 0.0:
+        return 1.0
+    return 1.0 - survival(age + 1, lam, k) / s0
 
 
 def expected_life(lam: float, k: float) -> float:

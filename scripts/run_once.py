@@ -35,7 +35,7 @@ def main() -> None:
     print(f"  사망(=출생) {r.deaths}회  (자연사 {by_kind['natural']} / procreate {by_kind['procreate']})")
     print(f"  사망 나이 평균 {mean_age:.2f}, 최대 {max(r.death_ages) if r.death_ages else 0}")
     print(f"  국토 {lands}")
-    print(f"  진척 {progress},  요격기 합계 {r.interceptor_total:.1f} / 임계 {cfg.thresholds.interceptor}")
+    print(f"  진척 {progress},  요격기 최고부지 {r.interceptor_best:.1f} / 임계 {cfg.thresholds.interceptor}")
     print(f"  생존 판정: {r.final['outcome']}  생존국 {r.final['survivors']}")
 
 

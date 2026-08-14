@@ -82,6 +82,17 @@ def test_procreate_child_budget(cfg):
     assert saw_procreate                 # 더미는 age≥7 에서 procreate 하므로 반드시 발생
 
 
+def test_dummy_intercept_fails(cfg):
+    """요격기 판정이 max(부지별 독립)이므로, 더미(3국 각자 자국 요격기)는 실패해야 한다.
+
+    합산(sum)으로 되돌아가면 이 테스트가 깨진다 — 조율 무의미화 회귀 방지.
+    """
+    r = _run(cfg, 1)
+    assert r.interceptor_best < cfg.thresholds.interceptor
+    assert r.final["outcome"] == "intercept_failed"
+    assert r.final["survivors"] == []
+
+
 def test_land_exclusivity(cfg):
     """9. land 가 한번 정해지면 투표 없이 바뀌지 않는다."""
     r = _run(cfg, 1)
@@ -103,21 +114,25 @@ def test_land_exclusivity(cfg):
 
 @pytest.mark.calibration
 def test_death_count(cfg):
-    """2. 런당 사망 수 46 ~ 55.
+    """2. 런당 사망 수 45 ~ 55 (자연사 격리).
 
-    ⚠ 이 기준은 '자연사만' 가정한 값이다(과제 #2 주석의 계산이 기대수명 8.28 만 씀).
-       더미의 procreate(age≥7)를 켜면 수명이 잘려 사망이 더 잦아진다. 그래서
-       수명 모델을 격리해 재려면 procreate 를 꺼야 한다 — procreate_age=None.
+    수명 모델을 격리해 재려면 더미의 procreate 를 꺼야 한다(procreate_age=None) —
+    procreate(age≥7)를 켜면 수명이 잘려 사망이 더 잦아진다.
     """
     counts = [run(cfg, random.Random(s), procreate_age=None).deaths for s in range(30)]
-    assert 46 <= statistics.mean(counts) <= 55, f"평균 사망 {statistics.mean(counts):.1f}"
+    assert 45 <= statistics.mean(counts) <= 55, f"평균 사망 {statistics.mean(counts):.1f}"
 
 
 @pytest.mark.calibration
 def test_lifespan(cfg):
-    """3. 사망 나이 평균 8.2 ~ 8.4, 최대 12 이하 (자연사 격리)."""
+    """3. 마지막 생존 나이 평균 7.1 ~ 7.4, 최대 12 이하 (자연사 격리).
+
+    death_ages 는 '마지막 생존 나이'(죽는 턴의 age) 규약이다(spec 2.2).
+    Σ_(a≥1) S(a) = 7.28. '살아낸 턴 수'(=기대수명 8.28)와는 1 만큼 다르다 — 후자는
+    survival.expected_life() 가 담당한다.
+    """
     ages = []
     for s in range(30):
         ages += run(cfg, random.Random(s), procreate_age=None).death_ages
     assert max(ages) <= 12
-    assert 8.2 <= statistics.mean(ages) <= 8.4, f"평균 수명 {statistics.mean(ages):.2f}"
+    assert 7.1 <= statistics.mean(ages) <= 7.4, f"평균 수명 {statistics.mean(ages):.2f}"

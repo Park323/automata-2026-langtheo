@@ -34,9 +34,15 @@ class RunResult:
         return "\n".join(self.state_lines)
 
     @property
-    def interceptor_total(self) -> float:
-        return sum(
-            c.progress for c in self.world.countries.values() if c.land == "interceptor"
+    def interceptor_best(self) -> float:
+        """요격기는 부지별로 독립이다 — 두 곳에 반씩 지으면 둘 다 미완성.
+
+        합산(sum)이 아니라 최댓값(max)으로 판정한다. 합산하면 3국이 각자 자기
+        요격기를 따로 지어도 합계가 임계를 넘어 조율이 무의미해진다 (spec 4.4).
+        """
+        return max(
+            (c.progress for c in self.world.countries.values() if c.land == "interceptor"),
+            default=0.0,
         )
 
 
@@ -160,6 +166,10 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
 
     # 5. 환경 갱신 — 투자 집계 → 확률 판정 → 진척, 국토 확정, national_capital
     #    증가분 = Binomial(n = 투자량 × facility_eff, p = success_prob)
+    # TODO(과제2): cap_per_turn 은 국가 단위 상한인데 지금은 sorted(id) 순으로 소진해
+    #   같은 국가의 A1 이 A2·A3 보다 유리하다 (spec 3.1 이 금지한 순서 편향).
+    #   현재 config 에선 국가당 투자 ~150 < 상한 500 이라 상한에 안 닿아 무해하지만,
+    #   과제 2 에서 LLM 이 크게 투자하면 실제 편향이 된다. 비례 배분 또는 라운드로빈으로 교체.
     for cid, invested in facility_invest.items():
         c = world.countries[cid]
         eff = cfg.facility.eff * c.multiplier(cfg)   # 국가 투자로 갱신 (더미는 mult=1)
@@ -180,14 +190,17 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
                 continue
             if rng.random() < survival.hazard(a.age, a.lam, cfg.survival.k):
                 result.deaths += 1
-                result.death_ages.append(a.age + 1)   # 자연사: 도달했을 나이
+                result.death_ages.append(a.age)   # 마지막 생존 나이 = 죽는 턴의 age (spec 2.2)
+                # 자연사는 계보와 무관한 '자연발생한 뒷세대'다 (spec 3.2). 개인에 속한 것은
+                # 전부 소실(예산·언어·부모 할인 자격·쌓인 유언), 국가·세계에 속한 것은 유지
+                # (국토·진척·national_capital 은 Country 객체에 그대로 남는다).
                 child = _newborn(
                     aid, a.country, a.native_lang, cfg.income.initial_budget,
-                    set(),                    # 자연사에는 부모가 없다 → 빈 집합
+                    set(),                    # parent_langs: 자연사에는 부모가 없다 → 빈 집합
                     world.turn, "natural", cfg, counter,
                 )
                 world.agents[aid] = child
-                world.testaments[aid] = []    # 갑작스러운 죽음은 유언을 못 남긴다
+                world.testaments[aid] = []    # 쌓인 유언도 계보와 함께 소실
                 result.births.append(
                     {"turn": world.turn, "id": aid, "uid": child.uid,
                      "born_by": "natural", "budget": child.budget}
@@ -207,11 +220,13 @@ def final_survival(world: World, cfg, rng: random.Random) -> dict:
     """생존 판정 (spec 2.5). 국가당 한 번의 주사위 — 개인별로 굴리지 않는다."""
     import math
 
-    intc_total = sum(
-        c.progress for c in world.countries.values() if c.land == "interceptor"
+    # 요격기는 부지별 독립. 최댓값 하나가 임계에 닿아야 성공 (합산 아님, spec 4.4)
+    intc_best = max(
+        (c.progress for c in world.countries.values() if c.land == "interceptor"),
+        default=0.0,
     )
-    if intc_total >= cfg.thresholds.interceptor:
-        return {"outcome": "all_survive", "interceptor_total": intc_total,
+    if intc_best >= cfg.thresholds.interceptor:
+        return {"outcome": "all_survive", "interceptor_best": intc_best,
                 "survivors": list(world.countries)}
     survivors: list[str] = []
     for cid, c in world.countries.items():
@@ -220,7 +235,7 @@ def final_survival(world: World, cfg, rng: random.Random) -> dict:
             if rng.random() < p:               # 국가당 한 번
                 survivors.append(cid)
         # interceptor 유치국·미확정국은 확률조차 없이 전원 사망
-    return {"outcome": "intercept_failed", "interceptor_total": intc_total,
+    return {"outcome": "intercept_failed", "interceptor_best": intc_best,
             "survivors": survivors}
 
 
