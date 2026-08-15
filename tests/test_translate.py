@@ -14,7 +14,7 @@ def test_default_directive_no_compression_words():
     p = T.build_prompt("fr", "본문", None)
     for banned in ["간결", "정확", "자연", "요약", "concise", "brief", "summar"]:
         assert banned not in p
-    assert T.DEFAULT_DIRECTIVE in p          # '번역하라' 만 붙는다
+    assert p.splitlines()[0] == "Translate to French."    # 대상 언어 사실만
 
 
 def test_system_contract_is_io_only():

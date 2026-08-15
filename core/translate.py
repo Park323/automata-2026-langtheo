@@ -15,13 +15,19 @@ SYSTEM_CONTRACT = (
 )
 
 # 중립 기본값. 여기에 '간결하게' 를 넣으면 즉시 위반 (자주 틀리는 곳 2).
-DEFAULT_DIRECTIVE = "번역하라"
+# 이 세계에 한국어는 없다 — 개발 언어가 번역 프롬프트에 새면 번역기가 그 영향을 받고,
+# 무엇보다 산출물에 없어야 할 언어가 파이프라인에 들어온다. 시스템 계약과 같은
+# 영어로 두고, 품질 형용사('간결/정확/자연')는 절대 넣지 않는다.
+DEFAULT_DIRECTIVE = ""          # 지시 없음이 가장 중립이다. 대상 언어만 사실로 붙는다
 
 
 def build_prompt(dst_lang: str, text: str, instruction: str | None) -> str:
     """번역 사용자 프롬프트. 대상 언어(사실)만 붙이고, 방식 지시는 발신자 것/기본값."""
     directive = (instruction or "").strip() or DEFAULT_DIRECTIVE
-    return f"Translate to {LANG_NAME[dst_lang]}. {directive}\n\n{text}"
+    head = f"Translate to {LANG_NAME[dst_lang]}."
+    if directive:
+        head = f"{head} {directive}"
+    return f"{head}\n\n{text}"
 
 
 def translate(client, src_lang: str, dst_lang: str, text: str,
