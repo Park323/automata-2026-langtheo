@@ -143,7 +143,7 @@ def test_no_max_steps_constant():
     """임의 상한은 없다. 폭주 보험만 남는다."""
     import core.agent_loop as al
     assert not hasattr(al, "MAX_STEPS")
-    assert al.RUNAWAY_CAP >= 100
+    assert al.RUNAWAY_CAP >= 40      # 정상 턴은 도구 5~15회. 닿지 않을 높이면 된다
 
 
 # ── 🔴 누수 불변식 (spec 4.5) ─────────────────────────────────────────────────
@@ -220,3 +220,23 @@ def test_broken_arguments_normalized_before_echo(cfg, world):
     for m in echoed:
         for tc in m["tool_calls"]:
             json.loads(tc["function"]["arguments"])      # 파싱되어야 한다 (안 되면 400)
+
+
+def test_repeat_guard_ignores_successful_repeats(cfg, world):
+    """성공한 호출은 자원을 쓰므로 ②가 막는다 — ③이 정상 행동을 끊으면 안 된다."""
+    a = world.agents["Asla1"]
+    a.budget = 10000.0
+    same = tool_call("speak", "1", to="Asla2", text="같은 말", reasoning="r")
+    _, _, log = _turn(world, cfg, "Asla1",
+                      [assistant_msg(same, same, same),
+                       assistant_msg(tool_call("end_turn", "9", reasoning="r"))])
+    assert log["ended_by"] == "ended", "동일한 성공 호출 3건에 끊기면 안 된다"
+    assert sum(1 for r in log["reasonings"] if r["ok"] and r["tool"] == "speak") == 3
+
+
+def test_tool_schema_counted_in_eviction(cfg):
+    """도구 스키마 909 토큰을 빼면 실질 한계가 8192 가 아니라 9100 쯤으로 느슨해진다."""
+    from core.agent_loop import _TOOL_TOKENS, estimate_tokens
+    assert _TOOL_TOKENS > 500, "도구 스키마가 계산에 잡혀야 한다"
+    msgs = [{"role": "user", "content": "x" * 300}]
+    assert estimate_tokens(msgs, _TOOL_TOKENS) > estimate_tokens(msgs)

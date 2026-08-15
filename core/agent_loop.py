@@ -193,17 +193,45 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
 
 # ── 개체 기억 (spec 4.5) ──────────────────────────────────────────────────────
 
-RUNAWAY_CAP = 200   # 설계 파라미터가 아니라 폭주 보험. 정상 행동(6~8)의 25배
+# 폭주 보험. 설계 파라미터가 아니다 — 정상 턴은 도구 5~15회라 여기 닿지 않는다.
+# 옛 MAX_STEPS=8 이 정상 행동까지 자르던 것과 다르다.
+RUNAWAY_CAP = 64
+
+# CJK 기준 대략치. 영어는 ~4자/토큰이지만 우리 프롬프트는 ja/zh/fr 이라 훨씬 조밀하다.
+#
+# 실측 150콜로 계수를 골랐다 (추정/실측 중앙값, 1.0 이 정확):
+#     본문//3 스키마//3  →  1.010   ← 채택
+#     본문//3 스키마//4  →  0.893
+#     본문//2 스키마//4  →  1.182
+#
+# 도구 스키마는 영어 JSON 이라 //3 이 53% 과대추정하지만(1389 vs 실측 909),
+# 그것이 CJK 본문의 과소추정과 상쇄되어 전체가 가장 정확해진다. 계수를 나누면
+# 오히려 나빠지므로 단일 계수로 둔다.
+_CHARS_PER_TOKEN = 3
 
 
-def estimate_tokens(messages: list[dict]) -> int:
-    """대략치. 실제로는 응답의 usage.prompt_tokens 를 쓰고, 없을 때만 이걸 쓴다."""
-    n = 0
+def estimate_tokens(messages: list[dict], tool_tokens: int = 0) -> int:
+    """대략치. 압박 판정은 응답의 usage.prompt_tokens(실측)를 쓰고, 축출 회계와
+    Stub 경로에만 이걸 쓴다.
+
+    ⚠ 도구 스키마를 반드시 함께 센다. 매 호출 프롬프트에 통째로 실리는 909 토큰이라,
+      빼면 실질 한계가 8192 가 아니라 9100 쯤으로 느슨해진다.
+    """
+    n = tool_tokens
     for m in messages:
-        n += len(str(m.get("content") or "")) // 3
+        n += 4                                   # role·구분자 등 메시지당 고정 오버헤드
+        n += len(str(m.get("content") or "")) // _CHARS_PER_TOKEN
         for tc in m.get("tool_calls") or []:
-            n += len(json.dumps(tc, ensure_ascii=False)) // 3
+            n += len(json.dumps(tc, ensure_ascii=False)) // _CHARS_PER_TOKEN
     return n
+
+
+def tool_schema_tokens(tools) -> int:
+    """도구 스키마는 매 호출 프롬프트에 실린다 — 고정비로 센다."""
+    return (len(json.dumps(tools, ensure_ascii=False)) // _CHARS_PER_TOKEN + 1) if tools else 0
+
+
+_TOOL_TOKENS = tool_schema_tokens(TOOLS)
 
 
 def _turn_blocks(convo: list[dict]) -> list[tuple[int, int]]:
@@ -212,14 +240,14 @@ def _turn_blocks(convo: list[dict]) -> list[tuple[int, int]]:
     return [(a, b) for a, b in zip(idx, idx[1:] + [len(convo)])]
 
 
-def evict(convo: list[dict], limit_tokens: int) -> tuple[list[dict], int]:
+def evict(convo: list[dict], limit_tokens: int, tool_tokens: int = 0) -> tuple[list[dict], int]:
     """한계를 넘으면 오래된 턴 블록부터 버린다. 최근 한 턴은 반드시 남긴다.
 
     system 은 convo 에 없다 (매 호출 앞에 붙인다). 반환 (남은 대화, 버린 블록 수).
     """
     dropped = 0
     blocks = _turn_blocks(convo)
-    while len(blocks) > 1 and estimate_tokens(convo) > limit_tokens:
+    while len(blocks) > 1 and estimate_tokens(convo, tool_tokens) > limit_tokens:
         convo = convo[blocks[0][1]:]
         dropped += 1
         blocks = _turn_blocks(convo)
@@ -285,7 +313,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             break
         steps += 1
         # 한계를 넘으면 오래된 턴 블록부터 버린다. system 은 convo 밖이라 안전하다.
-        agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit)
+        agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, _TOOL_TOKENS)
         evicted += dropped
         messages = [{"role": "system", "content": system_prompt}, *agent.convo]
         try:
@@ -296,7 +324,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
         # 압박 판정은 실측 토큰으로 한다. 없으면(Stub) 추정치.
         usage = resp.get("usage") or {}
         agent.last_prompt_tokens = int(usage.get("prompt_tokens")
-                                       or estimate_tokens(messages))
+                                       or estimate_tokens(messages, _TOOL_TOKENS))
         msg = resp["choices"][0]["message"]
         # ⚠ message.reasoning 은 추론 모델의 사고 과정이고 spec 의 reasoning 과 다르다.
         #    섞지 않는다 (spec 9장). 원본은 raw_calls.jsonl 에 그대로 남는다.
@@ -348,12 +376,15 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
                 actions.append({"type": name, **args})
             agent.convo.append({"role": "tool", "tool_call_id": tc["id"],
                                 "content": json.dumps(result, ensure_ascii=False)})
-            key = f"{name}|{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
-            seen[key] = seen.get(key, 0) + 1
-            if seen[key] >= cfg.llm.repeat_guard:
-                stop = True
-                ended_by = "repeat_guard"
-                break
+            # ③ 실패한 호출만 센다. 성공은 자원을 쓰므로 ②가 이미 막는다 —
+            #    성공까지 세면 정상 행동(같은 상대에게 3번 말하기)이 끊긴다.
+            if not result.get("ok"):
+                key = f"{name}|{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
+                seen[key] = seen.get(key, 0) + 1
+                if seen[key] >= cfg.llm.repeat_guard:
+                    stop = True
+                    ended_by = "repeat_guard"
+                    break
             if control == "end":
                 stop = True
                 ended_by = "ended"
