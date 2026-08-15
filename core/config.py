@@ -44,6 +44,7 @@ class Income:
 @dataclass(frozen=True)
 class TurnCfg:
     action_points: float
+    repeat_guard: int
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ class AP:
     propose_vote: float
     invest: float
     procreate: float
+    memory_write: float
 
 
 @dataclass(frozen=True)
@@ -115,6 +117,8 @@ class LLM:
     agent_model: str
     translate_model: str
     temperature: float
+    context_limit: int
+    warn_ratio: float
 
 
 @dataclass(frozen=True)

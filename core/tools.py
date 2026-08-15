@@ -67,6 +67,12 @@ TOOLS: list[dict] = [
         {"target": {"type": "string", "enum": ["bunker", "interceptor"]}},
         ["target"]),
 
+    _fn("memory_write",
+        "Overwrite your private memory note. Free of budget; costs a little action. "
+        "Only you ever see it; it persists across turns until you overwrite it again.",
+        {"text": {"type": "string", "description": "the full note to keep (replaces the old one)"}},
+        ["text"]),
+
     _fn("procreate", "Leave a child and die. Calling it ends your turn at once.",
         {"testament": {"type": "string", "description": "one sentence passed to the child"}},
         ["testament"]),

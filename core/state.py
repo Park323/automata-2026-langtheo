@@ -20,6 +20,12 @@ class Agent:
     born_turn: int = 0
     born_by: str = "natural"  # "natural" | "procreate"
     uid: int = 0              # 인스턴스 고유 번호. id 는 슬롯이라 세대마다 재사용된다
+    # ── 개체 기억 (spec 4.5). 인스턴스에 속하므로 죽음(=재생성)으로 전부 소멸한다 ──
+    # 태어나서 죽을 때까지 이어지는 대화. 매 턴 관측이 뒤에 붙고 도구 왕복도 남는다.
+    messages: list = field(default_factory=list)
+    memory: str = ""          # memory_write 로 덮어쓰는 기억 블록. 관측에 [내 메모] 로 표시
+    mem_pressure: bool = False  # 직전 턴이 warn_ratio 를 넘겼다 → 다음 관측 앞에 통지 한 줄
+    last_prompt_tokens: int = 0  # 직전 응답 usage.prompt_tokens (압박 판정용, API 가 주면)
 
 
 @dataclass

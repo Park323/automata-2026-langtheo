@@ -58,6 +58,7 @@ T = {
         land="自国の国土: {v}", undecided="未定",
         prog="自国の進捗: {v:.0f}", mult="自国の生産倍率: {v:.2f}",
         known_hdr="これまでに分かったこと（誰がどの言語を読めるか）", known_none="  まだ何もない",
+        memo_hdr="あなたのメモ（memory_write で更新。あなたにしか見えません）", memo_empty="  （まだ何もない）",
         income="今ターンの収入: +{v:.0f}（生産倍率を反映）",
         multi="予算が許す限り複数の行動ができます。メッセージは1ターンに3件まで。",
         costs_hdr="行動の費用",
@@ -86,6 +87,7 @@ T = {
         land="本国国土: {v}", undecided="未定",
         prog="本国进度: {v:.0f}", mult="本国生产倍率: {v:.2f}",
         known_hdr="目前已知的情况（谁能读懂哪种语言）", known_none="  尚无",
+        memo_hdr="你的备忘（用 memory_write 更新，只有你能看到）", memo_empty="  （尚无）",
         income="本回合收入: +{v:.0f}（已计入生产倍率）",
         multi="只要预算允许，你可以采取多项行动。每回合最多 3 条消息。",
         costs_hdr="行动费用",
@@ -116,6 +118,8 @@ T = {
         mult="Multiplicateur de production de votre nation : {v:.2f}",
         known_hdr="Ce que vous avez appris jusqu'ici (qui lit quelle langue)",
         known_none="  rien pour l'instant",
+        memo_hdr="Votre note (mise à jour avec memory_write ; vous seul la voyez)",
+        memo_empty="  rien pour l'instant",
         income="Revenu ce tour : +{v:.0f} (multiplicateur appliqué)",
         multi="Vous pouvez agir plusieurs fois si le budget le permet. Jusqu'à 3 messages par tour.",
         costs_hdr="Coûts des actions",
@@ -139,6 +143,15 @@ T = {
         in_from="  [{id}] de {frm}{label}", in_orig="      [original] « {t} »",
         own="votre propre langue", other="la langue de {nation}",
     ),
+}
+
+
+# 기억 압박 통지 (spec 4.5). 사실 통지이지 지시가 아니다 — "중요한 걸 기억하라" 는
+# 목적함수 주입이므로 넣지 않는다. 모국어로, 도구 토큰 없이. 압박이 있을 때만 관측 앞에 붙는다.
+PRESSURE_NOTICE = {
+    "ja": "［記憶の圧迫］記憶が上限に近づいています。古いものから消えていきます。",
+    "zh": "［记忆压力］记忆正在接近上限。较旧的内容会先消失。",
+    "fr": "[Pression mémoire] Votre mémoire approche de sa limite ; les éléments les plus anciens disparaîtront d'abord.",
 }
 
 
@@ -221,7 +234,10 @@ def render_observation(world, agent, cfg, knob_ai: float,
     income = income_this_turn if income_this_turn is not None else cfg.income.per_turn * mult
     testaments = world.testaments.get(agent.id, [])
 
-    parts = [
+    parts = []
+    if getattr(agent, "mem_pressure", False):     # spec 4.5: 압박 통지는 관측 맨 앞에 한 줄
+        parts += [PRESSURE_NOTICE[lang], ""]
+    parts += [
         t["you"].format(id=agent.id, nation=agent.country),
         t["read"].format(langs=langs),
         t["budget"].format(b=agent.budget),
@@ -231,8 +247,15 @@ def render_observation(world, agent, cfg, knob_ai: float,
         t["prog"].format(v=c.progress),
         t["mult"].format(v=mult),
         "",
-        t["known_hdr"],
-        t["known_none"],      # TODO(task 3): accumulated knowledge from talk/testaments
+        # 예전엔 하드코딩 "아직 없음" 이었다. 이제 에이전트가 memory_write 로 직접 쌓는 메모다
+        # (누가 어떤 언어를 읽는지 등은 타인의 known_langs 라 감춰야 하므로 자동 채우지 않는다).
+        t["memo_hdr"],
+    ]
+    if agent.memory.strip():
+        parts += [f"  {ln}" for ln in agent.memory.splitlines()]
+    else:
+        parts.append(t["memo_empty"])
+    parts += [
         "",
         t["income"].format(v=income),
         t["multi"],

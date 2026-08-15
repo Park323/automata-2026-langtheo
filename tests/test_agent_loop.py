@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from core import config
-from core.agent_loop import MAX_STEPS, Sink, learn_cost, run_agent_turn
+from core.agent_loop import Sink, learn_cost, run_agent_turn
 from core.llm import StubClient, assistant_msg, tool_call
 from core.loop import init_world
 from domains.meteor import prompts
