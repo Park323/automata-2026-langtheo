@@ -202,6 +202,50 @@ def test_no_leak_after_eviction():
     assert "XLATION_LEAK" not in blob
 
 
+def _api_valid(messages):
+    """OpenAI 대화 유효성: 모든 tool 메시지는 tool_calls 를 든 assistant 의 열린 id 와 짝이
+    맞아야 하고, 그 사이에 user/system 이 끼면 안 된다 (끼면 실제 API 가 400 을 돌려준다)."""
+    pending = set()
+    for m in messages:
+        role = m["role"]
+        if role == "assistant" and m.get("tool_calls"):
+            pending = {tc["id"] for tc in m["tool_calls"]}
+        elif role == "tool":
+            if m.get("tool_call_id") not in pending:
+                return False
+            pending.discard(m["tool_call_id"])
+        elif role in ("user", "system") and pending:
+            return False           # tool 응답이 안 온 채 다음 블록 시작 → 짝 깨짐
+    return True
+
+
+def test_conversation_stays_api_valid_across_accumulation_and_eviction(cfg):
+    """한 assistant 에 여러 tool_call 이 붙는 실제 패턴에서도, 누적·축출 내내 대화가
+    API-유효해야 한다 (assistant(tool_calls)↔tool 응답 짝이 절대 안 깨진다)."""
+    d = yaml.safe_load(open(BASE, encoding="utf-8"))
+    d["llm"]["context_limit"] = 1300          # 축출 강제
+    cfg = config.from_dict(d)
+    world = init_world(cfg, itertools.count(1))
+    agent = world.agents["Asla1"]
+    patterns = [
+        # 한 assistant 에 tool_call 3개 → tool 응답 3개
+        [assistant_msg(tool_call("memory_write", "1", text="m", reasoning="r"),
+                       tool_call("speak", "2", to="Asla3", text="x", reasoning="r"),
+                       tool_call("end_turn", "3", reasoning="r"))],
+        # 여러 스텝 (assistant/tool 라운드 2회)
+        [assistant_msg(tool_call("speak", "1", to="Asla3", text="y", reasoning="r")),
+         assistant_msg(tool_call("end_turn", "2", reasoning="r"))],
+    ]
+    for t in range(9):
+        agent.ap = cfg.turn.action_points
+        agent.budget = 500
+        up = prompts.render_observation(world, agent, cfg, 48)
+        run_agent_turn(world, agent, cfg, StubClient(patterns[t % 2]), Sink(),
+                       48, prompts.system_for(agent), up)
+        assert _api_valid(agent.messages), f"턴 {t} 후 대화가 API-무효 (짝 깨짐)"
+    assert agent.messages[0]["role"] == "system"
+
+
 def test_agent_messages_isolated():
     """에이전트별 messages 는 별개 객체이고, 축출 로직이 남의 조각을 섞지 않는다."""
     cfg = _cfg_turns(3, ctx=400)
