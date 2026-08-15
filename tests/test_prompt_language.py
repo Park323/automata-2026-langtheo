@@ -101,3 +101,28 @@ def test_tool_tokens_stay_english(world_cfg):
         for token in ("wellness", "national", "facility", "propose_vote",
                       "invest", "procreate"):
             assert token in obs, f"{a.native_lang} 관측에 토큰 '{token}' 이 없다"
+
+
+def test_roster_lists_everyone(world_cfg):
+    """누가 존재하는지는 공개 정보다.
+
+    없으면 에이전트가 서로를 부를 수 없어 소통이 구조적으로 불가능하다 —
+    실측에서 speak 40건이 전부 unknown recipient 로 실패했다.
+    """
+    world, cfg = world_cfg
+    for aid in ("Asla1", "Ranoa2", "Miris3"):
+        obs = prompts.render_observation(world, world.agents[aid], cfg, 48.0, [])
+        for other in world.agents:
+            assert other in obs, f"{aid} 의 관측에 {other} 가 없다"
+        lang = world.agents[aid].native_lang
+        assert prompts.T[lang]["roster_you"] in obs      # 자기 표시
+
+
+def test_roster_reveals_no_state(world_cfg):
+    """명단에는 id 와 소속만. 진척·예산·언어 능력은 spec 4.1 의 금지 목록이다."""
+    world, cfg = world_cfg
+    world.agents["Ranoa2"].budget = 12345.0
+    world.agents["Ranoa2"].known_langs = {"zh", "ja"}
+    world.countries["Ranoa"].progress = 777.0
+    obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0, [])
+    assert "12345" not in obs and "777" not in obs

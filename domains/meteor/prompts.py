@@ -78,6 +78,7 @@ T = {
         in_fail="  [{id}] 通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
         in_unread="  [{id}] {frm} より — 読めないメッセージが届きました",
         in_from="  [{id}] {frm} より{label}", in_orig="      [原文] 「{t}」",
+        roster="人々:", roster_you="（あなた）",
         mem_hdr="あなたの覚え書き:", mem_none="  （まだ何もない）",
         warn="［記憶の圧迫］記憶が限界に近づいています。古いものから消えていきます。",
         own="あなたの言語", other="{nation} の言語",
@@ -108,6 +109,7 @@ T = {
         in_fail="  [{id}] 通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
         in_unread="  [{id}] 来自 {frm} — 送到一条你读不懂的消息",
         in_from="  [{id}] 来自 {frm}{label}", in_orig="      [原文] 「{t}」",
+        roster="人们:", roster_you="（你）",
         mem_hdr="你的笔记:", mem_none="  （还没有）",
         warn="［记忆压力］记忆接近上限，旧的内容会先消失。",
         own="你自己的语言", other="{nation} 的语言",
@@ -141,6 +143,7 @@ T = {
         in_fail="  [{id}] Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",
         in_unread="  [{id}] de {frm} — un message illisible est arrivé",
         in_from="  [{id}] de {frm}{label}", in_orig="      [original] « {t} »",
+        roster="Les gens :", roster_you="(vous)",
         mem_hdr="Vos notes :", mem_none="  (rien encore)",
         warn="[Pression mémoire] Votre mémoire approche de sa limite ; le plus ancien disparaît d'abord.",
         own="votre propre langue", other="la langue de {nation}",
@@ -165,6 +168,24 @@ def _lang_phrase(world, agent, lang: str) -> str:
     if lang == agent.native_lang:
         return t["own"]
     return t["other"].format(nation=_nation_of_lang(world, lang))
+
+
+def _roster(world, agent, t: dict) -> str:
+    """누가 존재하는가. **공개 정보다.**
+
+    이것이 없으면 에이전트가 서로를 부를 수 없어 소통이 구조적으로 불가능하다 —
+    실측에서 speak 40건이 전부 `unknown recipient` 로 실패했고 국가명(Asla)이나
+    도구 인자(facility)를 수신자로 넣고 있었다.
+
+    spec 4.1 의 "절대 넣지 않는 것" 은 타국의 **진척·예산·국토·언어 능력·내심** 이지
+    존재 자체가 아니다. 여기에는 id 와 소속만 넣는다.
+    """
+    parts = []
+    for cid in world.countries:
+        names = [f"{a.id}{t['roster_you'] if a.id == agent.id else ''}"
+                 for a in world.agents.values() if a.country == cid]
+        parts.append(" ".join(sorted(names)))
+    return "  ·  ".join(parts)
 
 
 def render_costs(world, agent, cfg, knob_ai: float) -> str:
@@ -236,6 +257,9 @@ def render_observation(world, agent, cfg, knob_ai: float,
         t["land"].format(v=land),
         t["prog"].format(v=c.progress),
         t["mult"].format(v=mult),
+        "",
+        t["roster"],
+        "  " + _roster(world, agent, t),
         "",
         t["known_hdr"],
         t["known_none"],      # TODO(task 3): accumulated knowledge from talk/testaments
