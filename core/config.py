@@ -119,6 +119,9 @@ class LLM:
     agent_model: str
     translate_model: str
     temperature: float
+    # 사후 채점 전용 (spec 6.2). 런에는 쓰이지 않으므로 없으면 번역 모델을 쓴다 —
+    # 판정자는 6방향 언어쌍을 다 읽어야 해서 에이전트용 7B 로는 부족하다.
+    judge_model: str | None = None
 
 
 @dataclass(frozen=True)
