@@ -349,8 +349,9 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         p["inbox"]["msg_id"] = gid          # 전역 id — understood 의 조인 키 (spec 6.1)
         result.messages_log.append({"turn": world.turn, "msg_id": gid,
                                     "from": sent["from"], "to": sent["to"],
+                                    "action": sent.get("kind", "speak"),
+                                    "reply_to": sent.get("reply_to"),
                                     "route": p["kind"], "delivered": p["delivered"],
-                                    "understood": None,   # T+1 에 수신자가 채운다
                                     "meta": p["meta"]})
         if p["sender_notice"]:
             su = world.agents[sent["from"]].uid if sent["from"] in world.agents else None

@@ -63,11 +63,22 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     kind = classify(sent["from_country"], sent["to_country"], sent.get("route"))
     reader = can_read(recipient_known_langs, from_lang)
 
-    meta = {"truncated": chars_cut > 0, "chars_cut": chars_cut,
-            "text_sent": text_sent, "translate_prompt": None, "logprob_mean": None}
+    # spec 6.1 스키마 전체. text_delivered 가 없으면 소실률·생성률을 아예 못 낸다.
+    meta = {
+        "src_lang": from_lang, "dst_lang": to_lang,
+        "text_written": sent["text"],          # 절단 전. 발신자가 실제로 쓴 것
+        "text_sent": text_sent,                # 절단 후. 번역 입력이자 채점 기준선
+        "text_delivered": None,                # 수신자가 실제로 본 것 (아래에서 채움)
+        "translate_instruction": sent.get("translate_instruction"),
+        "len_written": len(sent["text"]), "len_limit": cfg.length.message_max_chars[from_lang],
+        "truncated": chars_cut > 0, "chars_cut": chars_cut,
+        "reader": reader,                      # 수신자가 발신 언어를 읽는가 (원문 병기 여부)
+        "translate_prompt": None, "logprob_mean": None,
+    }
 
     # 자국 내: 원문 직통, 라벨 없음
     if kind == "domestic":
+        meta["text_delivered"] = text_sent          # 번역 없음 — 기저선 (지표 4c)
         inbox = {"from": sent["from"], "label": None, "text": text_sent,
                  "original": None, "reply_to": sent.get("reply_to")}
         return {"kind": kind, "delivered": True, "inbox": inbox,
@@ -76,6 +87,7 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     # 국제 원문 직통(original): 수신자가 못 읽으면 전달 실패, 비용은 이미 청구됨
     if kind == "original":
         if reader:
+            meta["text_delivered"] = text_sent      # 원문 그대로 (지표 4d)
             inbox = {"from": sent["from"], "label": None, "text": text_sent,
                      "original": None, "reply_to": sent.get("reply_to")}
             return {"kind": kind, "delivered": True, "inbox": inbox,
@@ -92,6 +104,7 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
                                  sent.get("translate_instruction"))
     meta["translate_prompt"] = tr["prompt"]
     meta["logprob_mean"] = tr["logprob_mean"]
+    meta["text_delivered"] = tr["text"]             # 번역 경유 (지표 4a·6a·7)
     inbox = {
         "from": sent["from"], "label": AI_LABEL, "text": tr["text"],
         "original": text_sent if reader else None,   # 학습자만 원문 병기 (spec 5.1)
