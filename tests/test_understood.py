@@ -138,3 +138,21 @@ def test_unreported_understood_stays_null():
     res = _run(cfg, clients)
     assert len(res.messages_log) == 1
     assert res.messages_log[0]["understood"] is None
+
+
+def test_non_recipient_report_is_ignored():
+    """엉뚱한 에이전트가 남의 msg_id 를 보고해도 그 메시지 understood 는 오염되지 않는다.
+    (약한 모델이 지어낸 msg_id 로 지표 4 기준선을 망치는 것을 막는다.)"""
+    cfg = _cfg_turns(2)
+    clients = _clients({
+        # Asla1 → Asla2 (msg_id 1). 수신자는 Asla2 다.
+        "Asla1": [assistant_msg(tool_call("speak", "1", to="Asla2", text="HI")),
+                  assistant_msg(tool_call("end_turn", "2", reasoning="r"))],
+        # Ranoa1 은 수신자가 아닌데 msg_id=1 을 보고한다 → 무시돼야 한다.
+        "Ranoa1": [{"role": "assistant", "content": "", "tool_calls": []},
+                   assistant_msg(tool_call("report_understanding", "1", msg_id=1,
+                                           understood="IMPOSTER")),
+                   assistant_msg(tool_call("end_turn", "2", reasoning="x"))],
+    })
+    res = _run(cfg, clients)
+    assert res.messages_log[0]["understood"] is None       # 오염 안 됨

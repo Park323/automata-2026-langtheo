@@ -369,9 +369,11 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     # e'. understood 조인 (spec 6.1) — 이번 턴 수신자들의 보고를 전 턴 메시지에 붙인다.
     #     msg_id 로 조인. 미보고면 None 그대로(지표 4 분모에서 제외). understood 는 절대
     #     다른 에이전트에게 노출되지 않는다 — messages_log(로그 전용)에만 남는다.
-    for _aid, mid, understood in sink.understandings:
+    #     ⚠ 실제 수신자(entry["to"])의 보고만 받는다 — 약한 모델이 남의(혹은 지어낸) msg_id 를
+    #       대면 다른 메시지의 understood 를 오염시켜 지표 4 기준선이 망가진다.
+    for aid, mid, understood in sink.understandings:
         entry = result.msg_index.get(mid)
-        if entry is not None:
+        if entry is not None and entry["to"] == aid:
             entry["understood"] = understood
 
     # f. 투표 기록 (정식 집계는 이후 과제)

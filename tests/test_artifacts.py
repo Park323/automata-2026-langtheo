@@ -106,3 +106,7 @@ def test_summary(run_dir):
     summ = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     assert summ["run_id"] == "test_run"
     assert "end_reasons" in summ and "final" in summ
+    # 실패 집계·무효 표시(#8) + 무응답률(#7)
+    assert "llm_failure_rate" in summ and "invalid_high_failure" in summ
+    assert "no_response_rate" in summ and "delivered" in summ
+    assert summ["invalid_high_failure"] is False           # Stub 은 실패 0

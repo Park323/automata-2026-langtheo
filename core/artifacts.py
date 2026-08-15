@@ -23,6 +23,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# 에이전트-턴의 이 비율을 넘겨 LLM 호출이 실패하면 그 런을 무효로 표시한다 (#8). 실패는
+# 조용한 편향이라(비싼 조건일수록 429 가 늘 수 있음) 조율 실패를 번역 왜곡과 혼동하게 만든다.
+# 세계 규칙이 아니라 분석 임계값이므로 config 가 아니라 여기 둔다.
+FAILURE_INVALID_RATE = 0.02
+
 
 def code_commit() -> str | None:
     """현재 코드의 커밋 해시. git 이 없거나 리포가 아니면 None."""
@@ -147,16 +152,35 @@ class RunWriter:
             self._write(self._msg_fh, mlog[self._msg_written])
             self._msg_written += 1
         all_reasons: Counter = Counter()
+        agent_turns = 0
+        failures = 0
         for tl in result.agent_logs:
             all_reasons.update(lg.get("end_reason") for lg in tl.values())
+            agent_turns += len(tl)
+            failures += sum(1 for lg in tl.values() if lg.get("error"))
+        failure_rate = round(failures / agent_turns, 4) if agent_turns else 0.0
+
+        # 무응답률 (#7): 전달된 메시지 중 수신자가 report_understanding 을 안 한 비율.
+        # 조건 간에 크게 다르면 그 자체가 편향 신호 — 무응답을 오해로 세면 안 되므로 별도로 남긴다.
+        delivered = sum(1 for m in result.messages_log if m.get("delivered"))
+        reported = sum(1 for m in result.messages_log
+                       if m.get("delivered") and m.get("understood") is not None)
+        no_response_rate = round(1 - reported / delivered, 4) if delivered else None
+
         summary = {
             "run_id": self.run_id,
             "turns": len(result.state_lines),
             "deaths": result.deaths,
             "final": result.final,
             "messages": len(result.messages_log),
-            "understood_reported": sum(1 for m in result.messages_log
-                                       if m.get("understood") is not None),
+            "delivered": delivered,
+            "understood_reported": reported,
+            "no_response_rate": no_response_rate,
+            "agent_turns": agent_turns,
+            "llm_failures": failures,
+            "llm_failure_rate": failure_rate,
+            # 실패율이 임계를 넘으면 이 런은 무효 — 결과 해석에서 제외해야 한다 (#8)
+            "invalid_high_failure": failure_rate > FAILURE_INVALID_RATE,
             "end_reasons": dict(all_reasons),
         }
         with open(self.dir / "summary.json", "w", encoding="utf-8") as f:
