@@ -160,8 +160,10 @@ def main() -> None:
         for aid, lg in acted.items():
             kinds = [a["type"] for a in lg["actions"]]
             print(f"  {aid}: {kinds}")
-            if lg["reasoning"]:
-                print(f"       reasoning: {lg['reasoning'][:120]}")
+            first = next((r["reasoning"] for r in (lg.get("reasonings") or [])
+                          if r.get("reasoning")), "")
+            if first:
+                print(f"       reasoning: {first[:120]}")
         for aid, lg in errored.items():
             print(f"  {aid}: [오류] {lg['error']}")
     if res.messages_log:
