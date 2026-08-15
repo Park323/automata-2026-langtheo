@@ -146,7 +146,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "from_lang": agent.native_lang, "to": to, "to_country": recipient.country,
             "to_lang": recipient.native_lang, "route": args.get("route"),
             # LLM 이 문자열 아닌 값을 줄 수 있어 강제 문자열화 (truncate·translate 크래시 방지)
-            "text": str(args.get("text", "")), "intent": str(args.get("intent", "")),
+            "text": str(args.get("text", "")),
             "translate_instruction": None if ti is None else str(ti),
             "reply_to": args.get("reply_to"),
         })
@@ -190,8 +190,10 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     messages = [{"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}]
     actions: list[dict] = []
-    reasoning = ""
+    reasonings: list[dict] = []   # spec 4.2 — 행동마다의 근거. 지표 4 를 여기서 역추적한다
+    api_reasoning = ""      # API 의 message.reasoning — 추론 모델의 사고 과정. 다른 것이다
     error = None
+    ended_by = "exhausted"  # ended | exhausted | error
 
     for _ in range(MAX_STEPS):
         try:
@@ -200,8 +202,10 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             error = f"{type(e).__name__}: {str(e)[:200]}"
             break
         msg = resp["choices"][0]["message"]
-        if msg.get("content"):
-            reasoning = msg["content"]
+        # ⚠ message.reasoning 은 추론 모델의 사고 과정이고 spec 의 reasoning 과 다르다.
+        #    섞지 않는다 (spec 9장). 원본은 raw_calls.jsonl 에 그대로 남는다.
+        if msg.get("reasoning"):
+            api_reasoning = str(msg["reasoning"])
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
             break
@@ -229,14 +233,21 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
                 control = None
             else:
                 result, control = execute_tool(name, args, world, agent, cfg, sink, knob_ai)
+            why = str(args.get("reasoning", ""))
+            reasonings.append({"tool": name, "ok": bool(result.get("ok")), "reasoning": why})
             if name != "end_turn" and result.get("ok"):
                 actions.append({"type": name, **args})
             messages.append({"role": "tool", "tool_call_id": tc["id"],
                              "content": json.dumps(result, ensure_ascii=False)})
             if control == "end":
                 stop = True
+                ended_by = "ended"
                 break     # procreate 뒤쪽 tool_call 은 버린다
         if stop:
             break
 
-    return {"reasoning": reasoning, "actions": actions, "received": [], "error": error}
+    if error:
+        ended_by = "error"
+    return {"reasonings": reasonings, "api_reasoning": api_reasoning,
+            "actions": actions, "error": error, "ended_by": ended_by,
+            "reasoning_missing": not any(r["reasoning"] for r in reasonings)}

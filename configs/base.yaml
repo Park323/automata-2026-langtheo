@@ -75,7 +75,6 @@ length:
     ja: 130
     zh:  90
     fr: 400
-  intent_max_chars:      200
   understood_max_chars:  200
   translate_instruction_max_chars: 100
   on_overflow: truncate

@@ -297,13 +297,12 @@ def _dequeue_inbox(world: World, aid: str) -> list[dict]:
             if current and e.get("to_uid") is not None and e["to_uid"] != current.uid:
                 continue                     # recipient_dead → 폐기
             out.append(e["msg"])
-    for i, m in enumerate(out, 1):
-        m["msg_id"] = i
-    return out
+    return out          # msg_id 는 발신 시점에 전역으로 부여됨 (spec 6.1)
 
 
 def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translator,
-                    knob_ai: float, counter: "itertools.count", result: RunResult) -> set:
+                    knob_ai: float, counter: "itertools.count", result: RunResult,
+                    msg_ids: "itertools.count") -> set:
     """전원의 의도(sink)를 정산한다. 모든 반복은 agent_id 정렬 순 → 결정론(재현성 #1).
     반환: 이번 턴 procreate 로 죽은 id 집합."""
     # a. 학습 반영 (다음 턴 관측부터 유효). known_langs 변경은 여기서 처음 일어난다.
@@ -346,14 +345,18 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         p = messaging.process_message(sent, reck, cfg, translator, knob_ai)
         world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["to"],
                                   "to_uid": to_uid, "msg": p["inbox"]})
-        result.messages_log.append({"turn": world.turn, "from": sent["from"], "to": sent["to"],
+        gid = next(msg_ids)
+        p["inbox"]["msg_id"] = gid          # 전역 id — understood 의 조인 키 (spec 6.1)
+        result.messages_log.append({"turn": world.turn, "msg_id": gid,
+                                    "from": sent["from"], "to": sent["to"],
                                     "route": p["kind"], "delivered": p["delivered"],
-                                    "intent": sent["intent"], "meta": p["meta"]})
+                                    "understood": None,   # T+1 에 수신자가 채운다
+                                    "meta": p["meta"]})
         if p["sender_notice"]:
             su = world.agents[sent["from"]].uid if sent["from"] in world.agents else None
             world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["from"],
                                       "to_uid": su, "msg": {"from": None, "text": None,
-                                      "label": None, "original": None,
+                                      "label": None, "original": None, "msg_id": next(msg_ids),
                                       "delivery_failed_to": sent["to"]}})
 
     # f. 투표 기록 (정식 집계는 이후 과제)
@@ -370,7 +373,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
 
 def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
                      counter: "itertools.count", client_for, translator, knob_ai: float,
-                     render_obs, system_prompt, is_last: bool = False,
+                     render_obs, system_prompt, msg_ids, is_last: bool = False,
                      parallel: bool = True, on_turn_end=None) -> None:
     """한 턴 (에이전트). spec 3.1 순서를 지키되 3단계는 9명 병렬, 5단계는 정렬 정산."""
     # 1. 소득 + AP 리셋
@@ -414,7 +417,8 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         merged.votes += s.votes
         merged.learns += s.learns
         merged.procreations += s.procreations
-    procreated = _settle_agentic(world, cfg, rng, merged, translator, knob_ai, counter, result)
+    procreated = _settle_agentic(world, cfg, rng, merged, translator, knob_ai, counter,
+                                 result, msg_ids)
 
     # 7. 생사 판정 (마지막 턴 생략)
     if not is_last:
@@ -437,12 +441,14 @@ def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
     translator      : 번역 전용 클라이언트 (정산은 단일 스레드라 공유 가능).
     """
     counter = itertools.count(1)
+    msg_ids = itertools.count(1)      # 전역 메시지 id — understood 의 조인 키 (spec 6.1)
     world = init_world(cfg, counter)
     result = RunResult(world=world)
     for t in range(1, cfg.world.total_turns + 1):
         world.turn = t
         run_turn_agentic(world, cfg, rng, result, counter, client_for, translator, knob_ai,
-                         render_obs, system_prompt, is_last=(t == cfg.world.total_turns),
+                         render_obs, system_prompt, msg_ids,
+                         is_last=(t == cfg.world.total_turns),
                          parallel=parallel, on_turn_end=on_turn_end)
     result.final = final_survival(world, cfg, rng)
     return result

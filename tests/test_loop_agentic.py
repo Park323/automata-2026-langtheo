@@ -43,7 +43,7 @@ def test_message_delivery_delayed():
     """이번 턴 발신은 다음 턴 관측에 나타난다 (같은 턴엔 없음)."""
     cfg = _cfg(2)
     clients = _clients({"Asla1": [assistant_msg(
-        tool_call("speak", "1", to="Asla2", text="HELLO_MARK", intent="i"))]})
+        tool_call("speak", "1", to="Asla2", text="HELLO_MARK"))]})
     _run(cfg, clients, parallel=False)
     a2 = clients["Asla2"]                       # 빈 스크립트 → 턴당 chat 1회
     turn1 = a2.calls[0]["messages"][1]["content"]
@@ -72,7 +72,7 @@ def test_parallel_equals_sequential():
     cfg = _cfg(3)
     def once(par):
         c = _clients({"Asla1": [assistant_msg(
-            tool_call("speak", "1", to="Ranoa2", route="ai", text="X", intent="i"))]})
+            tool_call("speak", "1", to="Ranoa2", route="ai", text="X"))]})
         return _run(cfg, c, seed=7, parallel=par).state_log
     assert once(True) == once(False)
 
@@ -90,7 +90,7 @@ def test_cap_proportional_order_independent():
         sink = Sink()
         sink.facility = order            # cap=500, 총 800 → 초과 300 비례 환급
         _settle_agentic(world, cfg, random.Random(42), sink, StubClient([]), 48,
-                        itertools.count(1000), RunResult(world=world))
+                        itertools.count(1000), RunResult(world=world), itertools.count(1))
         return (round(world.countries["Asla"].progress, 6),
                 round(world.agents["Asla1"].budget, 6),
                 round(world.agents["Asla2"].budget, 6))

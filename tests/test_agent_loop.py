@@ -51,10 +51,10 @@ def _results(client):
 def test_ap_cap_fourth_speak_fails(cfg, world):
     """speak 4번째가 ok:False (AP 0.3 × 3 = 0.9, 4번째는 1.2 > 1.0)."""
     script = [assistant_msg(
-        tool_call("speak", "1", to="Asla2", text="x", intent="i"),
-        tool_call("speak", "2", to="Asla2", text="x", intent="i"),
-        tool_call("speak", "3", to="Asla2", text="x", intent="i"),
-        tool_call("speak", "4", to="Asla2", text="x", intent="i"),
+        tool_call("speak", "1", to="Asla2", text="x"),
+        tool_call("speak", "2", to="Asla2", text="x"),
+        tool_call("speak", "3", to="Asla2", text="x"),
+        tool_call("speak", "4", to="Asla2", text="x"),
     ), assistant_msg(tool_call("end_turn", "5"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
     results = _results(client)
@@ -99,7 +99,7 @@ def test_invest_amount_not_number(cfg, world):
 
 def test_speak_to_self_rejected(cfg, world):
     """자기 자신에게는 메시지를 못 보낸다 (무의미한 낭비)."""
-    script = [assistant_msg(tool_call("speak", "1", to="Asla1", text="x", intent="i")),
+    script = [assistant_msg(tool_call("speak", "1", to="Asla1", text="x")),
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
     assert any((not r["ok"]) and "yourself" in r.get("error", "") for r in _results(client))
@@ -117,7 +117,7 @@ def test_malformed_tool_call_no_crash(cfg, world):
 
 def test_speak_text_coerced_to_str(cfg, world):
     """text 가 문자열이 아니어도(숫자) 크래시하지 않고 문자열로 저장된다."""
-    script = [assistant_msg(tool_call("speak", "1", to="Asla2", text=123, intent="i")),
+    script = [assistant_msg(tool_call("speak", "1", to="Asla2", text=123)),
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
     assert len(sink.messages) == 1

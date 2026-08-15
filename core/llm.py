@@ -49,12 +49,14 @@ class OpenRouterClient:
     """
 
     def __init__(self, model: str, api_key: str | None = None,
-                 temperature: float = 0.7, retries: int = 4, timeout: int = 120):
+                 temperature: float = 0.7, retries: int = 4, timeout: int = 120,
+                 recorder=None):
         self.model = model
         self.api_key = api_key or load_key()
         self.temperature = temperature
         self.retries = retries
         self.timeout = timeout
+        self.recorder = recorder      # 호출 1회(재시도 각각)를 raw 로 남긴다 (spec 9장)
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
              temperature: float | None = None) -> dict:
@@ -73,9 +75,13 @@ class OpenRouterClient:
                      "Content-Type": "application/json"},
         )
         for attempt in range(self.retries):
+            t0 = time.time()
             try:
-                return json.load(urllib.request.urlopen(req, timeout=self.timeout))
+                resp = json.load(urllib.request.urlopen(req, timeout=self.timeout))
+                self._record(body, attempt + 1, t0, response=resp)
+                return resp
             except urllib.error.HTTPError as e:
+                self._record(body, attempt + 1, t0, error=f"HTTP {e.code}")
                 if e.code == 429:                          # 레이트 리밋: 길게 물러난다
                     time.sleep(min(60, 8 * (2 ** attempt)))
                     continue
@@ -83,11 +89,18 @@ class OpenRouterClient:
                     time.sleep(3 * (attempt + 1))
                     continue
                 raise
-            except Exception:
+            except Exception as e:
+                self._record(body, attempt + 1, t0, error=f"{type(e).__name__}: {e}")
                 if attempt == self.retries - 1:
                     raise
                 time.sleep(3 * (attempt + 1))
         raise RuntimeError("재시도 소진")
+
+    def _record(self, body, attempt, t0, response=None, error=None):
+        if self.recorder is None:
+            return
+        self.recorder({"attempt": attempt, "latency_ms": round((time.time() - t0) * 1000),
+                       "request": body, "response": response, "error": error})
 
 
 class StubClient:
@@ -102,21 +115,29 @@ class StubClient:
     편의를 위해 tool_call(name, **args) 헬퍼로 스크립트를 짧게 쓸 수 있다.
     """
 
-    def __init__(self, script: list[dict]):
+    def __init__(self, script: list[dict], recorder=None):
         self._script = list(script)
         self._i = 0
         self.calls: list[dict] = []          # 검증용: 받은 messages 기록
+        self.recorder = recorder             # 실물과 같은 raw 기록 경로 (테스트에서 형식 검증)
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
              temperature: float | None = None) -> dict:
         self.calls.append({"messages": list(messages), "tools": tools})   # 스냅샷
+        _t0 = time.time()
         if self._i >= len(self._script):
             # 스크립트 소진 → 도구 없이 종료 신호
             msg = {"role": "assistant", "content": "", "tool_calls": []}
         else:
             msg = self._script[self._i]
             self._i += 1
-        return {"choices": [{"message": msg}]}
+        resp = {"choices": [{"message": msg}]}
+        if self.recorder is not None:
+            self.recorder({"attempt": 1, "latency_ms": round((time.time() - _t0) * 1000),
+                           "request": {"model": "stub", "messages": list(messages),
+                                       "tools": tools, "temperature": temperature},
+                           "response": resp, "error": None})
+        return resp
 
 
 def tool_call(name: str, call_id: str = "c", **arguments) -> dict:

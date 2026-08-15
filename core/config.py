@@ -105,7 +105,6 @@ class Inheritance:
 @dataclass(frozen=True)
 class Length:
     message_max_chars: dict[str, int]
-    intent_max_chars: int
     understood_max_chars: int
     translate_instruction_max_chars: int
     on_overflow: str

@@ -20,7 +20,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from core import config
+from core import config, run_io
 from core.llm import OpenRouterClient, load_key
 from core.loop import run_agentic
 from domains.meteor import prompts
@@ -117,6 +117,9 @@ def main() -> None:
     print(f"3턴 스모크 실행  (turns={args.turns}, knob={knob}, seed={args.seed})")
     print("=" * 64)
     t0 = time.time()
+    writer = run_io.RunWriter(f"smoke_{args.turns}t_seed{args.seed}", cfg_raw=raw)
+    agent_client.inner.recorder = writer.recorder(kind="agent")
+    translator.inner.recorder = writer.recorder(kind="translate")
 
     def progress(turn, result):        # 턴마다 실시간 출력 (flush)
         print(f"  턴 {turn} 완료  ({time.time() - t0:.0f}s)  "
@@ -128,8 +131,11 @@ def main() -> None:
                       client_for=lambda aid: agent_client, translator=translator,
                       knob_ai=knob, render_obs=prompts.render_observation,
                       system_prompt=prompts.system_for, parallel=not args.sequential,
-                      on_turn_end=progress)
+                      on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)))
     elapsed = time.time() - t0
+    writer.close({"final": res.final, "deaths": res.deaths,
+                  "raw_calls": writer.counts})
+    print(f"\n산출물        {writer.dir}")
 
     # ── 호출·비용 ──
     print(f"\n소요 시간      {elapsed:.1f}s  ({elapsed / args.turns:.1f}s/턴)")
