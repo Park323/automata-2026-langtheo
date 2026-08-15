@@ -25,6 +25,7 @@ class Agent:
     # 넘기려면 1문장으로 압축해 유언에 옮겨야 하고, 그 압축이 곧 구전 감쇠다.
     convo: list = field(default_factory=list)
     last_prompt_tokens: int = 0   # 직전 호출의 실측 프롬프트 토큰 (압박 판정에 쓴다)
+    budget_start: float = 0.0     # 이번 턴 **결정 시점**의 예산. x̂ 의 분모 (spec 8.4)
 
 
 @dataclass

@@ -113,6 +113,7 @@ class RunWriter:
                 "turn": turn, "agent": aid, "country": a.country, "age": a.age,
                 "lambda": round(a.lam, 4), "known_langs": sorted(a.known_langs),
                 "parent_langs": sorted(a.parent_langs), "budget": round(a.budget, 4),
+                "budget_start": round(a.budget_start, 4),
                 "born_turn": a.born_turn, "born_by": a.born_by, "alive": a.alive,
                 "uid": a.uid,
             })
@@ -133,6 +134,11 @@ class RunWriter:
                 "memory_len": lg.get("memory_len"),
                 "actions": [a.get("type") for a in lg.get("actions", [])],
             })
+        for lr in result.learns_log:
+            if lr.get("turn") == turn and not lr.get("_written"):
+                lr["_written"] = True
+                self._append("events", {"type": "learn",
+                                        **{k: v for k, v in lr.items() if k != "_written"}})
         for b in result.births:
             if b.get("turn") == turn and not b.get("_written"):
                 b["_written"] = True

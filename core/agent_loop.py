@@ -39,15 +39,23 @@ class Sink:
 
 # ── 학습 비용 (spec 3.4) ──────────────────────────────────────────────────────
 
-def learn_cost(agent, country_id: str, world, cfg) -> tuple[float, str]:
-    """(비용, 할인사유). L × 국내구사자(×0.5) × 부모(×0.5), 중복 시 ×0.25."""
+def learn_discounts(agent, country_id: str, world) -> tuple[bool, bool]:
+    """(국내 구사자 있음, 부모가 구사함). spec 3.4 — 판정은 **그 순간** 새로 한다.
+
+    국내 구사자가 죽으면 그 뒤의 학습은 다시 2배다. 할인은 상태가 아니라 조건이다.
+    """
     target_lang = world.countries[country_id].lang
-    base = cfg.costs.learn_base
     domestic = any(
         o.id != agent.id and o.country == agent.country and target_lang in o.known_langs
         for o in world.agents.values()
     )
-    parent = target_lang in agent.parent_langs
+    return domestic, target_lang in agent.parent_langs
+
+
+def learn_cost(agent, country_id: str, world, cfg) -> tuple[float, str]:
+    """(비용, 할인사유). L × 국내구사자(×0.5) × 부모(×0.5), 중복 시 ×0.25."""
+    base = cfg.costs.learn_base
+    domestic, parent = learn_discounts(agent, country_id, world)
     mult = (0.5 if domestic else 1.0) * (0.5 if parent else 1.0)
     reasons = []
     if domestic:
@@ -127,7 +135,20 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         agent.ap -= cfg.ap.learn
         # known_langs 는 다른 에이전트가 읽으므로(국내 구사자 판정) 즉시 바꾸지 않는다.
         # sink 에 넣어 정산 때(정렬 순) 반영한다 — 병렬 레이스·재현성 방지.
-        sink.learns.append((agent.id, world.countries[country_id].lang))
+        domestic, parent = learn_discounts(agent, country_id, world)
+        sink.learns.append({
+            "agent": agent.id, "country": agent.country,
+            "target": country_id, "lang": world.countries[country_id].lang,
+            # ★ x̂ 의 전제. 어느 눈금이었는지가 없으면 "학습이 일어났다" 만 남고
+            #   x 를 구간으로 좁힐 수 없다 (spec 6.1 · 8.4).
+            "charged": c, "rung": round(c / cfg.costs.learn_base, 4),
+            "discount_domestic": domestic, "discount_parent": parent,
+            # 나이는 x̂ 의 최대 노이즈원이다 — 늙으면 회수 기간이 없어 같은 눈금도
+            #   사실상 더 비싸다. 층화하지 않으면 "안 배운 것" 이 x 가 작아서인지
+            #   늙어서인지 구분되지 않는다 (spec 8.4).
+            "age": agent.age, "budget_after": round(agent.budget, 2),
+            "lam": round(agent.lam, 4),
+        })
         return {"ok": True, "learned": country_id, "charged": c, "discount": reason,
                 "effect": "you can read it from next turn",
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None

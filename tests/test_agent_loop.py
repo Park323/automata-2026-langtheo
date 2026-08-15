@@ -167,9 +167,16 @@ def test_learn_defers_known_langs(cfg, world):
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
     assert "zh" not in agent.known_langs          # 즉시 반영 안 됨
-    assert sink.learns == [("Asla1", "zh")]          # sink 로 이연
     assert agent.budget == 10000 - 300            # 예산은 즉시 차감
     assert agent.ap == cfg.turn.action_points - cfg.ap.learn
+
+    # 학습 1건 = x̂ 관측 1건. **어느 눈금이었는지와 나이가 없으면 x 를 구간으로
+    # 좁힐 수 없다** (spec 6.1 · 8.4) — 이 필드들이 x̂ 의 전제다.
+    (rec,) = sink.learns
+    assert rec["agent"] == "Asla1" and rec["lang"] == "zh" and rec["target"] == "Ranoa"
+    assert rec["charged"] == 300 and rec["rung"] == 1.0
+    assert rec["discount_domestic"] is False and rec["discount_parent"] is False
+    assert rec["age"] == 0 and rec["budget_after"] == 9700.0
 
 
 # ── #11 정보 은닉 (가장 중요) ────────────────────────────────────────────────

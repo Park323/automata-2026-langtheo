@@ -33,6 +33,7 @@ class RunResult:
     final: dict = field(default_factory=dict)         # 생존 판정 결과 (spec 2.5)
     messages_log: list = field(default_factory=list)  # 처리된 발신 메시지 (과제2)
     votes_log: list = field(default_factory=list)     # propose_vote 기록 (과제2)
+    learns_log: list = field(default_factory=list)    # 학습 1건 = x̂ 관측 1건 (spec 6.1)
     agent_logs: list = field(default_factory=list)    # 턴별 {aid: {reasoning,actions,received}}
 
     @property
@@ -306,9 +307,11 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     """전원의 의도(sink)를 정산한다. 모든 반복은 agent_id 정렬 순 → 결정론(재현성 #1).
     반환: 이번 턴 procreate 로 죽은 id 집합."""
     # a. 학습 반영 (다음 턴 관측부터 유효). known_langs 변경은 여기서 처음 일어난다.
-    for aid, lang in sink.learns:
-        if aid in world.agents:
-            world.agents[aid].known_langs.add(lang)
+    #    정렬 순으로 도는 이유 — 같은 턴에 둘이 배우면 국내 구사자 판정이 순서를 탄다.
+    for rec in sorted(sink.learns, key=lambda r: r["agent"]):
+        if rec["agent"] in world.agents:
+            world.agents[rec["agent"]].known_langs.add(rec["lang"])
+        result.learns_log.append({"turn": world.turn, **rec})
 
     # b. 시설 투자 — 국가별 집계, cap 초과분은 비례 환급(순서 무관, #12), 진척 판정
     by_country: dict[str, list] = defaultdict(list)
@@ -381,6 +384,10 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
     for a in world.agents.values():
         a.budget += cfg.income.per_turn * world.countries[a.country].multiplier(cfg)
         a.ap = cfg.turn.action_points
+        # ★ x̂ 의 분모. "그 눈금을 감당할 수 있었는데도 안 배웠다" 를 세려면 **결정
+        #   시점의** 예산이 필요하다. 턴 끝 예산으로 대신하면 다른 데 써버린 사람이
+        #   기회 자체가 없었던 것으로 집계돼 분모가 조용히 줄어든다.
+        a.budget_start = a.budget
 
     # 2. 관측 스냅샷 (도착 메시지·프롬프트를 스레드 시작 전에 고정)
     snapshot_ids = sorted(world.agents.keys())

@@ -17,8 +17,11 @@ import json
 import random
 import threading
 import time
+import sys
 import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # PYTHONPATH 없이 실행
 
 from core import config, run_io
 from core.llm import OpenRouterClient, load_key
