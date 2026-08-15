@@ -23,7 +23,7 @@ def _translator(text="TRANSLATED"):
 def _sent(**over):
     base = {"kind": "speak", "from": "Asla1", "from_country": "Asla", "from_lang": "ja",
             "to": "Ranoa2", "to_country": "Ranoa", "to_lang": "zh", "route": "ai",
-            "text": "본문", "intent": "의도", "translate_instruction": None, "reply_to": None}
+            "text": "본문", "translate_instruction": None, "reply_to": None}
     base.update(over)
     return base
 

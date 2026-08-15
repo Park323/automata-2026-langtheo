@@ -21,6 +21,7 @@ import urllib.request
 from pathlib import Path
 
 from core import config
+from core.artifacts import RunWriter, make_run_id
 from core.llm import OpenRouterClient, load_key
 from core.loop import run_agentic
 from domains.meteor import prompts
@@ -39,8 +40,8 @@ class CountingClient:
         self.completion_tokens = 0
         self._lock = threading.Lock()          # 병렬 공유 시 계측 정확도
 
-    def chat(self, messages, tools=None, temperature=None):
-        resp = self.inner.chat(messages, tools=tools, temperature=temperature)
+    def chat(self, messages, tools=None, temperature=None, meta=None):
+        resp = self.inner.chat(messages, tools=tools, temperature=temperature, meta=meta)
         usage = resp.get("usage") or {}
         with self._lock:
             self.calls += 1
@@ -108,27 +109,40 @@ def main() -> None:
     if args.check:
         return
 
+    # 산출물 기록기 — runs/{run_id}/ 에 raw_calls·state·messages·events·metrics 를 남긴다 (#8)
+    run_id = make_run_id(knob, args.seed)
+    writer = RunWriter(run_id, raw, knob=knob, seed=args.seed)
+    print(f"산출물: runs/{run_id}/")
+
+    # raw_sink 를 내부 OpenRouterClient 에 꽂아 모든 호출을 원본 그대로 남긴다
     agent_client = CountingClient(
-        OpenRouterClient(agent_model, api_key=key, temperature=cfg.llm.temperature), "agent")
+        OpenRouterClient(agent_model, api_key=key, temperature=cfg.llm.temperature,
+                         raw_sink=writer.raw_sink), "agent")
     translator = CountingClient(
-        OpenRouterClient(translate_model, api_key=key, temperature=0.2), "translate")
+        OpenRouterClient(translate_model, api_key=key, temperature=0.2,
+                         raw_sink=writer.raw_sink), "translate")
 
     print("\n" + "=" * 64)
     print(f"3턴 스모크 실행  (turns={args.turns}, knob={knob}, seed={args.seed})")
     print("=" * 64)
     t0 = time.time()
 
-    def progress(turn, result):        # 턴마다 실시간 출력 (flush)
+    def on_turn_end(turn, result):     # 턴마다 append(크래시 내성) + 실시간 출력
+        writer.on_turn_end(turn, result)
         print(f"  턴 {turn} 완료  ({time.time() - t0:.0f}s)  "
               f"에이전트 {agent_client.calls}콜 / 번역 {translator.calls}콜",
               flush=True)
 
     # 실제 API 는 stateless 라 9명이 같은 client 를 공유해도 안전
-    res = run_agentic(cfg, random.Random(args.seed),
-                      client_for=lambda aid: agent_client, translator=translator,
-                      knob_ai=knob, render_obs=prompts.render_observation,
-                      system_prompt=prompts.system_for, parallel=not args.sequential,
-                      on_turn_end=progress)
+    try:
+        res = run_agentic(cfg, random.Random(args.seed),
+                          client_for=lambda aid: agent_client, translator=translator,
+                          knob_ai=knob, render_obs=prompts.render_observation,
+                          system_prompt=prompts.system_for, parallel=not args.sequential,
+                          on_turn_end=on_turn_end)
+        writer.finish(res)
+    finally:
+        writer.close()
     elapsed = time.time() - t0
 
     # ── 호출·비용 ──

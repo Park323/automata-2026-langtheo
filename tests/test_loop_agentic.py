@@ -43,11 +43,12 @@ def test_message_delivery_delayed():
     """이번 턴 발신은 다음 턴 관측에 나타난다 (같은 턴엔 없음)."""
     cfg = _cfg(2)
     clients = _clients({"Asla1": [assistant_msg(
-        tool_call("speak", "1", to="Asla2", text="HELLO_MARK", intent="i"))]})
+        tool_call("speak", "1", to="Asla2", text="HELLO_MARK"))]})
     _run(cfg, clients, parallel=False)
     a2 = clients["Asla2"]                       # 빈 스크립트 → 턴당 chat 1회
-    turn1 = a2.calls[0]["messages"][1]["content"]
-    turn2 = a2.calls[1]["messages"][1]["content"]
+    # 기억이 누적되므로(spec 4.5) 각 턴의 관측은 그 시점 messages 의 **마지막** 원소다
+    turn1 = a2.calls[0]["messages"][-1]["content"]
+    turn2 = a2.calls[1]["messages"][-1]["content"]
     assert "HELLO_MARK" not in turn1         # 같은 턴엔 안 옴
     assert "HELLO_MARK" in turn2             # 다음 턴에 도착
 
@@ -72,7 +73,7 @@ def test_parallel_equals_sequential():
     cfg = _cfg(3)
     def once(par):
         c = _clients({"Asla1": [assistant_msg(
-            tool_call("speak", "1", to="Ranoa2", route="ai", text="X", intent="i"))]})
+            tool_call("speak", "1", to="Ranoa2", route="ai", text="X"))]})
         return _run(cfg, c, seed=7, parallel=par).state_log
     assert once(True) == once(False)
 

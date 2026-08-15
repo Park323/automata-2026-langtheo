@@ -33,7 +33,9 @@ class RunResult:
     final: dict = field(default_factory=dict)         # 생존 판정 결과 (spec 2.5)
     messages_log: list = field(default_factory=list)  # 처리된 발신 메시지 (과제2)
     votes_log: list = field(default_factory=list)     # propose_vote 기록 (과제2)
-    agent_logs: list = field(default_factory=list)    # 턴별 {aid: {reasoning,actions,received}}
+    agent_logs: list = field(default_factory=list)    # 턴별 {aid: {reasoning,actions,end_reason,...}}
+    # 전역 msg_id → messages_log 원소. understood(6.1)를 T+1 에 도착 메시지에 조인하는 색인.
+    msg_index: dict = field(default_factory=dict)
 
     @property
     def state_log(self) -> str:
@@ -288,7 +290,9 @@ def run(cfg, rng: random.Random, procreate_age: int | None = PROCREATE_AGE) -> R
 # ─────────────────────────────────────────── 턴 (에이전트 · 과제2) ─────────────────
 
 def _dequeue_inbox(world: World, aid: str) -> list[dict]:
-    """이 턴 도착 메시지를 큐에서 꺼내 msg_id 를 붙인다.
+    """이 턴 도착 메시지를 큐에서 꺼낸다. 전달 메시지는 발신 정산에서 받은 전역 msg_id 를
+    이미 달고 있으므로 보존한다 (understood·reply_to 조인 키). msg_id 가 없는 것(발신자
+    실패 통지)만 국소 번호로 채운다.
     수신 슬롯 점유자가 바뀌었으면(수신자 사망·교체) 폐기한다 (spec 4.2 경계)."""
     current = world.agents.get(aid)
     out = []
@@ -298,7 +302,7 @@ def _dequeue_inbox(world: World, aid: str) -> list[dict]:
                 continue                     # recipient_dead → 폐기
             out.append(e["msg"])
     for i, m in enumerate(out, 1):
-        m["msg_id"] = i
+        m.setdefault("msg_id", i)
     return out
 
 
@@ -343,18 +347,32 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         recipient = world.agents.get(sent["to"])
         reck = recipient.known_langs if recipient else set()
         to_uid = recipient.uid if recipient else None
-        p = messaging.process_message(sent, reck, cfg, translator, knob_ai)
+        p = messaging.process_message(sent, reck, cfg, translator, knob_ai, turn=world.turn)
+        world.msg_seq += 1                       # 전역 일련번호 (understood·reply_to 조인 키)
+        mid = world.msg_seq
+        p["inbox"]["msg_id"] = mid               # 수신자가 T+1 에 볼 번호
+        entry = {"turn": world.turn, "msg_id": mid, "from": sent["from"], "to": sent["to"],
+                 "route": p["kind"], "delivered": p["delivered"],
+                 "understood": None,             # 수신자가 T+1 에 report_understanding 하면 채워짐
+                 "meta": p["meta"]}
+        result.messages_log.append(entry)
+        result.msg_index[mid] = entry
         world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["to"],
                                   "to_uid": to_uid, "msg": p["inbox"]})
-        result.messages_log.append({"turn": world.turn, "from": sent["from"], "to": sent["to"],
-                                    "route": p["kind"], "delivered": p["delivered"],
-                                    "intent": sent["intent"], "meta": p["meta"]})
         if p["sender_notice"]:
             su = world.agents[sent["from"]].uid if sent["from"] in world.agents else None
             world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["from"],
                                       "to_uid": su, "msg": {"from": None, "text": None,
                                       "label": None, "original": None,
                                       "delivery_failed_to": sent["to"]}})
+
+    # e'. understood 조인 (spec 6.1) — 이번 턴 수신자들의 보고를 전 턴 메시지에 붙인다.
+    #     msg_id 로 조인. 미보고면 None 그대로(지표 4 분모에서 제외). understood 는 절대
+    #     다른 에이전트에게 노출되지 않는다 — messages_log(로그 전용)에만 남는다.
+    for _aid, mid, understood in sink.understandings:
+        entry = result.msg_index.get(mid)
+        if entry is not None:
+            entry["understood"] = understood
 
     # f. 투표 기록 (정식 집계는 이후 과제)
     for by, country, target in sink.votes:
@@ -394,7 +412,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         # system_prompt 는 문자열이거나 (agent)->str 콜러블. 후자는 모국어 프롬프트용
         sp = system_prompt(agent) if callable(system_prompt) else system_prompt
         return aid, run_agent_turn(world, agent, cfg, client_for(aid), sinks[aid],
-                                   knob_ai, sp, user_prompts[aid])
+                                   knob_ai, sp, user_prompts[aid], turn=world.turn)
 
     if parallel:
         with ThreadPoolExecutor(max_workers=len(snapshot_ids)) as ex:
@@ -414,6 +432,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         merged.votes += s.votes
         merged.learns += s.learns
         merged.procreations += s.procreations
+        merged.understandings += s.understandings
     procreated = _settle_agentic(world, cfg, rng, merged, translator, knob_ai, counter, result)
 
     # 7. 생사 판정 (마지막 턴 생략)

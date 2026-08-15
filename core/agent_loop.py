@@ -1,25 +1,35 @@
-"""한 에이전트의 한 턴. spec 4.2.
+"""한 에이전트의 한 턴. spec 4.2 · 4.5.
 
-  messages = [system, user(관측)]
-  반복(MAX_STEPS 이하):
-      resp = client.chat(messages, tools=TOOLS)
-      tool_calls 없으면 종료
-      각 tool_call 실행 → 결과를 role="tool" 로 append
-  procreate / end_turn 은 루프를 즉시 끝낸다.
+  기억은 태어나서 죽을 때까지 이어진다 (spec 4.5). agent.messages 를 누적한다:
+      첫 턴          messages = [system]
+      매 턴 시작     (한계 초과면) 오래된 블록 축출 → user(관측) append
+      반복           resp = client.chat(messages, tools=TOOLS)
+                     tool_calls 없으면 종료, 각 tool_call 실행 → role="tool" append
+      종료 조건      ① end_turn/procreate  ② 실행 가능한 도구 없음  ③ (도구,인자) 반복 실패
 
 ⚠ 도구는 세계를 즉시 바꾸지 않는다. 자기 budget/ap 만 즉시 차감하고 효과는 Sink 에
   넣는다. 국토 확정·진척 판정·cap 배분·번역은 전원의 루프가 끝난 뒤 loop.py 5단계에서.
 ⚠ 도구 결과로 감춰야 할 것을 흘리지 않는다 (진척 증가분·λ 변화·success_prob).
+⚠ 발신자 컨텍스트 누수 금지 (spec 4.5): 자기 메시지의 번역 결과·절단 후 텍스트·수신자
+  understood·전달 성공 여부는 도구 결과에 담기지 않는다. speak 는 접수·과금만 답한다.
 """
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import dataclass, field
 
-from core import messaging
+from core import memory, messaging
 from core.tools import TOOLS, TOOL_NAMES
 
-MAX_STEPS = 8
+# 도구 스키마는 매 호출 프롬프트에 통째로 실린다 — 축출 회계에 고정비로 함께 센다.
+_TOOL_TOKENS = memory.tool_schema_tokens(TOOLS)
+
+# 비정상 폭주에 대한 비용 backstop. spec 4.5 의 종료 3조건이 정상 종료를 지배하고, 이건
+# 그 아래에서만 발동한다 — 정상 턴은 도구 5~15회라 여기 닿지 않는다. 닿으면 end_reason
+# "step_cap" 으로 구분해 로그(예: 서로 다른 인자의 실패를 무한히 뱉는 약한 모델). MAX_STEPS=8
+# 이 정상 행동까지 잘랐던 것과 달리 여긴 훨씬 높다.
+_STEP_CAP = 64
 
 
 @dataclass
@@ -36,6 +46,7 @@ class Sink:
     votes: list = field(default_factory=list)         # (agent_id, country, target)
     learns: list = field(default_factory=list)        # (agent_id, lang) — 다음 턴부터 유효
     procreations: list = field(default_factory=list)  # (agent_id, testament)
+    understandings: list = field(default_factory=list)  # (agent_id, msg_id, understood) — 6.1
 
 
 # ── 학습 비용 (spec 3.4) ──────────────────────────────────────────────────────
@@ -146,13 +157,29 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "from_lang": agent.native_lang, "to": to, "to_country": recipient.country,
             "to_lang": recipient.native_lang, "route": args.get("route"),
             # LLM 이 문자열 아닌 값을 줄 수 있어 강제 문자열화 (truncate·translate 크래시 방지)
-            "text": str(args.get("text", "")), "intent": str(args.get("intent", "")),
+            "text": str(args.get("text", "")),
             "translate_instruction": None if ti is None else str(ti),
             "reply_to": args.get("reply_to"),
         })
-        # 전달 성공/실패는 알리지 않는다 (original 은 도박). 접수·과금만.
+        # 전달 성공/실패는 알리지 않는다 (original 은 도박). 접수·과금만. (누수 금지, spec 4.5)
         return {"ok": True, "queued": f"will arrive at {to} next turn", "charged": c,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
+
+    if name == "memory_write":
+        if agent.ap < cfg.ap.memory_write:
+            return {"ok": False, "error": f"not enough AP; memory_write needs {cfg.ap.memory_write}"}, None
+        agent.ap -= cfg.ap.memory_write
+        agent.memory = str(args.get("text", ""))       # 통째로 덮어쓰기 (spec 4.5)
+        return {"ok": True, "saved": "memory updated", "ap_left": round(agent.ap, 1)}, None
+
+    if name == "report_understanding":
+        try:
+            mid = int(args.get("msg_id"))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "msg_id must be an integer"}, None
+        # 관측 장치이지 행동이 아니다 — AP·예산 0 (spec 4.5). 세계 효과는 아무것도 답하지 않는다.
+        sink.understandings.append((agent.id, mid, str(args.get("understood", ""))))
+        return {"ok": True, "noted": True}, None
 
     if name == "propose_vote":
         target = args.get("target")
@@ -180,30 +207,76 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
 
 # ── 에이전트 한 턴 ────────────────────────────────────────────────────────────
 
-def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
-                   system_prompt: str, user_prompt: str) -> dict:
-    """반환 = 로그용 논리 형식 {"reasoning","actions","received"} (spec 4.2).
+def _any_affordable(agent, cfg, knob_ai: float) -> bool:
+    """남은 예산·AP 로 실행 가능한 행동 도구가 하나라도 있는가 (종료 조건 ②, spec 4.5).
 
+    end_turn 은 세지 않는다 — 그건 언제나 가능하지만 '할 일'이 아니다. 하나라도 있으면
+    True. 전부 불가면(대개 budget<=0 이고 ap<memory_write) 자연 종료(exhausted)한다.
+    """
+    b, ap = agent.budget, agent.ap
+    if b > 0 and ap >= cfg.ap.invest:                       # invest: AP 0, 양의 예산만
+        return True
+    if ap >= cfg.ap.memory_write:                           # memory_write: 예산 0
+        return True
+    if b >= cfg.costs.comm_domestic and ap >= cfg.ap.speak:  # 가장 싼 경로의 speak
+        return True
+    if b >= cfg.costs.learn_base * 0.25 and ap >= cfg.ap.learn:  # 최대 할인 시 learn
+        return True
+    if b >= cfg.costs.propose_vote and ap >= cfg.ap.propose_vote:
+        return True
+    if ap >= cfg.ap.procreate:
+        return True
+    return False
+
+
+def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
+                   system_prompt: str, user_prompt: str, turn: int = 0) -> dict:
+    """반환 = 로그용 논리 형식 (spec 4.2):
+        {"reasoning", "reasoning_missing", "actions", "received", "error", "end_reason"}
+
+    기억이 누적된다 (spec 4.5): agent.messages 를 이어 쓰고 매 턴 관측을 뒤에 붙인다.
     한 에이전트의 chat 호출이 실패해도(400/네트워크 등) 그 에이전트만 이번 턴을 접고
     전체 시뮬레이션은 계속된다 — 단일 API 실패가 50턴 런을 죽이면 안 된다.
     """
-    messages = [{"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}]
+    # 첫 턴이면 system 을 깐다. 이후 턴은 system(0번) 위에 관측이 누적돼 있다.
+    if not agent.messages:
+        agent.messages.append({"role": "system", "content": system_prompt})
+    # 관측을 붙이기 전에 한계 초과분을 축출한다 (오래된 블록부터, system·최근 블록 보존).
+    memory.evict(agent.messages, cfg.llm.context_limit, _TOOL_TOKENS)
+    agent.messages.append({"role": "user", "content": user_prompt})
+    messages = agent.messages
+
     actions: list[dict] = []
     reasoning = ""
+    reasoning_missing = True          # end_turn/procreate 가 비-빈 reasoning 을 줄 때만 False
     error = None
+    end_reason = None
+    fail_counts: Counter = Counter()  # (도구, 인자) → ok:False 반복 횟수 (종료 조건 ③)
+    guard = cfg.turn.repeat_guard
+    step = 0
 
-    for _ in range(MAX_STEPS):
+    while True:
+        step += 1
+        if step > _STEP_CAP:                            # 비용 backstop (정상 턴은 안 닿음)
+            end_reason = "step_cap"
+            break
         try:
-            resp = client.chat(messages, tools=TOOLS)
+            resp = client.chat(messages, tools=TOOLS,
+                               meta={"kind": "agent", "agent": agent.id, "turn": turn, "step": step})
         except Exception as e:                          # 이 에이전트만 턴 종료
             error = f"{type(e).__name__}: {str(e)[:200]}"
+            end_reason = "error"
             break
+        usage = resp.get("usage") or {}
+        pt = usage.get("prompt_tokens")
+        if pt:                                          # API 가 주면 압박 판정에 실측을 쓴다
+            agent.last_prompt_tokens = pt
         msg = resp["choices"][0]["message"]
-        if msg.get("content"):
-            reasoning = msg["content"]
+        # ⚠ msg.get("content") 를 reasoning 으로 쓰지 않는다 — 그건 API 의 message.reasoning
+        #   자리이고 spec 의 reasoning 과 다르다 (spec 9). reasoning 은 end_turn/procreate 인자에서만.
         tool_calls = msg.get("tool_calls") or []
-        if not tool_calls:
+        if not tool_calls:                              # 모델이 도구 없이 멈춤 → 종료로 본다
+            end_reason = "ended"
             break
         # tool_call 에 id 를 보장한다 (없으면 echo 한 assistant 와 tool 응답의 짝이 어긋나 400)
         for i, tc in enumerate(tool_calls):
@@ -229,14 +302,37 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
                 control = None
             else:
                 result, control = execute_tool(name, args, world, agent, cfg, sink, knob_ai)
+            # reasoning 은 턴을 끝내는 두 도구의 인자에서만 취한다 (턴당 정확히 한 번, spec 9)
+            if name in ("end_turn", "procreate"):
+                r = str(args.get("reasoning", "")).strip()
+                if r:
+                    reasoning, reasoning_missing = r, False
             if name != "end_turn" and result.get("ok"):
                 actions.append({"type": name, **args})
             messages.append({"role": "tool", "tool_call_id": tc["id"],
                              "content": json.dumps(result, ensure_ascii=False)})
             if control == "end":
+                end_reason = "ended"
                 stop = True
                 break     # procreate 뒤쪽 tool_call 은 버린다
+            # ③ 실패한 호출은 자원을 안 쓰므로 ②로 못 막는다. 동일 실패가 guard 회면 종료.
+            if not result.get("ok"):
+                key = (name, json.dumps(args, sort_keys=True, ensure_ascii=False, default=str))
+                fail_counts[key] += 1
+                if fail_counts[key] >= guard:
+                    end_reason = "repeat_guard"
+                    stop = True
+                    break
         if stop:
             break
+        # ② 남은 자원으로 할 수 있는 행동이 없으면 자연 종료 (예산 소진 등)
+        if not _any_affordable(agent, cfg, knob_ai):
+            end_reason = "exhausted"
+            break
 
-    return {"reasoning": reasoning, "actions": actions, "received": [], "error": error}
+    # 다음 턴 압박 통지: 직전 프롬프트가 warn 임계를 넘겼는가 (실측 없으면 추정으로 대체)
+    tokens = agent.last_prompt_tokens or memory.approx_tokens(messages, _TOOL_TOKENS)
+    agent.mem_pressure = tokens >= cfg.llm.context_limit * cfg.llm.warn_ratio
+
+    return {"reasoning": reasoning, "reasoning_missing": reasoning_missing,
+            "actions": actions, "received": [], "error": error, "end_reason": end_reason}

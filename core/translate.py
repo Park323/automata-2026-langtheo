@@ -31,16 +31,18 @@ def build_prompt(dst_lang: str, text: str, instruction: str | None) -> str:
 
 
 def translate(client, src_lang: str, dst_lang: str, text: str,
-              instruction: str | None = None) -> dict:
+              instruction: str | None = None, meta: dict | None = None) -> dict:
     """직역 1회. 반환: {text, prompt, logprob_mean}.
 
     client 는 번역 전용 LLM (테스트에선 StubClient). temperature 는 낮게.
+    meta 는 raw_calls.jsonl 문맥 (kind="translate" 등) — 지정하면 그대로 sink 에 붙는다.
     """
     prompt = build_prompt(dst_lang, text, instruction)
     resp = client.chat(
         [{"role": "system", "content": SYSTEM_CONTRACT},
          {"role": "user", "content": prompt}],
         temperature=0.2,
+        meta=meta or {"kind": "translate", "src": src_lang, "dst": dst_lang},
     )
     msg = resp["choices"][0]["message"]
     content = (msg.get("content") or "").strip()

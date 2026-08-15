@@ -26,11 +26,17 @@
 **본실험을 돌리기 전에 반드시 끝내야 합니다.** 셋 다 "지금 돌리면 결과를 오독하게
 되는" 문제입니다.
 
-- [ ] **#9 메모리 없음** ← 1순위. 컨텍스트 누적 + MemGPT 압박 경고 + `MAX_STEPS` 폐지
-      → 없으면 조율률이 기억 부재로 낮게 나오고 **번역 왜곡 탓으로 오독**
-- [ ] **#8 산출물 안 남음** — `raw_calls.jsonl` · 로그 4종 append · `reasoning` 이름 충돌
-      → 없으면 돌려도 데이터가 안 남고, 정의가 바뀌면 다시 돌려야 함
-- [ ] **#7 `intent` 폐지 · `understood` 추가** — 없으면 지표 4 를 하나도 못 냄
+- [x] **#9 메모리 없음** (PR feat/03-prep) — `agent.messages` 생애 누적 + MemGPT 압박
+      통지(`context_limit`/`warn_ratio`) + 오래된 블록 축출 + `memory_write`(AP 0.1) +
+      `MAX_STEPS` 폐지 → 종료 3조건(`ended`/`exhausted`/`repeat_guard`, +비용 backstop).
+      🔴 발신자 누수 불변식 테스트로 고정.
+- [x] **#8 산출물 안 남음** (PR feat/03-prep) — `raw_calls.jsonl`(재시도별 행) +
+      `RunWriter` 로 턴별 state/messages/events/metrics append + `config_snapshot`+커밋 +
+      `reasoning`(spec) / `api_reasoning`(API) 분리 + `reasoning` 를 종료 도구 필수 인자로 +
+      `llm_failure_rate`·종료 사유 분포 집계.
+- [x] **#7 `intent` 폐지 · `understood` 추가** (PR feat/03-prep) — 스키마·정산·config 에서
+      `intent` 제거, `report_understanding(msg_id, understood)`(AP 0·예산 0), 전역 `msg_id`
+      부여로 T+1 조인, understood 는 타 에이전트에 절대 불노출(테스트로 고정).
 
 - [ ] 사전 표지 목록 보강 (표본 10문장은 얇음. S2 층위를 못 잡음)
 

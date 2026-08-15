@@ -20,6 +20,12 @@ class Agent:
     born_turn: int = 0
     born_by: str = "natural"  # "natural" | "procreate"
     uid: int = 0              # 인스턴스 고유 번호. id 는 슬롯이라 세대마다 재사용된다
+    # ── 개체 기억 (spec 4.5). 인스턴스에 속하므로 죽음(=재생성)으로 전부 소멸한다 ──
+    # 태어나서 죽을 때까지 이어지는 대화. 매 턴 관측이 뒤에 붙고 도구 왕복도 남는다.
+    messages: list = field(default_factory=list)
+    memory: str = ""          # memory_write 로 덮어쓰는 기억 블록. 관측에 [내 메모] 로 표시
+    mem_pressure: bool = False  # 직전 턴이 warn_ratio 를 넘겼다 → 다음 관측 앞에 통지 한 줄
+    last_prompt_tokens: int = 0  # 직전 응답 usage.prompt_tokens (압박 판정용, API 가 주면)
 
 
 @dataclass
@@ -51,3 +57,6 @@ class World:
     # 메시지 큐. 이번 턴 발신은 다음 턴 도착 (spec 3.1). 각 원소:
     #   {"deliver_turn": t, "to": agent_id, "msg": inbox_dict}
     inbox_queue: list = field(default_factory=list)
+    # 전역 메시지 일련번호. understood(6.1)·reply_to 의 조인 키가 되도록 발신 정산에서 부여한다.
+    # 슬롯별 국소 번호는 매 턴 1 로 되돌아가 조인이 불가능하다 (정산은 단일 스레드라 안전).
+    msg_seq: int = 0

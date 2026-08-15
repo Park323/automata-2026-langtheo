@@ -19,12 +19,23 @@ ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 
 class LLMClient(Protocol):
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
-             temperature: float | None = None) -> dict:
+             temperature: float | None = None, meta: dict | None = None) -> dict:
         """OpenAI 호환 응답을 그대로 반환한다.
 
         반환에서 쓰는 것: choices[0].message (content 또는 tool_calls)
+        meta 는 raw_calls.jsonl 에 붙는 문맥 {kind, agent, turn, step} — 응답에는 안 쓴다.
         """
         ...
+
+
+def _record(raw_sink, meta: dict | None, request: dict, response,
+            error, latency_ms: int, attempt: int) -> None:
+    """raw_calls sink 가 있으면 이 호출(재시도 각각)을 한 행으로 남긴다. spec 9."""
+    if raw_sink is None:
+        return
+    m = meta or {}
+    raw_sink.write(kind=m.get("kind", "agent"), meta=m, request=request,
+                   response=response, error=error, latency_ms=latency_ms, attempt=attempt)
 
 
 def load_key() -> str:
@@ -49,15 +60,17 @@ class OpenRouterClient:
     """
 
     def __init__(self, model: str, api_key: str | None = None,
-                 temperature: float = 0.7, retries: int = 4, timeout: int = 120):
+                 temperature: float = 0.7, retries: int = 4, timeout: int = 120,
+                 raw_sink=None):
         self.model = model
         self.api_key = api_key or load_key()
         self.temperature = temperature
         self.retries = retries
         self.timeout = timeout
+        self.raw_sink = raw_sink        # 있으면 요청·응답·재시도를 raw_calls.jsonl 에 남긴다
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
-             temperature: float | None = None) -> dict:
+             temperature: float | None = None, meta: dict | None = None) -> dict:
         body: dict = {
             "model": self.model,
             "messages": messages,
@@ -73,9 +86,15 @@ class OpenRouterClient:
                      "Content-Type": "application/json"},
         )
         for attempt in range(self.retries):
+            t0 = time.time()
             try:
-                return json.load(urllib.request.urlopen(req, timeout=self.timeout))
+                resp = json.load(urllib.request.urlopen(req, timeout=self.timeout))
+                _record(self.raw_sink, meta, body, resp, None,
+                        int((time.time() - t0) * 1000), attempt)
+                return resp
             except urllib.error.HTTPError as e:
+                _record(self.raw_sink, meta, body, None, f"HTTP {e.code}",
+                        int((time.time() - t0) * 1000), attempt)
                 if e.code == 429:                          # 레이트 리밋: 길게 물러난다
                     time.sleep(min(60, 8 * (2 ** attempt)))
                     continue
@@ -83,7 +102,9 @@ class OpenRouterClient:
                     time.sleep(3 * (attempt + 1))
                     continue
                 raise
-            except Exception:
+            except Exception as e:
+                _record(self.raw_sink, meta, body, None, f"{type(e).__name__}: {str(e)[:200]}",
+                        int((time.time() - t0) * 1000), attempt)
                 if attempt == self.retries - 1:
                     raise
                 time.sleep(3 * (attempt + 1))
@@ -102,13 +123,14 @@ class StubClient:
     편의를 위해 tool_call(name, **args) 헬퍼로 스크립트를 짧게 쓸 수 있다.
     """
 
-    def __init__(self, script: list[dict]):
+    def __init__(self, script: list[dict], raw_sink=None):
         self._script = list(script)
         self._i = 0
         self.calls: list[dict] = []          # 검증용: 받은 messages 기록
+        self.raw_sink = raw_sink             # 테스트에서 raw_calls 형식을 검증할 수 있게
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
-             temperature: float | None = None) -> dict:
+             temperature: float | None = None, meta: dict | None = None) -> dict:
         self.calls.append({"messages": list(messages), "tools": tools})   # 스냅샷
         if self._i >= len(self._script):
             # 스크립트 소진 → 도구 없이 종료 신호
@@ -116,7 +138,12 @@ class StubClient:
         else:
             msg = self._script[self._i]
             self._i += 1
-        return {"choices": [{"message": msg}]}
+        resp = {"choices": [{"message": msg}]}
+        _record(self.raw_sink, meta,
+                {"model": "stub", "messages": list(messages), "tools": tools,
+                 "temperature": temperature},
+                resp, None, 0, 0)
+        return resp
 
 
 def tool_call(name: str, call_id: str = "c", **arguments) -> dict:

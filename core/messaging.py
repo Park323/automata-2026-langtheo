@@ -45,7 +45,8 @@ def can_read(recipient_known_langs, from_lang: str) -> bool:
 
 # ── 전달 형태 만들기 (spec 5.1 · 5.2 · 5.4) ───────────────────────────────────
 
-def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai: float) -> dict:
+def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai: float,
+                    turn: int | None = None) -> dict:
     """발신 메시지 하나를 처리해 전달 결과를 만든다.
 
     반환:
@@ -89,7 +90,10 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
 
     # 국제 AI: 번역 경유, 항상 전달, [AI 번역] 라벨. 읽을 수 있으면 원문 병기.
     tr = translate_mod.translate(translator, from_lang, to_lang, text_sent,
-                                 sent.get("translate_instruction"))
+                                 sent.get("translate_instruction"),
+                                 meta={"kind": "translate", "turn": turn,
+                                       "from": sent.get("from"), "to": sent.get("to"),
+                                       "src": from_lang, "dst": to_lang})
     meta["translate_prompt"] = tr["prompt"]
     meta["logprob_mean"] = tr["logprob_mean"]
     inbox = {
