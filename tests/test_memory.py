@@ -206,3 +206,60 @@ def test_pressure_notice_prepended_when_flagged(cfg, world):
     agent.mem_pressure = True
     obs = prompts.render_observation(world, agent, cfg, 48)
     assert obs.startswith(prompts.PRESSURE_NOTICE["ja"])
+
+
+# ── 🔴 누수 불변식: 축출 후에도 · 에이전트별 분리 (spec 4.5) ──────────────────
+
+def _cfg_small_ctx(turns, limit):
+    d = yaml.safe_load(open(BASE, encoding="utf-8"))
+    d["world"]["total_turns"] = turns
+    d["llm"]["context_limit"] = limit          # 도구 스키마만으로도 넘겨 매 턴 축출 유발
+    return config.from_dict(d)
+
+
+def test_no_leak_after_eviction():
+    """축출을 강제한 뒤에도 발신자 누적 컨텍스트에 번역 결과가 새지 않는다.
+    (한 번 새면 생애 내내 남으므로 축출 경로까지 불변식을 못 박는다.)"""
+    cfg = _cfg_small_ctx(turns=4, limit=300)
+    translator = StubClient([{"role": "assistant", "content": "XLATION_LEAK", "tool_calls": []}] * 60)
+    a1 = [assistant_msg(tool_call("speak", f"s{t}", to="Ranoa2", route="ai", text=f"ORIG{t}"),
+                        tool_call("end_turn", f"e{t}", reasoning="r")) for t in range(4)]
+    clients = _clients({"Asla1": a1})
+    res = run_agentic(cfg, random.Random(1), clients.__getitem__, translator, 48,
+                      prompts.render_observation, prompts.system_for, parallel=False)
+
+    # 축출이 실제로 일어났다 — 4턴 누적인데 마지막 호출 messages 가 짧다 (system + 최근 블록)
+    last = clients["Asla1"].calls[-1]["messages"]
+    assert last[0]["role"] == "system"
+    assert len(last) <= 6, f"축출이 안 일어난 듯: {len(last)}"
+    # 발신자 컨텍스트(축출 후 누적 messages 전체 + 매 호출 스냅샷)에 번역 결과 없음
+    blob = "".join(m.get("content") or "" for call in clients["Asla1"].calls
+                   for m in call["messages"])
+    persisted = "".join(m.get("content") or "" for m in res.world.agents["Asla1"].messages)
+    assert "XLATION_LEAK" not in blob and "XLATION_LEAK" not in persisted
+
+
+def test_agent_messages_isolated():
+    """에이전트별 messages 는 별개 객체이고, 축출 로직이 남의 조각을 섞지 않는다.
+    한 에이전트가 memory_write 로 쓴 메모는 다른 에이전트 컨텍스트에 절대 안 나타난다."""
+    cfg = _cfg_small_ctx(turns=3, limit=400)   # 축출을 켠 채로 분리 검사
+    clients = _clients({"Asla1": [assistant_msg(
+        tool_call("memory_write", "1", text="ASLA1_PRIVATE_MEMO"),
+        tool_call("end_turn", "2", reasoning="r"))]})
+    res = run_agentic(cfg, random.Random(1), clients.__getitem__,
+                      StubClient([{"role": "assistant", "content": "x", "tool_calls": []}] * 60),
+                      48, prompts.render_observation, prompts.system_for, parallel=True)
+
+    agents = res.world.agents
+    # 전부 서로 다른 리스트 객체 (공유·혼합 없음)
+    obj_ids = [id(a.messages) for a in agents.values()]
+    assert len(set(obj_ids)) == len(obj_ids)
+    # 각 에이전트의 system(0번)은 자기 모국어 프롬프트
+    for a in agents.values():
+        assert a.messages[0]["content"] == prompts.SYSTEM[a.native_lang]
+    # Asla1 의 사적 메모가 다른 누구의 프롬프트에도 없다
+    for aid, c in clients.items():
+        if aid == "Asla1":
+            continue
+        blob = "".join(m.get("content") or "" for call in c.calls for m in call["messages"])
+        assert "ASLA1_PRIVATE_MEMO" not in blob

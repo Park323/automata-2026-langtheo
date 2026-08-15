@@ -108,6 +108,8 @@ class RunWriter:
         self._msg_written = 0
         self._births_written = 0
         self._votes_written = 0
+        self._learn_written = 0
+        self._death_written = 0
 
     # ── 턴별 append (크래시 내성) ────────────────────────────────────────────
     def on_turn_end(self, turn: int, result) -> None:
@@ -121,13 +123,19 @@ class RunWriter:
             self._write(self._msg_fh, mlog[self._msg_written])
             self._msg_written += 1
 
-        # events — 이번 턴 출생·투표
+        # events — 이번 턴 출생·투표·학습·사망 (6.1). learn 의 지불액·할인은 x̂ 눈금.
         for b in result.births[self._births_written:]:
             self._write(self._events_fh, {"turn": b["turn"], "event": "birth", **b})
         self._births_written = len(result.births)
         for v in result.votes_log[self._votes_written:]:
             self._write(self._events_fh, {"turn": v["turn"], "event": "vote", **v})
         self._votes_written = len(result.votes_log)
+        for e in result.learn_log[self._learn_written:]:
+            self._write(self._events_fh, {"event": "learn", **e})
+        self._learn_written = len(result.learn_log)
+        for e in result.death_log[self._death_written:]:
+            self._write(self._events_fh, {"event": "death", **e})
+        self._death_written = len(result.death_log)
 
         # metrics — 이번 턴 집계 (종료 사유 분포·llm 실패율)
         turn_log = result.agent_logs[-1] if result.agent_logs else {}

@@ -36,6 +36,8 @@ class RunResult:
     agent_logs: list = field(default_factory=list)    # 턴별 {aid: {reasoning,actions,end_reason,...}}
     # 전역 msg_id → messages_log 원소. understood(6.1)를 T+1 에 도착 메시지에 조인하는 색인.
     msg_index: dict = field(default_factory=dict)
+    learn_log: list = field(default_factory=list)     # {turn,agent,country,lang,cost,discount} (6.1)
+    death_log: list = field(default_factory=list)     # {turn,id,age,cause} (6.1)
 
     @property
     def state_log(self) -> str:
@@ -122,6 +124,7 @@ def _death_birth(world: World, cfg, rng: random.Random, snapshot_ids, procreated
         if rng.random() < survival.hazard(a.age, a.lam, cfg.survival.k):
             result.deaths += 1
             result.death_ages.append(a.age)   # 마지막 생존 나이 = 죽는 턴의 age (spec 2.2)
+            result.death_log.append({"turn": world.turn, "id": aid, "age": a.age, "cause": "natural"})
             # 자연사는 계보와 무관한 '자연발생한 뒷세대' (spec 3.2). 개인에 속한 것은 전부
             # 소실(예산·언어·부모 할인 자격·쌓인 유언), 국가·세계는 유지(국토·진척·national_capital).
             child = _newborn(
@@ -150,6 +153,7 @@ def _procreate_child(world: World, aid: str, testament: str, cfg,
     world.agents[aid] = child
     result.deaths += 1
     result.death_ages.append(a.age)
+    result.death_log.append({"turn": world.turn, "id": aid, "age": a.age, "cause": "procreate"})
     result.births.append({"turn": world.turn, "id": aid, "uid": child.uid,
                           "born_by": "procreate", "budget": child.budget})
 
@@ -314,6 +318,9 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     for aid, lang in sink.learns:
         if aid in world.agents:
             world.agents[aid].known_langs.add(lang)
+    for aid, country, lang, cost, discount in sink.learn_events:   # events (6.1) — x̂ 눈금
+        result.learn_log.append({"turn": world.turn, "agent": aid, "country": country,
+                                 "lang": lang, "cost": cost, "discount": discount})
 
     # b. 시설 투자 — 국가별 집계, cap 초과분은 비례 환급(순서 무관, #12), 진척 판정
     by_country: dict[str, list] = defaultdict(list)
@@ -433,6 +440,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         merged.messages += s.messages
         merged.votes += s.votes
         merged.learns += s.learns
+        merged.learn_events += s.learn_events
         merged.procreations += s.procreations
         merged.understandings += s.understandings
     procreated = _settle_agentic(world, cfg, rng, merged, translator, knob_ai, counter, result)

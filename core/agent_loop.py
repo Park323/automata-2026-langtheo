@@ -45,6 +45,7 @@ class Sink:
     messages: list = field(default_factory=list)      # 발신 dict (5장, 'from' 에 agent_id)
     votes: list = field(default_factory=list)         # (agent_id, country, target)
     learns: list = field(default_factory=list)        # (agent_id, lang) — 다음 턴부터 유효
+    learn_events: list = field(default_factory=list)  # (agent_id, country, lang, cost, discount) — 6.1
     procreations: list = field(default_factory=list)  # (agent_id, testament)
     understandings: list = field(default_factory=list)  # (agent_id, msg_id, understood) — 6.1
 
@@ -126,7 +127,10 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         agent.ap -= cfg.ap.learn
         # known_langs 는 다른 에이전트가 읽으므로(국내 구사자 판정) 즉시 바꾸지 않는다.
         # sink 에 넣어 정산 때(정렬 순) 반영한다 — 병렬 레이스·재현성 방지.
-        sink.learns.append((agent.id, world.countries[country_id].lang))
+        lang = world.countries[country_id].lang
+        sink.learns.append((agent.id, lang))
+        # 실제 지불액·할인 사유는 x̂ 산출의 눈금이다 (spec 6.1) — events 로 남긴다.
+        sink.learn_events.append((agent.id, country_id, lang, c, reason))
         return {"ok": True, "learned": country_id, "charged": c, "discount": reason,
                 "effect": "you can read it from next turn",
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None

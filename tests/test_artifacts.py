@@ -4,6 +4,7 @@ StubClient 에 raw_sink 를 주입해 실제 API 없이 형식을 검증한다.
 """
 from __future__ import annotations
 
+import itertools
 import json
 import random
 from pathlib import Path
@@ -12,9 +13,10 @@ import pytest
 import yaml
 
 from core import config
+from core.agent_loop import Sink, execute_tool
 from core.artifacts import RunWriter
 from core.llm import StubClient, assistant_msg, tool_call
-from core.loop import run_agentic
+from core.loop import RunResult, _death_birth, _settle_agentic, init_world, run_agentic
 from domains.meteor import prompts
 
 BASE = Path(__file__).resolve().parent.parent / "configs" / "base.yaml"
@@ -110,3 +112,33 @@ def test_summary(run_dir):
     assert "llm_failure_rate" in summ and "invalid_high_failure" in summ
     assert "no_response_rate" in summ and "delivered" in summ
     assert summ["invalid_high_failure"] is False           # Stub 은 실패 0
+
+
+# ── events (6.1): learn 지불액·할인 · death 나이·사유 ────────────────────────
+
+def test_learn_event_recorded():
+    """learn 의 실제 지불액과 할인 사유가 events 로 남는다 (x̂ 눈금, spec 6.1)."""
+    cfg = config.load(BASE)
+    world = init_world(cfg, itertools.count(1))
+    world.agents["Asla1"].ap = cfg.turn.action_points
+    world.agents["Asla1"].budget = 500          # 학습비 300 충당
+    sink = Sink()
+    execute_tool("learn", {"country": "Ranoa"}, world, world.agents["Asla1"], cfg, sink, 48)
+    world.turn = 1
+    result = RunResult(world=world)
+    _settle_agentic(world, cfg, random.Random(1), sink, StubClient([]), 48,
+                    itertools.count(100), result)
+    assert any(e["agent"] == "Asla1" and e["lang"] == "zh" and e["cost"] == 300
+               and e["turn"] == 1 for e in result.learn_log)
+
+
+def test_death_event_recorded():
+    """death 이벤트에 나이·사유가 남는다 (spec 6.1)."""
+    cfg = config.load(BASE)
+    world = init_world(cfg, itertools.count(1))
+    world.agents["Asla1"].age = 30              # hazard ≈ 1 → 확정 사망
+    world.turn = 5
+    result = RunResult(world=world)
+    _death_birth(world, cfg, random.Random(1), ["Asla1"], set(), itertools.count(100), result)
+    assert any(e["id"] == "Asla1" and e["cause"] == "natural" and e["age"] == 30
+               for e in result.death_log)
