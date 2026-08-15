@@ -15,7 +15,7 @@ from core.loop import RunResult, _settle_agentic, init_world, run_agentic
 from domains.meteor import prompts
 
 BASE = Path(__file__).resolve().parent.parent / "configs" / "base.yaml"
-IDS = [f"{c}{i}" for c in "ABC" for i in (1, 2, 3)]
+IDS = [f"{n}{i}" for n in ("Asla", "Ranoa", "Miris") for i in (1, 2, 3)]
 
 
 def _cfg(turns=2):
@@ -42,10 +42,10 @@ def _run(cfg, clients, translator=None, knob_ai=48, seed=1, parallel=True):
 def test_message_delivery_delayed():
     """이번 턴 발신은 다음 턴 관측에 나타난다 (같은 턴엔 없음)."""
     cfg = _cfg(2)
-    clients = _clients({"A1": [assistant_msg(
-        tool_call("speak", "1", to="A2", text="HELLO_MARK", intent="i"))]})
+    clients = _clients({"Asla1": [assistant_msg(
+        tool_call("speak", "1", to="Asla2", text="HELLO_MARK", intent="i"))]})
     _run(cfg, clients, parallel=False)
-    a2 = clients["A2"]                       # 빈 스크립트 → 턴당 chat 1회
+    a2 = clients["Asla2"]                       # 빈 스크립트 → 턴당 chat 1회
     turn1 = a2.calls[0]["messages"][1]["content"]
     turn2 = a2.calls[1]["messages"][1]["content"]
     assert "HELLO_MARK" not in turn1         # 같은 턴엔 안 옴
@@ -58,7 +58,7 @@ def test_agentic_reproducible():
     """같은 seed + 같은 스크립트 → state 로그 바이트 동일."""
     cfg = _cfg(3)
     def once():
-        c = _clients({"A1": [assistant_msg(
+        c = _clients({"Asla1": [assistant_msg(
             tool_call("invest", "1", target="facility", amount=50))]})
         return _run(cfg, c, seed=3, parallel=True).state_log
     a, b = once(), once()
@@ -71,8 +71,8 @@ def test_parallel_equals_sequential():
     """병렬과 순차의 결과(state 로그)가 동일하다."""
     cfg = _cfg(3)
     def once(par):
-        c = _clients({"A1": [assistant_msg(
-            tool_call("speak", "1", to="B2", route="ai", text="X", intent="i"))]})
+        c = _clients({"Asla1": [assistant_msg(
+            tool_call("speak", "1", to="Ranoa2", route="ai", text="X", intent="i"))]})
         return _run(cfg, c, seed=7, parallel=par).state_log
     assert once(True) == once(False)
 
@@ -85,18 +85,18 @@ def test_cap_proportional_order_independent():
 
     def settle_with(order):
         world = init_world(cfg, itertools.count(1))
-        world.agents["A1"].budget = 1000
-        world.agents["A2"].budget = 1000
+        world.agents["Asla1"].budget = 1000
+        world.agents["Asla2"].budget = 1000
         sink = Sink()
         sink.facility = order            # cap=500, 총 800 → 초과 300 비례 환급
         _settle_agentic(world, cfg, random.Random(42), sink, StubClient([]), 48,
                         itertools.count(1000), RunResult(world=world))
-        return (round(world.countries["A"].progress, 6),
-                round(world.agents["A1"].budget, 6),
-                round(world.agents["A2"].budget, 6))
+        return (round(world.countries["Asla"].progress, 6),
+                round(world.agents["Asla1"].budget, 6),
+                round(world.agents["Asla2"].budget, 6))
 
-    forward = settle_with([("A", 400, "A1"), ("A", 400, "A2")])
-    reverse = settle_with([("A", 400, "A2"), ("A", 400, "A1")])
+    forward = settle_with([("Asla", 400, "Asla1"), ("Asla", 400, "Asla2")])
+    reverse = settle_with([("Asla", 400, "Asla2"), ("Asla", 400, "Asla1")])
     assert forward == reverse
     # 각자 400 중 150 환급 (400/800 × 300) → 예산 1150
     assert forward[1] == 1150 and forward[2] == 1150
@@ -108,7 +108,7 @@ def test_full_prompt_hides_secrets():
     cfg = _cfg(2)
     clients = _clients()
     _run(cfg, clients, parallel=False)
-    forbidden = ["success_prob", "lambda", "hazard", "사망 확률", "재앙까지", "남은 턴"]
+    forbidden = ["success_prob", "lambda", "hazard", "distort", "inaccurate", "turns until"]
     for c in clients.values():
         for call in c.calls:
             blob = "".join(m.get("content") or "" for m in call["messages"])

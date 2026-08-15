@@ -52,10 +52,10 @@ def learn_cost(agent, country_id: str, world, cfg) -> tuple[float, str]:
     mult = (0.5 if domestic else 1.0) * (0.5 if parent else 1.0)
     reasons = []
     if domestic:
-        reasons.append("국내에 구사자가 있습니다 (×0.5)")
+        reasons.append("someone in your nation speaks it (x0.5)")
     if parent:
-        reasons.append("부모가 구사했습니다 (×0.5)")
-    return base * mult, " · ".join(reasons) if reasons else "할인 없음"
+        reasons.append("your parent spoke it (x0.5)")
+    return base * mult, " · ".join(reasons) if reasons else "no discount"
 
 
 # ── 도구 실행 ────────────────────────────────────────────────────────────────
@@ -72,70 +72,72 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         try:
             amount = float(args.get("amount", 0))
         except (TypeError, ValueError):
-            return {"ok": False, "error": "amount 는 숫자여야 합니다"}, None
+            return {"ok": False, "error": "amount must be a number"}, None
         if target not in ("wellness", "national", "facility"):
-            return {"ok": False, "error": f"알 수 없는 투자 대상: {target}"}, None
+            return {"ok": False, "error": f"unknown invest target: {target}"}, None
         if amount <= 0:
-            return {"ok": False, "error": "투자액은 양수여야 합니다"}, None
+            return {"ok": False, "error": "amount must be positive"}, None
         # facility 대상 국가는 예산 차감 전에 검증한다 (LLM 이 국가 대신 에이전트 id 를 줄 수 있음)
         to = None
         if target == "facility":
             to = args.get("to") or agent.country
             if to not in world.countries:
                 return {"ok": False,
-                        "error": f"알 수 없는 국가: {to} — facility 투자는 국가 id 를 준다 (예: B)"}, None
+                        "error": f"unknown nation: {to} — facility invest takes a nation id (e.g. Ranoa)"}, None
         if agent.budget < amount:
-            return {"ok": False, "error": f"예산이 부족합니다. 필요 {amount:.0f}, 보유 {agent.budget:.0f}"}, None
+            return {"ok": False, "error": f"not enough budget; need {amount:.0f}, have {agent.budget:.0f}"}, None
         agent.budget -= amount            # invest 는 AP 0
         if target == "facility":
             sink.facility.append((to, amount, agent.id))
             # 진척 증가분은 절대 여기서 답하지 않는다 (success_prob 역산 방지)
-            return {"ok": True, "accepted": f"{to} 시설 투자 접수", "charged": amount,
+            return {"ok": True, "accepted": f"{to} facility investment accepted", "charged": amount,
                     "budget_left": round(agent.budget, 1)}, None
         if target == "wellness":
             sink.wellness.append((agent.id, amount))
-            return {"ok": True, "accepted": "wellness 투자 접수", "charged": amount,
+            return {"ok": True, "accepted": "wellness investment accepted", "charged": amount,
                     "budget_left": round(agent.budget, 1)}, None    # λ 변화 비공개
         sink.national.append((agent.country, amount, agent.id))
-        return {"ok": True, "accepted": "national 투자 접수", "charged": amount,
+        return {"ok": True, "accepted": "national investment accepted", "charged": amount,
                 "budget_left": round(agent.budget, 1)}, None
 
     if name == "learn":
         country_id = args.get("country")
         if country_id not in world.countries:
-            return {"ok": False, "error": f"알 수 없는 국가: {country_id}"}, None
+            return {"ok": False, "error": f"unknown nation: {country_id}"}, None
         if country_id == agent.country:
-            return {"ok": False, "error": "자국어는 이미 압니다"}, None
+            return {"ok": False, "error": "you already know your own language"}, None
         c, reason = learn_cost(agent, country_id, world, cfg)
         if agent.ap < cfg.ap.learn:
-            return {"ok": False, "error": f"AP 가 부족합니다. learn 은 {cfg.ap.learn} 이 필요합니다"}, None
+            return {"ok": False, "error": f"not enough AP; learn needs {cfg.ap.learn}"}, None
         if agent.budget < c:
-            return {"ok": False, "error": f"예산이 부족합니다. 필요 {c:.0f}, 보유 {agent.budget:.0f}"}, None
+            return {"ok": False, "error": f"not enough budget; need {c:.0f}, have {agent.budget:.0f}"}, None
         agent.budget -= c
         agent.ap -= cfg.ap.learn
         # known_langs 는 다른 에이전트가 읽으므로(국내 구사자 판정) 즉시 바꾸지 않는다.
         # sink 에 넣어 정산 때(정렬 순) 반영한다 — 병렬 레이스·재현성 방지.
         sink.learns.append((agent.id, world.countries[country_id].lang))
         return {"ok": True, "learned": country_id, "charged": c, "discount": reason,
-                "effect": "다음 턴부터 읽을 수 있습니다",
+                "effect": "you can read it from next turn",
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name in ("speak", "ask"):
         to = args.get("to")
         if to not in world.agents:
-            return {"ok": False, "error": f"알 수 없는 수신자: {to}"}, None
+            return {"ok": False, "error": f"unknown recipient: {to}"}, None
+        if to == agent.id:
+            return {"ok": False, "error": "you cannot send a message to yourself"}, None
         recipient = world.agents[to]
         kind = messaging.classify(agent.country, recipient.country, args.get("route"))
         c = messaging.cost(kind, cfg, knob_ai)
         if name == "ask":
             if args.get("reply_to") is None:
-                return {"ok": False, "error": "ask 는 reply_to(메시지 id)가 필요합니다"}, None
+                return {"ok": False, "error": "ask needs reply_to (a message id)"}, None
             c += cfg.costs.ask_clarification
         ap_cost = cfg.ap.ask if name == "ask" else cfg.ap.speak
         if agent.ap < ap_cost:
-            return {"ok": False, "error": f"AP 가 부족합니다. {name} 은 {ap_cost} 이 필요합니다"}, None
+            return {"ok": False, "error": f"not enough AP; {name} needs {ap_cost}"}, None
         if agent.budget < c:
-            return {"ok": False, "error": f"예산이 부족합니다. 필요 {c:.0f}, 보유 {agent.budget:.0f}"}, None
+            return {"ok": False, "error": f"not enough budget; need {c:.0f}, have {agent.budget:.0f}"}, None
         agent.budget -= c
         agent.ap -= ap_cost
         ti = args.get("translate_instruction")
@@ -149,17 +151,17 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "reply_to": args.get("reply_to"),
         })
         # 전달 성공/실패는 알리지 않는다 (original 은 도박). 접수·과금만.
-        return {"ok": True, "queued": f"{to} 에게 다음 턴 도착합니다", "charged": c,
+        return {"ok": True, "queued": f"will arrive at {to} next turn", "charged": c,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "propose_vote":
         target = args.get("target")
         if target not in ("bunker", "interceptor"):
-            return {"ok": False, "error": "target 은 bunker 또는 interceptor"}, None
+            return {"ok": False, "error": "target must be bunker or interceptor"}, None
         if agent.ap < cfg.ap.propose_vote:
-            return {"ok": False, "error": f"AP 가 부족합니다. propose_vote 는 {cfg.ap.propose_vote}"}, None
+            return {"ok": False, "error": f"not enough AP; propose_vote needs {cfg.ap.propose_vote}"}, None
         if agent.budget < cfg.costs.propose_vote:
-            return {"ok": False, "error": f"예산이 부족합니다. 필요 {cfg.costs.propose_vote}"}, None
+            return {"ok": False, "error": f"not enough budget; need {cfg.costs.propose_vote}"}, None
         agent.budget -= cfg.costs.propose_vote
         agent.ap -= cfg.ap.propose_vote
         sink.votes.append((agent.id, agent.country, target))
@@ -168,12 +170,12 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
 
     if name == "procreate":
         if agent.ap < cfg.ap.procreate:
-            return {"ok": False, "error": f"AP 가 부족합니다. procreate 는 {cfg.ap.procreate}"}, None
+            return {"ok": False, "error": f"not enough AP; procreate needs {cfg.ap.procreate}"}, None
         agent.ap -= cfg.ap.procreate
         sink.procreations.append((agent.id, args.get("testament", "")))
-        return {"ok": True, "done": "아이를 남기고 죽습니다"}, "end"
+        return {"ok": True, "done": "you leave a child and die"}, "end"
 
-    return {"ok": False, "error": f"알 수 없는 도구: {name}"}, None
+    return {"ok": False, "error": f"unknown tool: {name}"}, None
 
 
 # ── 에이전트 한 턴 ────────────────────────────────────────────────────────────
@@ -223,7 +225,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
                 except (json.JSONDecodeError, TypeError):
                     args = {}
             if name not in TOOL_NAMES:
-                result = {"ok": False, "error": f"알 수 없는 도구: {name}"}
+                result = {"ok": False, "error": f"unknown tool: {name}"}
                 control = None
             else:
                 result, control = execute_tool(name, args, world, agent, cfg, sink, knob_ai)

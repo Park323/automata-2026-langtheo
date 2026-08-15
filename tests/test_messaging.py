@@ -21,8 +21,8 @@ def _translator(text="TRANSLATED"):
 
 
 def _sent(**over):
-    base = {"kind": "speak", "from": "A1", "from_country": "A", "from_lang": "ja",
-            "to": "B2", "to_country": "B", "to_lang": "zh", "route": "ai",
+    base = {"kind": "speak", "from": "Asla1", "from_country": "Asla", "from_lang": "ja",
+            "to": "Ranoa2", "to_country": "Ranoa", "to_lang": "zh", "route": "ai",
             "text": "본문", "intent": "의도", "translate_instruction": None, "reply_to": None}
     base.update(over)
     return base
@@ -51,10 +51,10 @@ def test_truncate_before_translate(cfg):
 # ── 경로 (spec 5.1) ──────────────────────────────────────────────────────────
 
 def test_classify(cfg):
-    assert messaging.classify("A", "A", "original") == "domestic"   # 자국민이면 route 무시
-    assert messaging.classify("A", "B", "original") == "original"
-    assert messaging.classify("A", "B", None) == "ai"
-    assert messaging.classify("A", "B", "ai") == "ai"
+    assert messaging.classify("Asla", "Asla", "original") == "domestic"   # 자국민이면 route 무시
+    assert messaging.classify("Asla", "Ranoa", "original") == "original"
+    assert messaging.classify("Asla", "Ranoa", None) == "ai"
+    assert messaging.classify("Asla", "Ranoa", "ai") == "ai"
 
 
 def test_cost(cfg):
@@ -71,7 +71,7 @@ def test_original_fail_when_cannot_read(cfg):
     assert m["delivered"] is False
     assert m["inbox"]["text"] is None
     assert m["inbox"]["unreadable"] is True
-    assert m["inbox"]["from"] == "A1"                    # 발신자·도착 사실만
+    assert m["inbox"]["from"] == "Asla1"                    # 발신자·도착 사실만
     assert m["sender_notice"]["type"] == "delivery_failed"
 
 

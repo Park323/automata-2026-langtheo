@@ -55,10 +55,12 @@ facility:
   transition_forfeits_progress: true
 
 world:
+  # 국가명은 서열·실세계 연상이 없는 가명 (A/B/C 는 순서 편향을 줌 — 리뷰 지적).
+  # 언어는 파일럿에서 번역 모델을 확정한 ja/zh/fr 로 고정.
   countries:
-    - {id: A, lang: ja}
-    - {id: B, lang: zh}
-    - {id: C, lang: fr}
+    - {id: Asla,  lang: ja}
+    - {id: Ranoa, lang: zh}
+    - {id: Miris, lang: fr}
   agents_per_country: 3
   total_turns: 50
   epoch_turns: 10                 # 창(A·E) 계산에 쓰는 '한 사람 몫의 기간'

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from core import translate as translate_mod
 
-AI_LABEL = "[AI 번역]"
+AI_LABEL = "[AI translation]"
 
 
 # ── 길이 절단 (spec 5.3) — 원문에, 발신 언어 상한으로, 번역 전에 ──────────────

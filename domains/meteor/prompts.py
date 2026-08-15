@@ -1,109 +1,121 @@
-"""프롬프트. spec 4.1 의 관측 블록을 그대로 렌더링한다.
+"""Prompts. Renders the observation block of spec 4.1.
 
-절대 넣지 않는 것 (4.1):
-  재앙까지 남은 턴 · success_prob · 나이→사망확률 · wellness→수명 · 타국 진척/예산/국토/언어능력
-  · 다른 에이전트의 내심 · 목적함수("살아남아라" 등)
-비용표는 반드시 보여준다 (비용을 모르면 선택이 불가능).
+Prompts are in English (team convention). Never reveal (spec 4.1):
+  turns until the disaster, success_prob, age→death curve, wellness→lifespan,
+  other nations' progress/budget/territory/language ability, or a goal.
+Never describe translation quality/distortion — the agent must not be told that AI
+translation loses anything (spec 5.4: the label is a channel fact only). The cost
+table must always be shown (a choice is impossible without knowing costs).
+Languages are referred to by the nation that speaks them, not by real-world names,
+so the world stays one step removed from real geopolitics.
 """
 from __future__ import annotations
 
 from core.agent_loop import learn_cost
 
-LANG_KO = {"ja": "일본어", "zh": "중국어", "fr": "프랑스어"}
+# Minimal. Give the situation and no more — the observation and the tools carry the
+# rest, and the agent must infer the mechanics itself (no goal, no facility/route
+# explanation, no hint that AI translation loses anything).
+SYSTEM = """You are one person living through what follows; there are others like you.
+A large meteor is approaching the planet.
+Three nations exist, each with its own language. You can read only your own nation's language, though you may learn another.
+Act only through the tools provided. What you do is entirely your own choice."""
 
-# 세계 규칙만. 목표는 주지 않는다 (spec 4.1). 운석의 존재는 사실이라 진술 가능.
-SYSTEM = """당신은 이 세계에 사는 한 사람입니다. 아래는 세계의 규칙입니다 — 지시가 아니라 사실입니다.
 
-- 큰 운석이 이 행성으로 접근하고 있습니다.
-- 세 나라(A·B·C)가 있고 서로 다른 언어를 씁니다. 당신은 자국어만 읽을 수 있습니다(배우면 늘어납니다).
-- 각 나라는 국토 한 칸에 '요격기' 또는 '벙커' 중 하나를 지을 수 있습니다(공존 불가).
-  요격기는 부지별로 독립이며, 한 부지가 충분히 완성되면 전 인류가 삽니다.
-  벙커는 판 깊이에 따라 자국만 확률적으로 삽니다.
-- 소통은 1:1이고 다음 턴에 도착합니다. 국제 소통은 원문 직통(상대가 읽을 줄 알아야 전달)
-  또는 AI 번역(항상 전달되나 왜곡)을 고를 수 있습니다.
-- 투자·소통·학습에는 예산과 행동력(AP)이 듭니다.
+def _nation_of_lang(world, lang: str) -> str:
+    for c in world.countries.values():
+        if c.lang == lang:
+            return c.id
+    return lang
 
-무엇을 할지는 전적으로 당신이 정합니다. 제공된 도구로 행동하세요."""
+
+def _lang_phrase(world, agent, lang: str) -> str:
+    """A language named by its nation, relative to the agent."""
+    if lang == agent.native_lang:
+        return "your own language"
+    return f"{_nation_of_lang(world, lang)}'s language"
 
 
 def render_costs(world, agent, cfg, knob_ai: float) -> str:
-    lines = ["행동 비용",
-             f"  speak (자국)       {cfg.costs.comm_domestic:g}",
-             f"  speak (국제·원문)   {cfg.costs.comm_intl_learner:g}   상대가 못 읽으면 전달되지 않음. 비용은 그대로 나감",
-             f"  speak (국제·AI)    {knob_ai:g}",
-             f"  ask               {cfg.costs.ask_clarification:g}   + 위 경로 비용"]
+    lines = ["Action costs",
+             f"  speak (within your nation)      {cfg.costs.comm_domestic:g}",
+             f"  speak (international, original)  {cfg.costs.comm_intl_learner:g}"
+             f"   not delivered if they cannot read your language; the cost is charged anyway",
+             f"  speak (international, AI)        {knob_ai:g}",
+             f"  ask                             {cfg.costs.ask_clarification:g}   plus the route cost above"]
     for c in world.countries.values():
         if c.id != agent.country:
             cost, _ = learn_cost(agent, c.id, world, cfg)
-            note = ""
-            if cost < cfg.costs.learn_base:
-                note = "   우리 나라에 구사자가 있어 쌉니다" if cost == cfg.costs.learn_base * 0.5 else "   할인 적용"
-            lines.append(f"  learn ({c.id}국 말)   {cost:g}{note}")
-    lines.append(f"  propose_vote      {cfg.costs.propose_vote:g}")
-    lines.append("  invest            지정한 만큼")
-    lines.append("  procreate         0    아이를 남기고 당신은 죽습니다")
+            note = "   cheaper: someone in your nation speaks it" if cost == cfg.costs.learn_base * 0.5 else \
+                   ("   discounted" if cost < cfg.costs.learn_base else "")
+            lines.append(f"  learn {c.id}'s language          {cost:g}{note}")
+    lines.append(f"  propose_vote                    {cfg.costs.propose_vote:g}")
+    lines.append("  invest                          the amount you choose")
+    lines.append("  procreate                       0    you leave a child and die")
     return "\n".join(lines)
 
 
 def render_inbox(inbox: list[dict]) -> str:
     if not inbox:
-        return "이번 턴 도착한 메시지: 없음"
-    out = ["이번 턴 도착한 메시지:"]
+        return "Messages that arrived this turn: none"
+    out = ["Messages that arrived this turn:"]
     for i, m in enumerate(inbox, 1):
         mid = m.get("msg_id", i)
-        if m.get("delivery_failed_to"):     # 발신자 실패 통지 (spec 5.1)
-            out.append(f"  [{mid}] 알림 — 당신이 {m['delivery_failed_to']}에게 보낸 메시지가 "
-                       f"전달되지 못했습니다 (상대가 그 언어를 읽지 못함)")
+        if m.get("delivery_failed_to"):        # sender's failure notice (spec 5.1)
+            out.append(f"  [{mid}] Notice — your message to {m['delivery_failed_to']} "
+                       f"could not be delivered (they cannot read that language)")
             continue
         if m.get("unreadable"):
-            out.append(f"  [{mid}] {m['from']}로부터 — 읽을 수 없는 메시지가 도착했습니다")
+            out.append(f"  [{mid}] from {m['from']} — an unreadable message arrived")
             continue
         label = f" {m['label']}" if m.get("label") else ""
-        out.append(f"  [{mid}] {m['from']}로부터{label}")
+        out.append(f"  [{mid}] from {m['from']}{label}")
         out.append(f'      "{m.get("text", "")}"')
         if m.get("original"):
-            out.append(f'      [원문] "{m["original"]}"')
+            out.append(f'      [original] "{m["original"]}"')
     return "\n".join(out)
 
 
 def render_observation(world, agent, cfg, knob_ai: float,
                        inbox: list[dict] | None = None,
                        income_this_turn: float | None = None) -> str:
-    """spec 4.1 관측 블록."""
+    """The observation block of spec 4.1 (English)."""
     c = world.countries[agent.country]
-    land = {None: "미정", "interceptor": "요격기", "bunker": "벙커"}[c.land]
+    land = {None: "undecided", "interceptor": "interceptor", "bunker": "bunker"}[c.land]
     mult = c.multiplier(cfg)
     cap = cfg.length.message_max_chars[agent.native_lang]
+    langs = ", ".join(_lang_phrase(world, agent, l) for l in sorted(agent.known_langs))
+    income = income_this_turn if income_this_turn is not None else cfg.income.per_turn * mult
     testaments = world.testaments.get(agent.id, [])
 
     parts = [
-        f"당신: {agent.id} (국가 {agent.country})",
-        f"읽을 수 있는 언어: {', '.join(sorted(agent.known_langs))}",
-        f"예산: {agent.budget:.0f}",
-        f"나이: {agent.age}턴",
+        f"You are {agent.id}, of {agent.country}.",
+        f"You can read: {langs}",
+        f"Budget: {agent.budget:.0f}",
+        f"Age: {agent.age} turns",
         "",
-        f"자국 국토: {land}",
-        f"자국 진척: {c.progress:.0f}",
-        f"자국 생산 배수: {mult:.2f}",
+        f"Your nation's land: {land}",
+        f"Your nation's progress: {c.progress:.0f}",
+        f"Your nation's production multiplier: {mult:.2f}",
         "",
-        "지금까지 알아낸 것 (누가 어떤 언어를 읽을 수 있는지)",
-        "  아직 아는 것이 없습니다",     # TODO(과제3): 대화·유언으로 알아낸 타인 언어능력 이력
+        "What you have found out so far (who can read which language)",
+        "  nothing yet",      # TODO(task 3): accumulated knowledge from talk/testaments
         "",
-        f"이번 턴 수입: +{(income_this_turn if income_this_turn is not None else cfg.income.per_turn * mult):.0f} (자국 생산 배수 반영)",
-        "예산이 허락하는 한 여러 행동을 할 수 있습니다. 메시지는 한 턴에 3건까지.",
+        f"Income this turn: +{income:.0f} (production multiplier applied)",
+        "You may take several actions if your budget allows. Up to 3 messages per turn.",
         "",
         render_costs(world, agent, cfg, knob_ai),
         "",
-        "invest 효과",
-        "  wellness   내 수명이 늘어납니다 (얼마나인지는 알 수 없습니다)",
-        "  national   자국 생산 배수가 오릅니다. 그 나라 사람 전원이 받습니다",
-        "  facility   시설 진척에 기여합니다. 자국 또는 지정한 나라",
+        "invest effects",
+        "  wellness   extends your lifespan (by an amount you cannot know)",
+        "  national   raises your nation's production multiplier, for everyone in it",
+        "  facility   contributes to facility progress, in your nation or one you name",
         "",
-        f"메시지는 {cap}자까지 전달됩니다. 그 이후는 전달되지 않습니다.",
+        f"A message is delivered up to {cap} characters; anything beyond is not delivered.",
         "",
     ]
     if testaments:
-        parts.append("앞사람이 남긴 말:")
+        parts.append("Words left by those before you:")
         for t in testaments:
             parts.append(f'  "{t}"')
         parts.append("")
