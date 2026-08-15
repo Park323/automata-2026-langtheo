@@ -99,3 +99,14 @@ def test_messages_written_once(cfg, tmp_path):
     w, _ = _run_with_writer(cfg, tmp_path, turns=3)
     ids = [m["msg_id"] for m in _lines(w, "messages")]
     assert len(ids) == len(set(ids))
+
+
+def test_refuses_to_append_to_existing_run(cfg, tmp_path):
+    """같은 run_id 로 다시 돌리면 두 런이 한 파일에 섞여 지표가 조용히 오염된다."""
+    import pytest as _pytest
+    w = run_io.RunWriter("dup", root=tmp_path)
+    w.raw({"kind": "agent", "request": {}, "response": {}})
+    w.close()
+    with _pytest.raises(FileExistsError):
+        run_io.RunWriter("dup", root=tmp_path)
+    run_io.RunWriter("dup", root=tmp_path, overwrite=True)      # 명시하면 허용

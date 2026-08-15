@@ -29,6 +29,7 @@ ap:
   learn:        1.0
   propose_vote: 0.3
   invest:       0.0
+  memory_write: 0.1               # 턴당 최대 10회. 예산이 아니라 AP 로 묶는다 (4.5)
   procreate:    1.0
 
 growth:
@@ -80,6 +81,9 @@ length:
   on_overflow: truncate
 
 llm:
+  context_limit: 8192             # 개체 기억 (spec 4.5). 2^13
+  warn_ratio:    0.7              # 5,734 토큰에서 압박 경고
+  repeat_guard:  3                # 동일 (도구,인자) 반복 상한. max_steps 는 두지 않는다
   agent_model:     "qwen/qwen-2.5-7b-instruct"           # qwen-2.5 계열 7B. tools OK, out $0.20/1M, ~1s/콜
   translate_model: "mistralai/mistral-small-3.2-24b-instruct"  # 파일럿 확정 — 고정 (바꾸지 말 것)
   temperature:     0.7

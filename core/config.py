@@ -53,6 +53,7 @@ class AP:
     learn: float
     propose_vote: float
     invest: float
+    memory_write: float
     procreate: float
 
 
@@ -112,6 +113,9 @@ class Length:
 
 @dataclass(frozen=True)
 class LLM:
+    context_limit: int
+    warn_ratio: float
+    repeat_guard: int
     agent_model: str
     translate_model: str
     temperature: float

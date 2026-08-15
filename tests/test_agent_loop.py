@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from core import config
-from core.agent_loop import MAX_STEPS, Sink, learn_cost, run_agent_turn
+from core.agent_loop import RUNAWAY_CAP, Sink, learn_cost, run_agent_turn
 from core.llm import StubClient, assistant_msg, tool_call
 from core.loop import init_world
 from domains.meteor import prompts
@@ -51,10 +51,10 @@ def _results(client):
 def test_ap_cap_fourth_speak_fails(cfg, world):
     """speak 4번째가 ok:False (AP 0.3 × 3 = 0.9, 4번째는 1.2 > 1.0)."""
     script = [assistant_msg(
-        tool_call("speak", "1", to="Asla2", text="x"),
-        tool_call("speak", "2", to="Asla2", text="x"),
-        tool_call("speak", "3", to="Asla2", text="x"),
-        tool_call("speak", "4", to="Asla2", text="x"),
+        tool_call("speak", "1", to="Asla2", text="a"),
+        tool_call("speak", "2", to="Asla2", text="b"),
+        tool_call("speak", "3", to="Asla2", text="c"),
+        tool_call("speak", "4", to="Asla2", text="d"),
     ), assistant_msg(tool_call("end_turn", "5"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
     results = _results(client)

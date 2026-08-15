@@ -20,6 +20,11 @@ class Agent:
     born_turn: int = 0
     born_by: str = "natural"  # "natural" | "procreate"
     uid: int = 0              # 인스턴스 고유 번호. id 는 슬롯이라 세대마다 재사용된다
+    memory: str = ""          # 기억 블록. memory_write 로 덮어쓴다 (spec 4.5)
+    # 대화 이력. 태어나서 죽을 때까지 이어진다. 죽으면 소멸 — procreate 로도 안 넘어간다.
+    # 넘기려면 1문장으로 압축해 유언에 옮겨야 하고, 그 압축이 곧 구전 감쇠다.
+    convo: list = field(default_factory=list)
+    last_prompt_tokens: int = 0   # 직전 호출의 실측 프롬프트 토큰 (압박 판정에 쓴다)
 
 
 @dataclass

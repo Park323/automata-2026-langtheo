@@ -78,6 +78,8 @@ T = {
         in_fail="  [{id}] 通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
         in_unread="  [{id}] {frm} より — 読めないメッセージが届きました",
         in_from="  [{id}] {frm} より{label}", in_orig="      [原文] 「{t}」",
+        mem_hdr="あなたの覚え書き:", mem_none="  （まだ何もない）",
+        warn="［記憶の圧迫］記憶が限界に近づいています。古いものから消えていきます。",
         own="あなたの言語", other="{nation} の言語",
     ),
     "zh": dict(
@@ -106,6 +108,8 @@ T = {
         in_fail="  [{id}] 通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
         in_unread="  [{id}] 来自 {frm} — 送到一条你读不懂的消息",
         in_from="  [{id}] 来自 {frm}{label}", in_orig="      [原文] 「{t}」",
+        mem_hdr="你的笔记:", mem_none="  （还没有）",
+        warn="［记忆压力］记忆接近上限，旧的内容会先消失。",
         own="你自己的语言", other="{nation} 的语言",
     ),
     "fr": dict(
@@ -137,6 +141,8 @@ T = {
         in_fail="  [{id}] Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",
         in_unread="  [{id}] de {frm} — un message illisible est arrivé",
         in_from="  [{id}] de {frm}{label}", in_orig="      [original] « {t} »",
+        mem_hdr="Vos notes :", mem_none="  (rien encore)",
+        warn="[Pression mémoire] Votre mémoire approche de sa limite ; le plus ancien disparaît d'abord.",
         own="votre propre langue", other="la langue de {nation}",
     ),
 }
@@ -244,6 +250,7 @@ def render_observation(world, agent, cfg, knob_ai: float,
         t["cap"].format(cap=cap),
         "",
     ]
+    parts += [t["mem_hdr"], ("  " + agent.memory) if agent.memory else t["mem_none"], ""]
     if testaments:
         parts.append(t["test_hdr"])
         for x in testaments:

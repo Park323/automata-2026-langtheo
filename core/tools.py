@@ -71,6 +71,11 @@ TOOLS: list[dict] = [
         {"testament": {"type": "string", "description": "one sentence passed to the child"}},
         ["testament"]),
 
+    _fn("memory_write",
+        "Overwrite your notes. They stay with you next turn; nobody else sees them.",
+        {"text": {"type": "string", "description": "your notes, replacing whatever was there"}},
+        ["text"]),
+
     _fn("end_turn", "You have nothing more to do this turn. Ends the loop.", {}, []),
 ]
 

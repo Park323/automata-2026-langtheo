@@ -1,7 +1,7 @@
 """한 에이전트의 한 턴. spec 4.2.
 
   messages = [system, user(관측)]
-  반복(MAX_STEPS 이하):
+  반복 (종료 조건은 spec 4.5):
       resp = client.chat(messages, tools=TOOLS)
       tool_calls 없으면 종료
       각 tool_call 실행 → 결과를 role="tool" 로 append
@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 from core import messaging
 from core.tools import TOOLS, TOOL_NAMES
 
-MAX_STEPS = 8
 
 
 @dataclass
@@ -66,6 +65,19 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
 
     if name == "end_turn":
         return {"ok": True, "ended": True}, "end"
+
+    if name == "memory_write":
+        # 예산이 아니라 AP 로 묶는다 (spec 4.5) — 예산을 물리면 기억이 시설 투자와
+        # 경쟁해서 "AI 가 싸지면 기억을 덜 하는가" 관측에 교란이 섞인다.
+        if agent.ap < cfg.ap.memory_write:
+            return {"ok": False, "error": f"not enough AP; memory_write needs {cfg.ap.memory_write}"}, None
+        if "text" not in args:
+            # 인자가 잘려 파싱에 실패하면 args 가 {} 로 온다. 그때 덮어쓰면 기억이
+            # 통째로 지워진다 — 실측에서 실제로 일어났다 ("saved": 0).
+            return {"ok": False, "error": "memory_write needs text"}, None
+        agent.ap -= cfg.ap.memory_write
+        agent.memory = str(args.get("text", ""))
+        return {"ok": True, "saved": len(agent.memory), "ap_left": round(agent.ap, 2)}, None
 
     if name == "invest":
         target = args.get("target")
@@ -178,29 +190,113 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
     return {"ok": False, "error": f"unknown tool: {name}"}, None
 
 
+
+# ── 개체 기억 (spec 4.5) ──────────────────────────────────────────────────────
+
+RUNAWAY_CAP = 200   # 설계 파라미터가 아니라 폭주 보험. 정상 행동(6~8)의 25배
+
+
+def estimate_tokens(messages: list[dict]) -> int:
+    """대략치. 실제로는 응답의 usage.prompt_tokens 를 쓰고, 없을 때만 이걸 쓴다."""
+    n = 0
+    for m in messages:
+        n += len(str(m.get("content") or "")) // 3
+        for tc in m.get("tool_calls") or []:
+            n += len(json.dumps(tc, ensure_ascii=False)) // 3
+    return n
+
+
+def _turn_blocks(convo: list[dict]) -> list[tuple[int, int]]:
+    """대화를 턴 블록으로 나눈다. 블록 = user(관측) 하나 + 뒤따르는 assistant/tool."""
+    idx = [i for i, m in enumerate(convo) if m.get("role") == "user"]
+    return [(a, b) for a, b in zip(idx, idx[1:] + [len(convo)])]
+
+
+def evict(convo: list[dict], limit_tokens: int) -> tuple[list[dict], int]:
+    """한계를 넘으면 오래된 턴 블록부터 버린다. 최근 한 턴은 반드시 남긴다.
+
+    system 은 convo 에 없다 (매 호출 앞에 붙인다). 반환 (남은 대화, 버린 블록 수).
+    """
+    dropped = 0
+    blocks = _turn_blocks(convo)
+    while len(blocks) > 1 and estimate_tokens(convo) > limit_tokens:
+        convo = convo[blocks[0][1]:]
+        dropped += 1
+        blocks = _turn_blocks(convo)
+    return convo, dropped
+
+
+def under_pressure(agent, cfg) -> bool:
+    """직전 호출의 실측 토큰이 경고 임계를 넘었나."""
+    return agent.last_prompt_tokens >= cfg.llm.context_limit * cfg.llm.warn_ratio
+
+
+def can_act(agent, cfg, knob_ai: float) -> bool:
+    """남은 예산·AP 로 실행 가능한 도구가 하나라도 있나 (종료 조건 ②, spec 4.5).
+
+    end_turn 은 세지 않는다 — 그건 종료이지 행동이 아니다.
+    """
+    cheapest_budget = min(cfg.costs.comm_domestic, cfg.costs.propose_vote)
+    if agent.budget >= cheapest_budget and agent.ap >= min(cfg.ap.speak, cfg.ap.propose_vote):
+        return True
+    if agent.budget > 0:                      # invest 는 AP 0
+        return True
+    return agent.ap >= cfg.ap.memory_write    # 기억은 예산을 안 쓴다
+
+
 # ── 에이전트 한 턴 ────────────────────────────────────────────────────────────
 
 def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
                    system_prompt: str, user_prompt: str) -> dict:
-    """반환 = 로그용 논리 형식 {"reasoning","actions","received"} (spec 4.2).
+    """한 에이전트의 한 턴. 대화는 태어나서 죽을 때까지 이어진다 (spec 4.5).
 
     한 에이전트의 chat 호출이 실패해도(400/네트워크 등) 그 에이전트만 이번 턴을 접고
     전체 시뮬레이션은 계속된다 — 단일 API 실패가 50턴 런을 죽이면 안 된다.
+
+    종료 조건 (임의 상한을 두지 않는다):
+      ① end_turn / procreate
+      ② 남은 예산으로도 AP 로도 실행 가능한 도구가 없다
+      ③ 동일한 (도구, 인자) 호출이 repeat_guard 회 반복
     """
-    messages = [{"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}]
+    # 압박 경고는 관측 **앞**에 붙인다. 사실 통지이지 지시가 아니다 (spec 4.5).
+    if under_pressure(agent, cfg):
+        from domains.meteor.prompts import T          # 도메인 문구 (모국어)
+        user_prompt = T[agent.native_lang]["warn"] + "\n\n" + user_prompt
+        pressured = True
+    else:
+        pressured = False
+    agent.convo.append({"role": "user", "content": user_prompt})
+    messages = [{"role": "system", "content": system_prompt}, *agent.convo]
     actions: list[dict] = []
     reasonings: list[dict] = []   # spec 4.2 — 행동마다의 근거. 지표 4 를 여기서 역추적한다
     api_reasoning = ""      # API 의 message.reasoning — 추론 모델의 사고 과정. 다른 것이다
     error = None
-    ended_by = "exhausted"  # ended | exhausted | error
+    evicted = 0
+    ended_by = "exhausted"  # ended | exhausted | error | repeat_guard | runaway
+    seen: dict[str, int] = {}       # (도구,인자) 반복 카운터 — 실패는 자원을 안 쓴다
+    steps = 0
 
-    for _ in range(MAX_STEPS):
+    while True:
+        if steps >= RUNAWAY_CAP:
+            ended_by = "runaway"
+            break
+        if not can_act(agent, cfg, knob_ai):
+            ended_by = "exhausted"
+            break
+        steps += 1
+        # 한계를 넘으면 오래된 턴 블록부터 버린다. system 은 convo 밖이라 안전하다.
+        agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit)
+        evicted += dropped
+        messages = [{"role": "system", "content": system_prompt}, *agent.convo]
         try:
             resp = client.chat(messages, tools=TOOLS)
         except Exception as e:                          # 이 에이전트만 턴 종료
             error = f"{type(e).__name__}: {str(e)[:200]}"
             break
+        # 압박 판정은 실측 토큰으로 한다. 없으면(Stub) 추정치.
+        usage = resp.get("usage") or {}
+        agent.last_prompt_tokens = int(usage.get("prompt_tokens")
+                                       or estimate_tokens(messages))
         msg = resp["choices"][0]["message"]
         # ⚠ message.reasoning 은 추론 모델의 사고 과정이고 spec 의 reasoning 과 다르다.
         #    섞지 않는다 (spec 9장). 원본은 raw_calls.jsonl 에 그대로 남는다.
@@ -210,12 +306,25 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
         if not tool_calls:
             break
         # tool_call 에 id 를 보장한다 (없으면 echo 한 assistant 와 tool 응답의 짝이 어긋나 400)
+        # 그리고 arguments 를 **정규화**한다. 모델이 출력 상한에 걸려 잘린 JSON 을 주면
+        # 그대로 되돌려줄 때 프로바이더가 400 을 낸다 (실측 218콜 중 8건).
         for i, tc in enumerate(tool_calls):
             if not tc.get("id"):
                 tc["id"] = f"call_{i}"
+            fn = tc.get("function") or {}
+            raw_args = fn.get("arguments")
+            if isinstance(raw_args, dict):
+                fn["arguments"] = json.dumps(raw_args, ensure_ascii=False)
+            elif isinstance(raw_args, str):
+                try:
+                    json.loads(raw_args)
+                except (json.JSONDecodeError, TypeError):
+                    fn["arguments"] = "{}"          # 잘린 것은 빈 인자로 되돌린다
+            else:
+                fn["arguments"] = "{}"
         # content 는 tool_calls 와 함께면 None 이어야 한다 (빈 문자열은 일부 프로바이더가 거부→400)
-        messages.append({"role": "assistant", "content": msg.get("content") or None,
-                         "tool_calls": tool_calls})
+        agent.convo.append({"role": "assistant", "content": msg.get("content") or None,
+                            "tool_calls": tool_calls})
         stop = False
         for tc in tool_calls:
             fn = tc.get("function") or {}           # 모델이 malformed 를 줄 수 있어 방어
@@ -237,8 +346,14 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             reasonings.append({"tool": name, "ok": bool(result.get("ok")), "reasoning": why})
             if name != "end_turn" and result.get("ok"):
                 actions.append({"type": name, **args})
-            messages.append({"role": "tool", "tool_call_id": tc["id"],
-                             "content": json.dumps(result, ensure_ascii=False)})
+            agent.convo.append({"role": "tool", "tool_call_id": tc["id"],
+                                "content": json.dumps(result, ensure_ascii=False)})
+            key = f"{name}|{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
+            seen[key] = seen.get(key, 0) + 1
+            if seen[key] >= cfg.llm.repeat_guard:
+                stop = True
+                ended_by = "repeat_guard"
+                break
             if control == "end":
                 stop = True
                 ended_by = "ended"
@@ -250,4 +365,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
         ended_by = "error"
     return {"reasonings": reasonings, "api_reasoning": api_reasoning,
             "actions": actions, "error": error, "ended_by": ended_by,
-            "reasoning_missing": not any(r["reasoning"] for r in reasonings)}
+            "reasoning_missing": not any(r["reasoning"] for r in reasonings),
+            "steps": steps, "prompt_tokens": agent.last_prompt_tokens,
+            "pressured": pressured, "evicted_blocks": evicted,
+            "memory_len": len(agent.memory)}

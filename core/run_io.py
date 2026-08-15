@@ -38,10 +38,20 @@ def git_commit() -> str | None:
 class RunWriter:
     """한 run 의 산출물. 스레드 안전 (에이전트 호출이 병렬이라 raw 가 동시에 들어온다)."""
 
-    def __init__(self, run_id: str, cfg_raw: dict | None = None, root: Path | None = None):
+    def __init__(self, run_id: str, cfg_raw: dict | None = None, root: Path | None = None,
+                 overwrite: bool = False):
         self.run_id = run_id
         self.dir = (root or ROOT / "runs") / run_id
         self.dir.mkdir(parents=True, exist_ok=True)
+        # 같은 run_id 로 다시 돌리면 이전 런 위에 **이어붙는다.** 두 런이 한 파일에
+        # 섞이면 지표가 조용히 오염된다 (실측에서 실제로 겪었다).
+        existing = list(self.dir.glob("*.jsonl"))
+        if existing and not overwrite:
+            raise FileExistsError(
+                f"{self.dir} 에 이미 로그가 있습니다. run_id 를 바꾸거나 overwrite=True. "
+                f"({', '.join(p.name for p in existing)})")
+        for f in existing:
+            f.unlink()
         self._lock = threading.Lock()
         self._files: dict[str, object] = {}
         self.counts = {"raw": 0, "errors": 0, "retries": 0}
@@ -113,6 +123,9 @@ class RunWriter:
                 "reasonings": lg.get("reasonings"), "api_reasoning": lg.get("api_reasoning"),
                 "ended_by": lg.get("ended_by"), "error": lg.get("error"),
                 "reasoning_missing": lg.get("reasoning_missing"),
+                "steps": lg.get("steps"), "prompt_tokens": lg.get("prompt_tokens"),
+                "pressured": lg.get("pressured"), "evicted_blocks": lg.get("evicted_blocks"),
+                "memory_len": lg.get("memory_len"),
                 "actions": [a.get("type") for a in lg.get("actions", [])],
             })
         for b in result.births:
@@ -135,5 +148,9 @@ class RunWriter:
             "agent_turns": len(logs), "llm_failures": failed,
             "llm_failure_rate": round(failed / len(logs), 4) if logs else 0.0,
             "ended_by": ends,
+            "prompt_tokens_max": max((lg.get("prompt_tokens") or 0 for lg in logs.values()), default=0),
+            "pressured": sum(1 for lg in logs.values() if lg.get("pressured")),
+            "memory_writes": sum(1 for lg in logs.values()
+                                 for a in lg.get("actions", []) if a.get("type") == "memory_write"),
             "raw_calls_total": self.counts["raw"], "raw_errors": self.counts["errors"],
         })

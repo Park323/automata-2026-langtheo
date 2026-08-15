@@ -46,8 +46,10 @@ def test_message_delivery_delayed():
         tool_call("speak", "1", to="Asla2", text="HELLO_MARK"))]})
     _run(cfg, clients, parallel=False)
     a2 = clients["Asla2"]                       # 빈 스크립트 → 턴당 chat 1회
-    turn1 = a2.calls[0]["messages"][1]["content"]
-    turn2 = a2.calls[1]["messages"][1]["content"]
+    # 대화가 누적되므로 "그 턴의 관측" 은 마지막 user 메시지다 (spec 4.5)
+    last_user = lambda ms: [m for m in ms if m["role"] == "user"][-1]["content"]
+    turn1 = last_user(a2.calls[0]["messages"])
+    turn2 = last_user(a2.calls[1]["messages"])
     assert "HELLO_MARK" not in turn1         # 같은 턴엔 안 옴
     assert "HELLO_MARK" in turn2             # 다음 턴에 도착
 

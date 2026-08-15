@@ -117,7 +117,8 @@ def main() -> None:
     print(f"3턴 스모크 실행  (turns={args.turns}, knob={knob}, seed={args.seed})")
     print("=" * 64)
     t0 = time.time()
-    writer = run_io.RunWriter(f"smoke_{args.turns}t_seed{args.seed}", cfg_raw=raw)
+    stamp = time.strftime("%m%d_%H%M%S")
+    writer = run_io.RunWriter(f"smoke_{args.turns}t_seed{args.seed}_{stamp}", cfg_raw=raw)
     agent_client.inner.recorder = writer.recorder(kind="agent")
     translator.inner.recorder = writer.recorder(kind="translate")
 
