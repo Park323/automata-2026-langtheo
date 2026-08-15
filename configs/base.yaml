@@ -55,10 +55,12 @@ facility:
   transition_forfeits_progress: true
 
 world:
+  # 국가명은 서열·실세계 연상이 없는 가명 (A/B/C 는 순서 편향을 줌 — 리뷰 지적).
+  # 언어는 파일럿에서 번역 모델을 확정한 ja/zh/fr 로 고정.
   countries:
-    - {id: A, lang: ja}
-    - {id: B, lang: zh}
-    - {id: C, lang: fr}
+    - {id: Asla,  lang: ja}
+    - {id: Ranoa, lang: zh}
+    - {id: Miris, lang: fr}
   agents_per_country: 3
   total_turns: 50
   epoch_turns: 10                 # 창(A·E) 계산에 쓰는 '한 사람 몫의 기간'
@@ -79,8 +81,8 @@ length:
   on_overflow: truncate
 
 llm:
-  agent_model:     "qwen/qwen-2.5-72b-instruct"   # A-1 기본값 (과제 2에서 사용)
-  translate_model: "qwen/qwen-2.5-72b-instruct"
+  agent_model:     "qwen/qwen-2.5-7b-instruct"           # qwen-2.5 계열 7B. tools OK, out $0.20/1M, ~1s/콜
+  translate_model: "mistralai/mistral-small-3.2-24b-instruct"  # 파일럿 확정 — 고정 (바꾸지 말 것)
   temperature:     0.7
 
 run:

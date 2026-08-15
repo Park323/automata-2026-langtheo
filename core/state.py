@@ -48,3 +48,6 @@ class World:
     agents: dict[str, Agent]
     # 유언 저장소. 계보(=slot id)별로 최근 testament_carry 개를 보관한다
     testaments: dict[str, list[str]] = field(default_factory=dict)
+    # 메시지 큐. 이번 턴 발신은 다음 턴 도착 (spec 3.1). 각 원소:
+    #   {"deliver_turn": t, "to": agent_id, "msg": inbox_dict}
+    inbox_queue: list = field(default_factory=list)
