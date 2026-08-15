@@ -45,16 +45,30 @@
 
 > 로그 스키마가 확정돼 추측 없이 쓸 수 있습니다. **우리가 진행합니다** (동생에게 통지함).
 
-- [ ] `tools/score/markers.py` — 화용 표지 카운터. **코퍼스 단위**, 언어쌍 방향별
-      소실률 `Σmax(0, sent−delivered)/Σsent` · 생성률 `Σmax(0, delivered−sent)/메시지 수`
-- [ ] `tools/score/judge.py` — LLM 이진 판정. **2단계**:
-      ① 메시지 m 에 대한 이해를 수신자의 그 턴 `reasoning` 에서 추출할 수 있는가
-      ② 추출된 이해가 `text_sent` 와 같은 뜻인가
-      ①이 안 되면 분모에서 제외하고 **언급률**을 별도 지표로
-- [ ] `tools/score/metrics.py` — 지표 산출
-      4a/4b/4c/4d · 6a/6b/6a' · 1·2·2'·3·5·7~17 · `n` · `pair_dist`
+- [x] `tools/score/markers.py` — 화용 표지 카운터. 코퍼스 단위·방향별. 사전 커버리지 100%
+- [x] `tools/score/judge.py` — 2단계 LLM 판정 + 언급률. `judged.jsonl` · `judge_raw.jsonl`
+- [x] `tools/score/metrics.py` — 지표 전량 + `scored.jsonl` + 조건별 표
+- [x] 런이 `knob_ai`·`seed` 를 스냅샷에 기록 (없으면 조건별 표를 만들 수 없었음)
 - [ ] **`x̂` 추출** — 학습이 켜지고 꺼지는 임계. 눈금 `L/L2/L4`, **나이로 층화**
-- [ ] `scored.jsonl` + 조건별 표
+      (층화 입력은 `metrics.learner_rate(...)['by_age']` 로 이미 나옵니다)
+
+### 채점기가 6턴 실측에서 잡은 것
+
+```
+학습    t3 Asla1 → t4 Asla2 → t5 Asla3·Miris2 → t6 Asla3 이 fr 추가
+        learn_base 300 · income 100/턴 인데 실제로 일어난다  ← Phase 1 ①번 관문 통과 신호
+표지    subject 소실 30%·생성 18% · tense 소실 44%   vs   수치 6a 소실 0%
+        ← "사실은 통과하고 의도만 깎인다" 가 본 세계에서도 재현
+전환    지표 3 = 0% (n=14). 국제 메시지가 propose_vote 로 이어지지 않았다
+방향    fr→zh 48% · zh→fr 39% · ja→zh 9% · zh→ja 4%   ← ja 발신이 얇다
+```
+
+**Phase 0 재실행 때 확인할 것 3건** — 6턴·1시드라 지금은 아무것도 결론내지 않습니다.
+
+- [ ] **언급률의 선택 효과** — 4a 의 분모가 *언급된 메시지* 다. 6턴에서 경로별로
+      달랐습니다 (AI 47% · 국내 35%). 차이가 유지되면 4a 비교를 그만큼 깎아 읽어야 합니다
+- [ ] **`pair_dist` 편중** — ja 발신 3건 vs zh 발신 21건. 유지되면 4a 비교가 오염됩니다
+- [ ] **`hedge` 표본** — 6턴에서 3건뿐. 유보가 거의 없으면 "유보가 깎인다" 를 관측할 수 없습니다
 
 ## 8/20 — Phase 0 재실행 + 캘리브레이션
 
