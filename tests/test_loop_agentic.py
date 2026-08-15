@@ -34,7 +34,7 @@ def _clients(overrides=None):
 def _run(cfg, clients, translator=None, knob_ai=48, seed=1, parallel=True):
     translator = translator or StubClient([{"role": "assistant", "content": "译", "tool_calls": []}] * 50)
     return run_agentic(cfg, random.Random(seed), clients.__getitem__, translator, knob_ai,
-                       prompts.render_observation, prompts.SYSTEM, parallel=parallel)
+                       prompts.render_observation, prompts.system_for, parallel=parallel)
 
 
 # ── #5 도착 지연 ─────────────────────────────────────────────────────────────

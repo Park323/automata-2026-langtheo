@@ -370,7 +370,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
 
 def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
                      counter: "itertools.count", client_for, translator, knob_ai: float,
-                     render_obs, system_prompt: str, is_last: bool = False,
+                     render_obs, system_prompt, is_last: bool = False,
                      parallel: bool = True, on_turn_end=None) -> None:
     """한 턴 (에이전트). spec 3.1 순서를 지키되 3단계는 9명 병렬, 5단계는 정렬 정산."""
     # 1. 소득 + AP 리셋
@@ -391,8 +391,10 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
 
     def run_one(aid):
         agent = world.agents[aid]
+        # system_prompt 는 문자열이거나 (agent)->str 콜러블. 후자는 모국어 프롬프트용
+        sp = system_prompt(agent) if callable(system_prompt) else system_prompt
         return aid, run_agent_turn(world, agent, cfg, client_for(aid), sinks[aid],
-                                   knob_ai, system_prompt, user_prompts[aid])
+                                   knob_ai, sp, user_prompts[aid])
 
     if parallel:
         with ThreadPoolExecutor(max_workers=len(snapshot_ids)) as ex:
@@ -426,7 +428,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
 
 
 def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
-                render_obs, system_prompt: str, parallel: bool = True,
+                render_obs, system_prompt, parallel: bool = True,
                 on_turn_end=None) -> RunResult:
     """LLM(또는 StubClient) 에이전트로 total_turns 턴을 돌린다.
 

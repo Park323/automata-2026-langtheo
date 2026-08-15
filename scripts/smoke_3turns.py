@@ -127,7 +127,7 @@ def main() -> None:
     res = run_agentic(cfg, random.Random(args.seed),
                       client_for=lambda aid: agent_client, translator=translator,
                       knob_ai=knob, render_obs=prompts.render_observation,
-                      system_prompt=prompts.SYSTEM, parallel=not args.sequential,
+                      system_prompt=prompts.system_for, parallel=not args.sequential,
                       on_turn_end=progress)
     elapsed = time.time() - t0
 

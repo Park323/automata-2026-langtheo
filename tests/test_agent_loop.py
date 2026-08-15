@@ -33,7 +33,7 @@ def _run(world, cfg, agent_id, script, knob_ai=48, budget=None):
         agent.budget = budget
     sink = Sink()
     client = StubClient(script)
-    sys_p = prompts.SYSTEM
+    sys_p = prompts.system_for(agent)
     usr_p = prompts.render_observation(world, agent, cfg, knob_ai)
     log = run_agent_turn(world, agent, cfg, client, sink, knob_ai, sys_p, usr_p)
     return agent, sink, client, log
@@ -183,14 +183,18 @@ def test_inbox_renders_delivery_failure():
     """발신자 실패 통지가 'None로부터'가 아니라 명확한 알림으로 렌더된다."""
     notice = {"from": None, "text": None, "label": None, "original": None,
               "delivery_failed_to": "Ranoa2", "msg_id": 1}
-    s = prompts.render_inbox([notice])
-    assert "None" not in s
-    assert "Ranoa2" in s and "could not be delivered" in s
+    for lang in ("ja", "zh", "fr"):
+        s = prompts.render_inbox([notice], lang)
+        assert "None" not in s
+        assert "Ranoa2" in s
+        # 언어별 통지 문구가 실제로 그 언어로 렌더되는지 (영어 잔재가 아닌지)
+        assert s.splitlines()[-1] == prompts.T[lang]["in_fail"].format(id=1, to="Ranoa2")
 
 
 def test_prompt_hides_secrets(cfg, world):
     """프롬프트(system·관측)에 success_prob·λ·하자드·재앙까지 남은 턴이 없다."""
-    p = prompts.SYSTEM + "\n" + prompts.render_observation(world, world.agents["Asla1"], cfg, knob_ai=48)
+    a0 = world.agents["Asla1"]
+    p = prompts.system_for(a0) + "\n" + prompts.render_observation(world, a0, cfg, knob_ai=48)
     for bad in FORBIDDEN:
         assert bad not in p, f"프롬프트에 금지어 '{bad}' 노출"
 
