@@ -1843,16 +1843,77 @@ zh 「另外两国」(단어 수사)  →  ja 「他の2か国」(아라비아 �
 
 ```
 runs/{run_id}/
-  config_snapshot.yaml     # 재현용. 반드시 저장
+  config_snapshot.yaml     # 재현용. 코드 커밋 해시도 함께
+  raw_calls.jsonl          # ★ LLM 호출 전문 (요청·응답 원본). 아래 참조
   state.jsonl              # 턴별 에이전트 상태
   messages.jsonl           # 6.1 스키마
-  events.jsonl             # 투자·진척·국토 확정·투표·검증 거부
+  events.jsonl             # 투자·진척·국토 확정·투표·검증 거부·사망·출생·학습
   metrics.jsonl            # 턴별 집계
   summary.json             # run 전체 요약
   scored.jsonl             # 사후 채점 결과 (별도 스크립트가 생성)
 ```
 
 `runs/`는 커밋하지 않습니다. 대표 run만 골라 별도 경로에 둡니다.
+
+### `raw_calls.jsonl` — 원본을 통째로 남깁니다
+
+**에이전트·번역을 가리지 않고 모든 LLM 호출의 요청과 응답을 가공 없이 남깁니다.**
+
+```json
+{
+  "run_id": "...", "turn": 12, "kind": "agent",     // "agent" | "translate"
+  "agent": "Asla1", "step": 3, "attempt": 1,
+  "latency_ms": 940,
+  "request":  { "model": "...", "messages": [...], "tools": [...], "temperature": 0.7 },
+  "response": { ...API 응답 전문... },
+  "error": null
+}
+```
+
+**파생 로그는 전부 여기서 재생성할 수 있어야 합니다.** 파일럿이 `runs/pilot/*/raw.jsonl`
+을 남겨둔 덕에 지표 6a의 정의를 사후에 집합 일치 → 부분집합으로 바꿀 수 있었습니다.
+정의는 나중에 바뀝니다. **원본이 없으면 그때 다시 돌려야 합니다.**
+
+응답에서 버리면 안 되는 것들 — 지금 구현은 `message.content` 하나만 쓰고 나머지를
+전부 버립니다.
+
+| 필드 | 왜 필요한가 |
+|---|---|
+| `provider` | OpenRouter 가 같은 모델을 여러 프로바이더로 라우팅합니다. 조건별로 갈리면 **노브 효과와 섞입니다.** 파일럿에서 `logprobs` 지원이 프로바이더에 달렸던 것과 같은 문제 |
+| `usage.cost` | **실제 과금액이 응답에 옵니다.** 추정할 필요가 없습니다 |
+| `usage.*_tokens` | 캐시 적중(`cached_tokens`), 추론 토큰(`reasoning_tokens`) |
+| `finish_reason` · `native_finish_reason` | `length` 로 끊겼는지 `tool_calls` 로 끝났는지. `MAX_STEPS` 소진과 구분됩니다 |
+| `refusal` | 모델 거부. 지금은 `content` 가 비어 **조용히 무행동**으로 처리됩니다 |
+| `logprobs` | 지표 — 번역 확신도 (6.1) |
+| `message.reasoning` | **추론 모델의 사고 과정.** 아래 참조 |
+| `error` · `attempt` | 실패율·재시도 집계. 조건 간에 다르면 그 자체가 교란 신호 |
+
+> **용량은 1런 20~40MB, 20런이면 1GB 언저리입니다.** `runs/` 는 이미 `.gitignore`
+> 대상이고, 대표 런만 골라 커밋합니다.
+
+#### `reasoning` 이름이 둘입니다 — 섞지 마세요
+
+```
+spec 의 reasoning           에이전트가 쓴 "왜 이렇게 했는지 한 문장" (4.2, 지표 목표 분류)
+API 의 message.reasoning    추론 모델의 사고 과정 (OpenRouter 응답 필드)
+```
+
+**완전히 다른 것인데 현재 코드가 같은 변수에 담고 있습니다.** 지금 모델
+(`qwen-2.5-7b`)은 추론 모델이 아니라 `reasoning_tokens: 0` 이고 비어 있어 무해하지만,
+**추론 모델로 바꾸는 순간 조용히 유실되거나 섞입니다.**
+
+API 쪽은 `raw_calls.jsonl` 에 응답 전문으로 보존하고, 파생 로그에서 참조할 때는
+`api_reasoning` 으로 부릅니다.
+
+#### spec 의 `reasoning` 은 필수인데 지금은 주워담고 있습니다
+
+현재 구현은 *"모델이 어쩌다 `content` 를 같이 주면 그걸 쓴다"* 입니다. 도구만 부르고
+`content` 가 비면 빈 문자열로 남고, 그러면 **지표 '목표 분류' 를 안정적으로 못 냅니다.**
+
+**`end_turn` 의 필수 인자로 두세요.** 턴당 정확히 한 번 불리므로 에이전트-턴 하나에
+정당화 하나가 대응합니다. `procreate` 도 턴을 끝내므로 같이 받아야 합니다.
+그래도 비는 경우(`MAX_STEPS` 소진, API 실패)는 **누락 플래그를 남기고 분모에서
+제외**합니다 — `understood` 무응답과 같은 원칙입니다 (6.1).
 
 ---
 
