@@ -118,7 +118,8 @@ def main() -> None:
     print("=" * 64)
     t0 = time.time()
     stamp = time.strftime("%m%d_%H%M%S")
-    writer = run_io.RunWriter(f"smoke_{args.turns}t_seed{args.seed}_{stamp}", cfg_raw=raw)
+    writer = run_io.RunWriter(f"smoke_{args.turns}t_seed{args.seed}_{stamp}", cfg_raw=raw,
+                              knob_ai=knob, seed=args.seed)
     agent_client.inner.recorder = writer.recorder(kind="agent")
     translator.inner.recorder = writer.recorder(kind="translate")
 

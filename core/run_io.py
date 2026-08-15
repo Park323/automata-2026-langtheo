@@ -39,7 +39,8 @@ class RunWriter:
     """한 run 의 산출물. 스레드 안전 (에이전트 호출이 병렬이라 raw 가 동시에 들어온다)."""
 
     def __init__(self, run_id: str, cfg_raw: dict | None = None, root: Path | None = None,
-                 overwrite: bool = False):
+                 overwrite: bool = False, knob_ai: float | None = None,
+                 seed: int | None = None):
         self.run_id = run_id
         self.dir = (root or ROOT / "runs") / run_id
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -57,7 +58,11 @@ class RunWriter:
         self.counts = {"raw": 0, "errors": 0, "retries": 0}
         if cfg_raw is not None:
             import yaml
-            snap = {"config": cfg_raw, "code_commit": git_commit(), "run_id": run_id}
+            # ★ knob_ai 는 config 가 아니라 **런 인자**다. config 에는 스윕할 목록
+            # [6,12,24,48] 이 들어 있어서, 이걸 따로 안 적으면 산출물만 보고는 그 런이
+            # 어느 조건이었는지 알 수 없다 — 조건별 표를 만들 수 없다는 뜻이다.
+            snap = {"config": cfg_raw, "code_commit": git_commit(), "run_id": run_id,
+                    "knob_ai": knob_ai, "seed": seed}
             (self.dir / "config_snapshot.yaml").write_text(
                 yaml.safe_dump(snap, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
