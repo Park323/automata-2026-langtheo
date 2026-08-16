@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>langtheo — 런 뷰어</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --line:#262d38; --ink:#e6edf3; --dim:#8b949e;
+    --ja:#e8a33d; --zh:#e05561; --fr:#5b9df9;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --ai:#a371f7;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.55 ui-sans-serif,-apple-system,"Helvetica Neue",
+            "Hiragino Sans","Noto Sans CJK JP","Noto Sans CJK SC",sans-serif}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  a{color:var(--fr)}
+
+  header{position:sticky;top:0;z-index:10;background:var(--bg);
+         border-bottom:1px solid var(--line);padding:10px 16px}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.02em}
+  .muted{color:var(--dim)}
+  button,select,input[type=file]{background:var(--panel);color:var(--ink);
+    border:1px solid var(--line);border-radius:6px;padding:5px 10px;font:inherit;cursor:pointer}
+  button:hover{border-color:#3d4757}
+  button:disabled{opacity:.4;cursor:default}
+  input[type=range]{flex:1;min-width:180px;accent-color:var(--fr)}
+
+  main{display:grid;grid-template-columns:270px 1fr 300px;gap:12px;padding:12px 16px;
+       align-items:start}
+  @media(max-width:1100px){main{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .panel h2{font-size:11px;margin:0 0 10px;color:var(--dim);
+            text-transform:uppercase;letter-spacing:.09em;font-weight:600}
+
+  /* 국가 */
+  .nation{margin-bottom:14px}
+  .nation .top{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+  .nname{font-weight:650}
+  .bar{height:7px;background:#0b0e13;border-radius:4px;overflow:hidden;margin:5px 0 3px;
+       border:1px solid var(--line)}
+  .bar>i{display:block;height:100%}
+  .tag{font-size:11px;padding:1px 6px;border-radius:999px;border:1px solid var(--line)}
+  .tag.interceptor{color:var(--ok);border-color:#1c3d24}
+  .tag.bunker{color:var(--warn);border-color:#3d3419}
+  .tag.none{color:var(--dim)}
+  .prop{font-size:12px;color:var(--warn);margin-top:3px}
+
+  /* 메시지 */
+  .msg{border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin-bottom:9px;
+       background:#12171e}
+  .msg .hd{display:flex;gap:7px;align-items:center;font-size:12px;margin-bottom:6px;flex-wrap:wrap}
+  .route{font-size:10px;padding:1px 6px;border-radius:999px;font-weight:600;letter-spacing:.04em}
+  .route.ai{background:#2a1f3d;color:var(--ai)}
+  .route.domestic{background:#16241a;color:var(--ok)}
+  .route.original{background:#3a2a12;color:var(--warn)}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  @media(max-width:760px){.pair{grid-template-columns:1fr}}
+  .side{border-left:2px solid var(--line);padding-left:8px}
+  .side .lab{font-size:10px;color:var(--dim);letter-spacing:.06em;margin-bottom:2px}
+  .side.ja{border-color:var(--ja)} .side.zh{border-color:var(--zh)} .side.fr{border-color:var(--fr)}
+  .txt{white-space:pre-wrap;word-break:break-word}
+  .fail{color:var(--bad);font-size:12px}
+  .cut{color:var(--warn);font-size:11px}
+
+  /* 에이전트 */
+  .ag{display:flex;gap:7px;align-items:center;padding:4px 0;border-bottom:1px solid #1b212a;
+      font-size:12px}
+  .ag:last-child{border-bottom:none}
+  .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .agid{font-weight:600;min-width:52px}
+  .langs{font-size:10px;letter-spacing:.05em}
+  .badge{font-size:9px;padding:0 4px;border-radius:3px;border:1px solid var(--line);color:var(--dim)}
+
+  /* 이벤트 */
+  .ev{font-size:12px;padding:4px 0;border-bottom:1px solid #1b212a;display:flex;gap:7px}
+  .ev:last-child{border-bottom:none}
+  .ek{font-size:10px;padding:0 5px;border-radius:3px;flex:none;height:16px;line-height:16px}
+  .ek.vote{background:#22283a;color:#8ab4f8}
+  .ek.land_change{background:#3a2118;color:#ff8a65}
+  .ek.death{background:#2b1a1a;color:#ff7b72}
+  .ek.birth{background:#16241a;color:var(--ok)}
+  .ek.learn{background:#2a1f3d;color:var(--ai)}
+  .ek.facility_gain{background:#1d2b2e;color:#56d4dd}
+
+  details.reason{margin-top:6px}
+  details.reason summary{cursor:pointer;font-size:11px;color:var(--dim)}
+  details.reason .r{font-size:12px;padding:3px 0 3px 10px;border-left:1px solid var(--line);
+                    margin-top:4px;color:#c9d1d9}
+  .drop{border:1px dashed var(--line);border-radius:10px;padding:26px;text-align:center;
+        color:var(--dim);margin:16px}
+  .empty{color:var(--dim);font-size:12px;padding:6px 0}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="row">
+    <h1>langtheo <span class="muted">런 뷰어</span></h1>
+    <span id="runinfo" class="muted mono"></span>
+    <span style="flex:1"></span>
+    <input type="file" id="picker" multiple webkitdirectory directory>
+    <button id="demo">예시 로드</button>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <button id="prev">◀</button>
+    <button id="play">▶ 재생</button>
+    <button id="next">▶</button>
+    <input type="range" id="scrub" min="1" max="1" value="1">
+    <span class="mono" id="turnlab" style="min-width:120px;text-align:right"></span>
+  </div>
+</header>
+
+<div id="drop" class="drop">
+  런 디렉터리(<code>runs/&lt;run_id&gt;</code>)를 통째로 골라주세요 —
+  <code>state.jsonl · messages.jsonl · events.jsonl · metrics.jsonl · summary.json</code><br>
+  또는 주소에 <code>?run=phase1_knob48_seed1</code> 을 붙이면 상대 경로에서 읽습니다.
+</div>
+
+<main id="app" hidden>
+  <div>
+    <div class="panel" id="nations"></div>
+    <div class="panel" style="margin-top:12px" id="agents"></div>
+  </div>
+  <div class="panel">
+    <h2>이 턴에 오간 말</h2>
+    <div id="messages"></div>
+  </div>
+  <div>
+    <div class="panel" id="events"></div>
+    <div class="panel" style="margin-top:12px" id="acts"></div>
+  </div>
+</main>
+
+<script>
+const FIRST_YEAR = 42;                      // prompts.FIRST_YEAR 와 같아야 한다
+const LANGNAME = {ja:"ja", zh:"zh", fr:"fr"};
+const $ = s => document.querySelector(s);
+let D = null, turn = 1, timer = null;
+
+// ── 읽기 ──────────────────────────────────────────────────────────────────
+const jsonl = t => t.split("\n").filter(Boolean).map(l => {
+  try { return JSON.parse(l); } catch { return null; }
+}).filter(Boolean);
+
+function build(files){
+  const g = n => files[n] ? jsonl(files[n]) : [];
+  const summary = files["summary.json"] ? JSON.parse(files["summary.json"]) : {};
+  const cfg = files["config_snapshot.yaml"] || "";
+  const grab = k => (cfg.match(new RegExp("^" + k + ":\\s*(.+)$", "m")) || [])[1];
+  const thr = Number((cfg.match(/^\s*interceptor:\s*([\d.]+)/m) || [])[1] || 0);
+
+  const evs = g("events.jsonl");
+  const d = {
+    state: g("state.jsonl"), messages: g("messages.jsonl"),
+    metrics: g("metrics.jsonl"), events: evs, summary,
+    knob: grab("knob_ai"), seed: grab("seed"), threshold: thr,
+    turns: 0, byTurn: {},
+  };
+  d.turns = Math.max(1, ...d.metrics.map(m => m.turn), ...d.state.map(s => s.turn));
+  for (let t = 1; t <= d.turns; t++) d.byTurn[t] = {state:[], messages:[], events:[], metric:null};
+  const put = (arr, key) => arr.forEach(r => {
+    const b = d.byTurn[r.turn]; if (b) b[key].push(r);
+  });
+  put(d.state, "state"); put(d.messages, "messages"); put(evs, "events");
+  d.metrics.forEach(m => { if (d.byTurn[m.turn]) d.byTurn[m.turn].metric = m; });
+  return d;
+}
+
+async function loadFromPath(run){
+  const names = ["state.jsonl","messages.jsonl","events.jsonl","metrics.jsonl",
+                 "summary.json","config_snapshot.yaml"];
+  const files = {};
+  await Promise.all(names.map(async n => {
+    try {
+      const r = await fetch(`../runs/${run}/${n}`);
+      if (r.ok) files[n] = await r.text();
+    } catch {}
+  }));
+  if (!files["state.jsonl"]) { alert(`runs/${run} 를 못 읽었습니다`); return; }
+  start(build(files), run);
+}
+
+function start(data, name){
+  D = data; turn = 1;
+  $("#drop").hidden = true; $("#app").hidden = false;
+  $("#scrub").max = D.turns; $("#scrub").value = 1;
+  const f = D.summary.final || {};
+  $("#runinfo").textContent =
+    `${name}  ·  노브 ${D.knob ?? "?"}  시드 ${D.seed ?? "?"}  ·  ${D.turns}턴` +
+    (f.outcome ? `  ·  ${f.outcome}` : "");
+  render();
+}
+
+// ── 그리기 ────────────────────────────────────────────────────────────────
+const esc = s => (s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+function nations(b){
+  const m = b.metric;
+  if (!m) return `<h2>국가</h2><div class="empty">이 턴의 집계가 없습니다</div>`;
+  const props = {};
+  // 열린 제안은 로그에 상태로 안 남으므로 vote 이벤트에서 역산한다
+  for (const e of D.events) {
+    // opened=false 는 같은 턴에 밀린 유령 제안이다 (구버전 로그엔 필드가 없다)
+    if (e.type === "vote" && e.kind === "propose" && e.opened !== false
+        && e.turn <= turn && e.vote_turn >= turn)
+      props[e.country] = e;
+  }
+  const rows = Object.keys(m.progress).map(c => {
+    const land = m.land[c], p = m.progress[c];
+    const pct = D.threshold ? Math.min(100, p / D.threshold * 100) : 0;
+    const col = land === "interceptor" ? "var(--ok)" : land === "bunker" ? "var(--warn)" : "#30363d";
+    const pr = props[c];
+    return `<div class="nation">
+      <div class="top"><span class="nname">${c}</span>
+        <span class="tag ${land || "none"}">${land || "미정"}</span></div>
+      <div class="bar"><i style="width:${pct}%;background:${col}"></i></div>
+      <div class="muted mono" style="font-size:11px">
+        진척 ${Math.round(p)}${D.threshold ? ` / ${D.threshold}` : ""}
+        · 국가자본 ${Math.round(m.national_capital[c])}</div>
+      ${pr ? `<div class="prop">제안 ${pr.target} (${pr.by}) · 採決 ${FIRST_YEAR + pr.vote_turn - 1}년</div>` : ""}
+    </div>`;
+  }).join("");
+  return `<h2>국가</h2>${rows}`;
+}
+
+function agents(b){
+  if (!b.state.length) return `<h2>사람</h2><div class="empty">—</div>`;
+  const rows = b.state.map(s => {
+    const learned = (s.known_langs || []).length > 1;
+    const col = !s.alive ? "#30363d" : learned ? "var(--ai)" : "var(--ok)";
+    return `<div class="ag">
+      <span class="dot" style="background:${col}"></span>
+      <span class="agid mono">${s.agent}</span>
+      <span class="langs mono" style="color:${learned ? "var(--ai)" : "var(--dim)"}">
+        ${(s.known_langs || []).join("·")}</span>
+      <span style="flex:1"></span>
+      <span class="muted mono" style="font-size:11px">${Math.round(s.budget)}원 · ${s.age}살</span>
+      ${s.born_by === "procreate" ? `<span class="badge">계승</span>` : ""}
+    </div>`;
+  }).join("");
+  return `<h2>사람 <span class="muted">(${b.state.filter(s=>s.alive).length}명)</span></h2>${rows}`;
+}
+
+function messages(b){
+  if (!b.messages.length) return `<div class="empty">이 턴에는 아무도 말하지 않았습니다.</div>`;
+  return b.messages.map(m => {
+    const t = m.meta || {};
+    const failed = !m.delivered;
+    const why = t.translate_failed ? "번역 실패 (엔진 장애)" : "상대가 읽지 못함";
+    const right = failed
+      ? `<div class="fail">전달되지 않음 — ${why}</div>`
+      : `<div class="side ${t.dst_lang}">
+           <div class="lab">${m.route === "ai" ? "번역되어 도착" : "그대로 도착"} · ${LANGNAME[t.dst_lang] || ""}</div>
+           <div class="txt">${esc(t.text_delivered)}</div></div>`;
+    return `<div class="msg">
+      <div class="hd">
+        <span class="mono"><b>${m.from}</b> → <b>${m.to}</b></span>
+        <span class="route ${m.route}">${m.route}</span>
+        ${t.truncated ? `<span class="cut">${t.chars_cut}자 잘림</span>` : ""}
+        ${t.reader && m.route === "ai" ? `<span class="badge">수신자가 원문을 읽을 수 있었음</span>` : ""}
+      </div>
+      <div class="pair">
+        <div class="side ${t.src_lang}">
+          <div class="lab">보낸 말 · ${LANGNAME[t.src_lang] || ""}</div>
+          <div class="txt">${esc(t.text_sent)}</div></div>
+        ${right}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function events(b){
+  const ord = {land_change:0, vote:1, death:2, birth:3, learn:4, facility_gain:5};
+  const rows = b.events.filter(e => e.type !== "agent_turn")
+    .sort((a, c) => (ord[a.type] ?? 9) - (ord[c.type] ?? 9))
+    .map(e => `<div class="ev"><span class="ek ${e.type}">${e.type}</span>
+      <span>${esc(describe(e))}</span></div>`).join("");
+  return `<h2>이 턴에 일어난 일</h2>${rows || `<div class="empty">—</div>`}`;
+}
+
+function describe(e){
+  switch (e.type){
+    case "vote": return e.kind === "propose"
+      ? `${e.by} 가 ${e.country} 국토를 ${e.target} 로 제안` +
+        (e.opened === false ? " — 이미 열린 제안이 있어 무산"
+                            : ` · 採決 ${FIRST_YEAR + e.vote_turn - 1}년`)
+      : `${e.by} — ${e.approve ? "찬성" : "반대"}`;
+    case "land_change": return e.passed
+      ? `${e.country} → ${e.target} (찬 ${e.yes} 반 ${e.no}) · 진척 ${Math.round(e.progress_lost)} 소실`
+      : `${e.country} 부결 (찬 ${e.yes} 반 ${e.no}) · ${e.target} 로 바뀌지 않음`;
+    case "death": return `${e.who} 사망 (${e.country})`;
+    case "birth": return `${e.id} 출생 · ${e.born_by === "procreate" ? "계승" : "자연발생"} · ${Math.round(e.budget)}원`;
+    case "learn": return `${e.agent} 가 ${e.target} 말을 배움 · ${Math.round(e.charged)}원 (L×${e.rung})` +
+      (e.discount_domestic ? " · 국내 구사자" : "") + (e.discount_parent ? " · 부모" : "");
+    case "facility_gain": return `${e.agent} 의 ${Math.round(e.amount)}원 → ${e.to} 진척 +${e.gain}`;
+    default: return JSON.stringify(e);
+  }
+}
+
+function acts(b){
+  const rows = b.events.filter(e => e.type === "agent_turn" && (e.actions || []).length)
+    .map(e => {
+      const rs = (e.reasonings || []).filter(r => r.reasoning);
+      return `<div style="padding:6px 0;border-bottom:1px solid #1b212a">
+        <div class="mono" style="font-size:12px"><b>${e.agent}</b>
+          <span class="muted">${(e.actions || []).join(" · ")}</span></div>
+        ${rs.length ? `<details class="reason"><summary>왜 그랬는가 (${rs.length})</summary>
+          ${rs.map(r => `<div class="r"><span class="muted mono">${r.tool}${r.ok ? "" : " ✗"}</span>
+            ${esc(r.reasoning)}</div>`).join("")}</details>` : ""}
+      </div>`;
+    }).join("");
+  return `<h2>누가 무엇을 했는가</h2>${rows || `<div class="empty">아무도 움직이지 않았습니다</div>`}`;
+}
+
+function render(){
+  const b = D.byTurn[turn] || {state:[],messages:[],events:[],metric:null};
+  $("#nations").innerHTML = nations(b);
+  $("#agents").innerHTML  = agents(b);
+  $("#messages").innerHTML = messages(b);
+  $("#events").innerHTML  = events(b);
+  $("#acts").innerHTML    = acts(b);
+  $("#scrub").value = turn;
+  $("#turnlab").textContent = `${FIRST_YEAR + turn - 1}년  (턴 ${turn}/${D.turns})`;
+}
+
+// ── 조작 ──────────────────────────────────────────────────────────────────
+const go = t => { turn = Math.min(D.turns, Math.max(1, t)); render(); };
+$("#prev").onclick = () => go(turn - 1);
+$("#next").onclick = () => go(turn + 1);
+$("#scrub").oninput = e => go(+e.target.value);
+$("#play").onclick = () => {
+  if (timer){ clearInterval(timer); timer = null; $("#play").textContent = "▶ 재생"; return; }
+  $("#play").textContent = "⏸ 정지";
+  timer = setInterval(() => {
+    if (turn >= D.turns){ clearInterval(timer); timer = null; $("#play").textContent = "▶ 재생"; return; }
+    go(turn + 1);
+  }, 700);
+};
+addEventListener("keydown", e => {
+  if (!D) return;
+  if (e.key === "ArrowLeft") go(turn - 1);
+  if (e.key === "ArrowRight") go(turn + 1);
+  if (e.key === " "){ e.preventDefault(); $("#play").click(); }
+});
+
+$("#picker").onchange = async e => {
+  const files = {};
+  await Promise.all([...e.target.files].map(async f => {
+    if (/\.(jsonl|json|yaml)$/.test(f.name)) files[f.name] = await f.text();
+  }));
+  if (!files["state.jsonl"]) { alert("state.jsonl 이 없습니다 — 런 디렉터리를 골라주세요"); return; }
+  const dir = ([...e.target.files][0].webkitRelativePath || "").split("/")[0];
+  start(build(files), dir || "run");
+};
+$("#demo").onclick = () => loadFromPath("phase1_knob48_seed1");
+
+const q = new URLSearchParams(location.search).get("run");
+if (q) loadFromPath(q);
+</script>
+</body>
+</html>

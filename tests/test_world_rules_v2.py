@@ -120,6 +120,21 @@ def test_nobody_votes_nothing_passes(cfg, world):
     assert r.land_changes[0]["passed"] is False
 
 
+def test_same_turn_duplicate_proposals_are_marked(cfg, world):
+    """같은 턴에 둘이 제안하면 **둘 다 도구를 통과한다** — 행동 시점엔 둘 다
+    proposal=None 을 본다. 실제로 열리는 것은 하나뿐이므로 어느 쪽이 열렸는지
+    기록한다. 안 하면 로그만 보고 유령 제안을 진짜로 읽게 된다.
+    """
+    world.turn = 10
+    sink = Sink()
+    sink.votes = [("Ranoa1", "Ranoa", "bunker"), ("Ranoa3", "Ranoa", "interceptor")]
+    r = _settle(world, cfg, sink)
+    props = [v for v in r.votes_log if v["kind"] == "propose"]
+    assert len(props) == 2
+    assert [p["opened"] for p in props] == [True, False]        # id 순으로 앞선 것만
+    assert world.countries["Ranoa"].proposal["target"] == "bunker"
+
+
 def test_only_one_proposal_at_a_time(cfg, world):
     """제안이 열려 있으면 새 제안을 못 연다 — 안 그러면 유예가 무의미해진다."""
     from core.agent_loop import execute_tool

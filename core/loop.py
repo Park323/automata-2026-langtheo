@@ -399,13 +399,17 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     #   막는 것은 규칙이 아니라 사람들이어야 한다.
     for by, country, target in sorted(sink.votes):
         c = world.countries.get(country)
-        opened = {"target": target, "by": by, "opened_turn": world.turn,
-                  "vote_turn": world.turn + VOTE_DELAY}
+        rec = {"target": target, "by": by, "opened_turn": world.turn,
+               "vote_turn": world.turn + VOTE_DELAY}
+        # 같은 턴에 둘이 제안하면 둘 다 도구를 통과한다 (행동 시점엔 둘 다 proposal=None
+        # 을 본다). 실제로 열리는 것은 하나뿐이므로 **어느 쪽이 열렸는지 기록**한다 —
+        # 안 그러면 로그만 보고는 유령 제안을 진짜로 읽게 된다.
+        opened = c is not None and c.proposal is None and c.land != target
         result.votes_log.append({"turn": world.turn, "kind": "propose",
                                  "by": by, "country": country, "target": target,
-                                 "vote_turn": opened["vote_turn"]})
-        if c is not None and c.proposal is None and c.land != target:
-            c.proposal = opened
+                                 "vote_turn": rec["vote_turn"], "opened": opened})
+        if opened:
+            c.proposal = rec
 
     # 개표 — 찬성이 반대보다 많으면 통과. **1찬 0반도 통과한다.**
     #   반대하려면 그 턴에 표를 내야 한다. 침묵은 동의로 센다.
