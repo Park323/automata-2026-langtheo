@@ -719,3 +719,29 @@ def test_obituary_survives_a_missing_age(cfg):
     from domains.meteor import prompts
     line = prompts.render_inbox([{"msg_id": 1, "died": "Asla1", "born": "Asla4"}], "ja")
     assert "Asla1" in line and "Asla4" in line
+
+
+def test_national_investment_states_all_three_effects(cfg, world):
+    """`national` 은 **셋을 동시에** 올린다. 하나만 적으면 나머지 둘이 안 보인다.
+
+        수입          income × multiplier           (loop.py 소득 지급)
+        시설 전환율    eff × multiplier              (그 나라 시설에 낸 돈의 효율)
+        관측 정확도    σ ∝ 1/√(national_capital)     (observe_risk)
+
+    실측에서 근거 12건이 전부 *수입* 쪽만 말했고 관측 정확도는 1건뿐이었다 —
+    두 번째 쓸모를 붙여 놓고 알려주지 않았다.
+    """
+    from core import tools
+    from domains.meteor import prompts
+    d = next(t["function"]["description"] for t in tools.TOOLS
+             if t["function"]["name"] == "invest")
+    assert "technical level" in d and "income" in d and "observe_risk" in d
+
+    marks = {"ja": ("技術力", "収入", "observe_risk"),
+             "zh": ("技术水平", "收入", "observe_risk"),
+             "fr": ("niveau technique", "revenu", "observe_risk")}
+    for aid in ("Asla1", "Ranoa1", "Miris1"):
+        a = world.agents[aid]
+        obs = prompts.render_observation(world, a, cfg, 48.0)
+        for m in marks[a.native_lang]:
+            assert m in obs, f"{a.native_lang}: {m}"

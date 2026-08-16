@@ -65,7 +65,10 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["to", "text"]),
 
     fn("invest",
-        "Invest in a resource. For facility you may name any nation with `to` — your "
+        "Invest in a resource. `national` raises your nation's technical level, which "
+        "lifts income, how much progress a facility gets out of what is put into it, and "
+        "the precision of observe_risk — for everyone in that nation. "
+        "For facility you may name any nation with `to` — your "
         "own or another; leaving `to` out puts it into your own nation's. "
         "Money you put into a facility goes into whatever that nation is currently "
         "building — which may not be what you think it is, and a nation that has not "

@@ -95,7 +95,7 @@ T = {
         c_pro="  procreate", c_pro_note="   0  子を残してあなたは死ぬ",
         inv_hdr="invest の効果",
         inv_well="  wellness   あなたの寿命が延びる（どれだけかは分からない）",
-        inv_natl="  national   自国の生産倍率が上がる。国民全員に及ぶ",
+        inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n                          observe_risk の精度も良くなる。国民全員に及ぶ",
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定できる（省くと自国）",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
         rtt="送ったメッセージは次のターンに届きます。返事が来るのはさらに次のターンです。",
@@ -135,7 +135,7 @@ T = {
         c_pro="  procreate", c_pro_note="   0  留下孩子，你随即死去",
         inv_hdr="invest 的效果",
         inv_well="  wellness   延长你的寿命（延长多少你无法得知）",
-        inv_natl="  national   提高本国生产倍率，惠及全体国民",
+        inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n                          observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。可用 to 指定国家（不写则本国）",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
         rtt="你发出的消息在下一回合送达。对方的回信要再下一回合才会到。",
@@ -177,7 +177,9 @@ T = {
         c_pro="  procreate", c_pro_note="   0  vous laissez un enfant et vous mourez",
         inv_hdr="effets d'invest",
         inv_well="  wellness   prolonge votre vie (d'une durée que vous ne pouvez pas connaître)",
-        inv_natl="  national   augmente le multiplicateur de votre nation, pour tous ses habitants",
+        inv_natl="  national   élève le niveau technique de votre nation : le revenu, le rendement\n"
+                          "             de ce qu'on verse à une installation et la précision d'observe_risk\n"
+                          "             s'améliorent, pour tous ses habitants",
         inv_fac="  facility   contribue à la progression d'une installation ; `to` nomme la nation (sans `to`, la vôtre)",
         cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
         rtt="Un message part et arrive au tour suivant ; une réponse n'arrive qu'au tour d'après.",

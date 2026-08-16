@@ -540,13 +540,12 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
         messages = [{"role": "system", "content": system_prompt}, *agent.convo]
         t_call = time.time()
         try:
-            # **첫 스텝은 도구 호출을 강제한다.** 사고를 끈 뒤로 모델이 content 에 숙고를
-            # 쏟고 그대로 끝내는 일이 잦다 — 실측에서 턴의 2~7% 가 통째로 날아갔고,
-            # JSON 이 아니라 회수기도 못 잡았다 (계획만 적거나, 메시지 본문을 산문으로 씀).
-            # `end_turn` 도 도구라 "할 게 없다" 는 여전히 표현된다.
-            # 둘째 스텝부터는 auto — 멈추는 것도 선택이어야 한다.
-            resp = client.chat(messages, tools=tool_list,
-                               tool_choice="required" if steps == 1 else None)
+            # **모든 스텝에서 도구 호출을 강제한다.** 사고를 끈 뒤로 모델이 content 에
+            # 숙고를 쏟고 그대로 끝내는 일이 잦다 — 실측에서 턴의 2~7% 가 통째로
+            # 날아갔고, JSON 이 아니라 회수기도 못 잡았다 (계획만 적거나, 메시지 본문을
+            # 산문으로 씀). **`end_turn` 도 도구이므로 "할 게 없다" 는 여전히 표현된다** —
+            # 강제해도 잃는 선택지가 없다.
+            resp = client.chat(messages, tools=tool_list, tool_choice="required")
         except Exception as e:                          # 이 에이전트만 턴 종료
             llm_ms += (time.time() - t_call) * 1000
             error = f"{type(e).__name__}: {str(e)[:200]}"

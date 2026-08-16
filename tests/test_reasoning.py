@@ -295,8 +295,8 @@ def test_judge_can_still_read_the_stream(cfg_think):
     assert "요격기" in r["reasonings"][0]
 
 
-def test_first_step_forces_a_tool_call(cfg, world):
-    """**첫 스텝은 도구 호출을 강제한다.**
+def test_every_step_forces_a_tool_call(cfg, world):
+    """**모든 스텝에서 도구 호출을 강제한다.**
 
     사고를 끈 뒤로 모델이 content 에 숙고를 쏟고 그대로 끝내는 일이 잦았다 —
     실측에서 턴의 2~7% 가 통째로 날아갔다. 계획만 적거나(「1. propose_vote
@@ -312,6 +312,5 @@ def test_first_step_forces_a_tool_call(cfg, world):
     a = world.agents["Asla2"]; a.ap, a.budget = 1.0, 500.0
     run_agent_turn(world, a, cfg, stub, Sink(), 48.0,
                    prompts.system_for(a), prompts.render_observation(world, a, cfg, 48.0))
-    assert stub.calls[0]["tool_choice"] == "required"
-    # 둘째 스텝부터는 자유 — 멈추는 것도 선택이어야 한다
-    assert stub.calls[1]["tool_choice"] is None
+    # **모든 스텝에서** 강제한다. end_turn 도 도구라 잃는 선택지가 없다.
+    assert [c["tool_choice"] for c in stub.calls] == ["required"] * len(stub.calls)
