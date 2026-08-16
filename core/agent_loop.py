@@ -105,16 +105,16 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             if to not in world.countries:
                 return {"ok": False,
                         "error": f"unknown nation: {to} — facility invest takes a nation id (e.g. Ranoa)"}, None
-            # 투표로 정해지기 전에는 지을 것이 없다. 예산 차감 **전에** 막는다.
-            if world.countries[to].land is None:
-                return {"ok": False, "error":
-                        f"{to} has not decided its facility yet; nothing to build there"}, None
         if agent.budget < amount:
             return {"ok": False, "error": f"not enough budget; need {amount:.0f}, have {agent.budget:.0f}"}, None
         agent.budget -= amount            # invest 는 AP 0
         if target == "facility":
             sink.facility.append((to, amount, agent.id))
-            # 진척 증가분은 절대 여기서 답하지 않는다 (success_prob 역산 방지)
+            # 접수와 과금만 답한다. **그 나라가 시설을 정했는지는 알려주지 않는다** —
+            # 알려주면 10원짜리 조회로 타국 국토를 읽을 수 있고(국제 메시지가 24~48원인데
+            # 그보다 싸다), "타국 사정은 소통해야만 안다" 는 전제가 통째로 무너진다.
+            # 정해지지 않았으면 돈은 나가고 아무 일도 일어나지 않는다 — route=original 과
+            # 같은 도박이다 (spec 4.1 은닉 목록: 타국의 진척·예산·국토·언어 능력).
             return {"ok": True, "accepted": f"{to} facility investment accepted", "charged": amount,
                     "budget_left": round(agent.budget, 1)}, None
         if target == "wellness":

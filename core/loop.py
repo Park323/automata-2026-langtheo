@@ -345,9 +345,14 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         # 하기 때문이다(아래 통지). 합쳐서 한 번 굴리는 것과 분포는 같다.
         for amount, agent_id in sorted(entries, key=lambda x: x[1]):   # id 순 → 결정론
             share = amount if total <= cap else amount * (cap / total)
-            n_i = int(share * eff)
-            gain = sum(1 for _ in range(n_i) if rng.random() < cfg.world.success_prob)
-            c.progress += gain
+            if c.land is None:
+                # 지을 것이 없으면 돈만 나가고 아무 일도 일어나지 않는다. **통지는
+                # 똑같이 간다** — 통지가 없으면 그 부재가 곧 "아직 안 정했다" 가 된다.
+                gain = 0
+            else:
+                n_i = int(share * eff)
+                gain = sum(1 for _ in range(n_i) if rng.random() < cfg.world.success_prob)
+                c.progress += gain
             # 행위 **후에는** 공개한다. 확률적이라 한 건으로는 success_prob 을 못 읽고,
             # 모르면 "얼마를 더 내야 하는가" 를 판단할 근거가 아예 없다.
             result.facility_gains.append({"turn": world.turn, "agent": agent_id,

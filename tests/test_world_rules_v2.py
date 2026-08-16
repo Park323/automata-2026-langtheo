@@ -130,16 +130,49 @@ def test_only_one_proposal_at_a_time(cfg, world):
     assert not res["ok"] and "already has an open proposal" in res["error"]
 
 
-def test_cannot_invest_before_the_facility_is_decided(cfg, world):
-    """투표로 정해지기 전에는 지을 것이 없다. **예산은 차감되지 않는다.**"""
+def test_investing_never_reveals_whether_a_nation_decided(cfg, world):
+    """접수와 과금만 답한다. **타국이 시설을 정했는지 알려주지 않는다.**
+
+    알려주면 10원짜리 조회로 타국 국토를 읽을 수 있다 — 국제 메시지가 24~48원인데
+    그보다 싸서, *"타국 사정은 소통해야만 안다"* 는 전제가 통째로 무너진다
+    (spec 4.1 은닉 목록: 타국의 진척·예산·국토·언어 능력).
+    """
     from core.agent_loop import execute_tool
+    world.countries["Ranoa"].land = "interceptor"      # 정한 나라
+    world.countries["Miris"].land = None               # 안 정한 나라
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 500.0
+    outs = []
+    for to in ("Ranoa", "Miris"):
+        res, _ = execute_tool("invest", {"target": "facility", "amount": 10,
+                                         "to": to, "reasoning": "r"},
+                              world, a, cfg, Sink(), 48.0)
+        outs.append(res)
+    # 나라 이름과 잔액 말고는 한 글자도 달라선 안 된다 — 다르면 그것이 곧 조회다
+    shape = [{k: (v if k not in ("accepted", "budget_left") else None)
+              for k, v in o.items()} for o in outs]
+    assert shape[0] == shape[1]
+    assert outs[0]["accepted"].replace("Ranoa", "") == outs[1]["accepted"].replace("Miris", "")
+    assert all(o["ok"] for o in outs)
+    assert a.budget == 480.0                           # 둘 다 과금됐다
+
+
+def test_money_into_an_undecided_nation_just_vanishes(cfg, world):
+    """정해지지 않았으면 돈은 나가고 아무 일도 일어나지 않는다 — route=original 과 같은 도박."""
     sink = Sink()
-    res, _ = execute_tool("invest", {"target": "facility", "amount": 100,
-                                     "to": "Ranoa", "reasoning": "r"},
-                          world, a, cfg, sink, 48.0)
-    assert not res["ok"] and "has not decided" in res["error"]
-    assert a.budget == 500.0 and sink.facility == []
+    sink.facility = [("Miris", 200.0, "Asla1")]        # Miris 는 land None
+    r = _settle(world, cfg, sink)
+    assert world.countries["Miris"].progress == 0.0
+    (g,) = r.facility_gains
+    assert g["gain"] == 0 and g["amount"] == 200.0
+
+
+def test_the_gain_notice_arrives_either_way(cfg, world):
+    """통지가 없으면 **그 부재가 곧 '아직 안 정했다'** 가 된다. 똑같이 보낸다."""
+    sink = Sink()
+    sink.facility = [("Miris", 50.0, "Asla1")]         # 미정
+    _settle(world, cfg, sink)
+    (e,) = [x for x in world.inbox_queue if "fac_gain" in x["msg"]]
+    assert e["to"] == "Asla1" and e["msg"]["fac_gain"] == 0
 
 
 def test_can_invest_once_decided(cfg, world):
