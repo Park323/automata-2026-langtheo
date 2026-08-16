@@ -103,7 +103,7 @@ T = {
         in_fail="  [{id}] 通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
         in_unread="  [{id}] {frm} より — 読めないメッセージが届きました",
         in_from="  [{id}] {frm} より{label}",
-        died="  {who} が亡くなり、{born} が生まれました。",
+        died="  {who} が {age} 歳で亡くなり、{born} が生まれました。",
         fac_gain="  前ターンのあなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
         roster="人々:", roster_you="（あなた）",
         mem_hdr="あなたの覚え書き:", mem_none="  （まだ何もない）",
@@ -143,7 +143,7 @@ T = {
         in_fail="  [{id}] 通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
         in_unread="  [{id}] 来自 {frm} — 送到一条你读不懂的消息",
         in_from="  [{id}] 来自 {frm}{label}",
-        died="  {who} 去世了，{born} 出生了。",
+        died="  {who} 在 {age} 岁去世，{born} 出生了。",
         fac_gain="  你上回合投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
         roster="人们:", roster_you="（你）",
         mem_hdr="你的笔记:", mem_none="  （还没有）",
@@ -185,7 +185,7 @@ T = {
         in_fail="  [{id}] Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",
         in_unread="  [{id}] de {frm} — un message illisible est arrivé",
         in_from="  [{id}] de {frm}{label}",
-        died="  {who} est mort ; {born} est né.",
+        died="  {who} est mort à {age} ans ; {born} est né.",
         fac_gain="  Votre versement de {amt:.0f} à facility au tour précédent a fait progresser {to} de {gain:.0f}.",
         roster="Les gens :", roster_you="(vous)",
         mem_hdr="Vos notes :", mem_none="  (rien encore)",
@@ -281,7 +281,8 @@ def render_inbox(inbox: list[dict], lang: str) -> str:
             out.append(t["in_unread"].format(id=mid, frm=m["from"]))
             continue
         if m.get("died"):                      # 같은 나라 사람의 부고 (+ 후임)
-            out.append(t["died"].format(who=m["died"], born=m.get("born") or "?"))
+            out.append(t["died"].format(who=m["died"], born=m.get("born") or "?",
+                                        age=m.get("age") if m.get("age") is not None else "?"))
             continue
         if m.get("fac_gain") is not None:      # 내 지난 턴 facility 출자의 결과
             out.append(t["fac_gain"].format(amt=m["amount"], to=m["to"],

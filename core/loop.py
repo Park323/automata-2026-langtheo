@@ -178,8 +178,12 @@ def _death_birth(world: World, cfg, rng: random.Random, snapshot_ids, procreated
             # 부고는 **같은 나라 사람에게만** (spec 4.1). 누가 죽고 누가 그 자리에 왔는지를
             # 한 쌍으로 알린다 — 이름이 안 이어지면 명단만 보고는 짝지을 수 없다.
             # 국내 구사자 할인이 사라진 이유를 알 수 있게 하는 정보이기도 하다.
+            # **몇 살에 죽었는지 함께 알린다.** 수명 곡선은 은닉 목록이지만(4.1)
+            # 부고에 찍힌 나이는 사실이고, 그것이 쌓이면 인구가 경험으로 배운다.
+            # 자기 수명을 모르면 `procreate`(죽고 물려주기)를 고를 시점을 알 수 없다 —
+            # 세 런 21명이 전부 자연사했고 procreate 는 0건이었다.
             result.deaths_log.append({"turn": world.turn, "who": aid, "born": child.id,
-                                      "country": a.country, "by": "natural"})
+                                      "age": a.age, "country": a.country, "by": "natural"})
             result.births.append(
                 {"turn": world.turn, "id": child.id, "replaces": aid, "uid": child.uid,
                  "born_by": "natural", "budget": child.budget}
@@ -202,7 +206,7 @@ def _procreate_child(world: World, aid: str, testament: str, cfg,
     result.deaths += 1
     result.death_ages.append(a.age)
     result.deaths_log.append({"turn": world.turn, "who": aid, "born": child.id,
-                              "country": a.country, "by": "procreate"})
+                              "age": a.age, "country": a.country, "by": "procreate"})
     result.births.append({"turn": world.turn, "id": child.id, "replaces": aid,
                           "uid": child.uid, "born_by": "procreate",
                           "budget": child.budget})
@@ -595,7 +599,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
                 world.inbox_queue.append({
                     "deliver_turn": world.turn + 1, "to": aid, "to_uid": a.uid,
                     "msg": {"msg_id": next(msg_ids), "died": d["who"],
-                            "born": d.get("born")}})
+                            "born": d.get("born"), "age": d.get("age")}})
 
     result.acted.append(snapshot_uids)
     result.alive_counts.append(sum(1 for a in world.agents.values() if a.alive))

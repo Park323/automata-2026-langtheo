@@ -689,3 +689,33 @@ def test_a_cheaper_price_can_finish_a_half_paid_language(cfg, world):
     assert "fr" in a.known_langs
     (done,) = [x for x in r.learns_log if x.get("kind") == "acquired"]
     assert done["charged"] == 400.0 and done["required"] == 300.0 and done["rung"] == 0.5
+
+
+def test_the_obituary_says_how_old_they_were(cfg, world):
+    """**몇 살에 죽었는지 알린다.**
+
+    수명 곡선은 은닉 목록이지만(4.1) 부고에 찍힌 나이는 사실이고, 그것이 쌓이면
+    인구가 경험으로 배웁니다. 자기 수명을 모르면 `procreate`(죽고 물려주기)를 고를
+    시점을 알 수 없습니다 — 세 런 21명이 전부 자연사했고 procreate 는 **0건**이었습니다.
+    """
+    import random
+    from domains.meteor import prompts
+    for a in world.agents.values():
+        a.age = 22
+    r = loop.RunResult(world=world)
+    loop._death_birth(world, cfg, random.Random(1), sorted(world.agents), set(),
+                      itertools.count(700), r)
+    assert r.deaths_log and all(d["age"] == 22 for d in r.deaths_log)
+
+    d = r.deaths_log[0]
+    for lang, mark in (("ja", "22 歳"), ("zh", "22 岁"), ("fr", "22 ans")):
+        line = prompts.render_inbox(
+            [{"msg_id": 1, "died": d["who"], "born": d["born"], "age": d["age"]}], lang)
+        assert mark in line, lang
+
+
+def test_obituary_survives_a_missing_age(cfg):
+    """구버전 런에는 나이가 없다. 렌더가 터지면 그 런을 아예 못 본다."""
+    from domains.meteor import prompts
+    line = prompts.render_inbox([{"msg_id": 1, "died": "Asla1", "born": "Asla4"}], "ja")
+    assert "Asla1" in line and "Asla4" in line
