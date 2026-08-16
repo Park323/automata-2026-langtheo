@@ -27,6 +27,7 @@ class Costs:
     ask_clarification: float
     learn_base: float
     propose_vote: float
+    observe_risk: float = 20.0
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,7 @@ class AP:
     invest: float
     memory_write: float
     procreate: float
+    observe_risk: float = 0.3
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,12 @@ class Growth:
 class SurvivalCfg:
     k: float
     lambda_base: float
+
+
+@dataclass(frozen=True)
+class Risk:
+    """운석 충돌까지 남은 턴의 관측. 정확도는 국가 자본(기술력)에 비례한다."""
+    base_error: float = 25.0        # 자본 0 일 때의 오차 폭 (턴)
 
 
 @dataclass(frozen=True)
@@ -154,6 +162,7 @@ class Config:
     growth: Growth
     survival: SurvivalCfg
     wellness: Wellness
+    risk: Risk
     facility: Facility
     world: World
     inheritance: Inheritance
@@ -184,6 +193,7 @@ def from_dict(d: dict) -> Config:
         growth=Growth(**d["growth"]),
         survival=SurvivalCfg(**d["survival"]),
         wellness=Wellness(**d["wellness"]),
+        risk=Risk(**(d.get("risk") or {})),
         facility=Facility(**d["facility"]),
         world=World(
             countries=tuple(CountryDef(**c) for c in d["world"]["countries"]),

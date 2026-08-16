@@ -77,6 +77,14 @@ def _build(reasoning_arg: bool) -> list[dict]:
         {"country": {"type": "string", "description": "the nation whose language to learn (e.g. Ranoa)"}},
         ["country"]),
 
+    fn("observe_risk",
+        "Measure how many turns remain until the meteorite strikes, and how much "
+        "progress an interceptor needs. Both readings are imprecise; your nation's "
+        "accumulated national investment is what sharpens them, and the result tells "
+        "you its own margin of error. Each reading is a fresh measurement and costs "
+        "money. What you learn is yours alone — nobody else sees it.",
+        {}, []),
+
     fn("propose_vote",
         "Open a proposal to set your nation's facility. Your nation only. "
         "Nothing changes yet: three turns pass so people can talk it over, and on the "

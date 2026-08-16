@@ -37,6 +37,7 @@ class RunResult:
     messages_log: list = field(default_factory=list)  # 처리된 발신 메시지 (과제2)
     votes_log: list = field(default_factory=list)     # propose_vote 기록 (과제2)
     learns_log: list = field(default_factory=list)    # 학습 1건 = x̂ 관측 1건 (spec 6.1)
+    risk_log: list = field(default_factory=list)      # 위험 관측 (진실·관측치·오차)
     land_changes: list = field(default_factory=list)  # 국토 전환 = 진척 파괴 (SYSTEM 규칙 5)
     deaths_log: list = field(default_factory=list)    # 부고 — 같은 나라 사람에게 알린다
     facility_gains: list = field(default_factory=list)  # 출자 → 진척 기여 (행위 후 공개)
@@ -343,6 +344,8 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         if rec["agent"] in world.agents:
             world.agents[rec["agent"]].known_langs.add(rec["lang"])
         result.learns_log.append({"turn": world.turn, **rec})
+    for o in sorted(sink.observations, key=lambda x: (x["agent"], x["nth"])):
+        result.risk_log.append({"turn": world.turn, **o})
 
     # b. 시설 투자 — 국가별 집계, cap 초과분은 비례 환급(순서 무관, #12), 진척 판정
     by_country: dict[str, list] = defaultdict(list)
@@ -522,6 +525,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         merged.messages += s.messages
         merged.votes += s.votes
         merged.ballots += s.ballots
+        merged.observations += s.observations
         merged.learns += s.learns
         merged.procreations += s.procreations
     procreated = _settle_agentic(world, cfg, rng, merged, translator, knob_ai, counter,

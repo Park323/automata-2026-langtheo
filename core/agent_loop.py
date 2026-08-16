@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -38,9 +39,23 @@ class Sink:
     ballots: list = field(default_factory=list)       # 찬반 (agent_id, country, approve)
     learns: list = field(default_factory=list)        # (agent_id, lang) — 다음 턴부터 유효
     procreations: list = field(default_factory=list)  # (agent_id, testament)
+    observations: list = field(default_factory=list)  # 위험 관측 (진실·관측치·오차)
+    observations_by: dict = field(default_factory=dict)   # 이번 턴 개체별 관측 횟수
 
 
 # ── 학습 비용 (spec 3.4) ──────────────────────────────────────────────────────
+
+def risk_error(country, cfg) -> float:
+    """관측 오차 폭. **국가 자본(기술력)이 좁힌다.**
+
+        오차 = base_error / (1 + √(national_capital / growth_scale))
+
+    `national` 투자에 두 번째 쓸모를 준다 — 그전에는 생산 배수뿐이었다.
+    """
+    import math
+    return cfg.risk.base_error / (
+        1.0 + math.sqrt(country.national_capital / cfg.growth.growth_scale))
+
 
 def learn_discounts(agent, country_id: str, world) -> tuple[bool, bool]:
     """(국내 구사자 있음, 부모가 구사함). spec 3.4 — 판정은 **그 순간** 새로 한다.
@@ -271,6 +286,44 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         })
         # 전달 성공/실패는 알리지 않는다 (original 은 도박). 접수·과금만.
         return {"ok": True, "queued": f"will arrive at {to} next turn", "charged": c,
+                "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
+
+    if name == "observe_risk":
+        if agent.ap < cfg.ap.observe_risk:
+            return {"ok": False, "error": f"not enough AP; observe_risk needs {cfg.ap.observe_risk}"}, None
+        if agent.budget < cfg.costs.observe_risk:
+            return {"ok": False,
+                    "error": f"not enough budget; need {cfg.costs.observe_risk:.0f}, "
+                             f"have {agent.budget:.0f}"}, None
+        agent.budget -= cfg.costs.observe_risk
+        agent.ap -= cfg.ap.observe_risk
+        truth = cfg.world.total_turns - world.turn        # 남은 턴 (마지막 턴에 판정)
+        err = risk_error(world.countries[agent.country], cfg)
+        # 잡음은 **매 관측마다 새로** 뽑는다. 여러 번 재면 평균으로 좁혀지지만 관측이
+        # 비싸서 공짜가 아니다 — 그 값이 곧 국가 자본(기술력)과 겨루는 가격이다.
+        # 시드·턴·개체·회차로 결정론적으로 뽑는다 (병렬이라 전역 rng 는 재현을 깬다).
+        n = sink.observations_by.get(agent.id, 0)
+        sink.observations_by[agent.id] = n + 1
+        rng = random.Random(f"{cfg.run.seed}|{world.turn}|{agent.uid}|{n}")
+        seen = max(0, round(truth + rng.uniform(-err, err)))
+        # 임계도 같은 기술력으로 잰다. 턴 오차를 전체 기간으로 나눠 **비율 오차**로 옮긴다
+        # (자본 0 이면 ±25%, 자본이 쌓이면 같은 비율로 좁아진다).
+        rel = err / cfg.world.total_turns
+        thr_truth = cfg.thresholds.interceptor
+        thr_seen = max(1, round(thr_truth * (1 + rng.uniform(-rel, rel))))
+        sink.observations.append({
+            "agent": agent.id, "country": agent.country, "nth": n,
+            "truth": truth, "observed": seen, "error": round(err, 2),
+            "threshold_truth": thr_truth, "threshold_observed": thr_seen,
+            "threshold_rel_error": round(rel, 4),
+            "national_capital": round(world.countries[agent.country].national_capital, 1),
+        })
+        return {"ok": True,
+                "turns_until_impact": seen, "margin_of_error": round(err, 1),
+                "interceptor_needs": thr_seen,
+                "interceptor_margin_pct": round(rel * 100, 1),
+                "note": "your own reading; nobody else has it",
+                "charged": cfg.costs.observe_risk,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "propose_vote":

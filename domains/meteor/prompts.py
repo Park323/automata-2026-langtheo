@@ -88,7 +88,9 @@ T = {
         c_ai="  話す（国際・ai）",
         c_learn="  {nation} の言語を学ぶ",
         c_cheap="   安い: 自国に話せる人がいる", c_disc="   割引あり",
-        c_vote="  propose_vote", c_inv="  invest", c_inv_note="   指定した額",
+        c_vote="  propose_vote", c_obs="  observe_risk",
+        c_obs_note="   隕石までの残りターンと interceptor に要る進捗を測る。国家投資が精度を上げる",
+        c_inv="  invest", c_inv_note="   指定した額",
         c_pro="  procreate", c_pro_note="   0  子を残してあなたは死ぬ",
         inv_hdr="invest の効果",
         inv_well="  wellness   あなたの寿命が延びる（どれだけかは分からない）",
@@ -125,7 +127,9 @@ T = {
         c_ai="  说话（国际·ai）",
         c_learn="  学习 {nation} 的语言",
         c_cheap="   较便宜: 本国有人会说", c_disc="   有折扣",
-        c_vote="  propose_vote", c_inv="  invest", c_inv_note="   你指定的数额",
+        c_vote="  propose_vote", c_obs="  observe_risk",
+        c_obs_note="   测量陨石撞击前还剩几回合，以及 interceptor 需要多少进度。国家投资会提高精度",
+        c_inv="  invest", c_inv_note="   你指定的数额",
         c_pro="  procreate", c_pro_note="   0  留下孩子，你随即死去",
         inv_hdr="invest 的效果",
         inv_well="  wellness   延长你的寿命（延长多少你无法得知）",
@@ -163,7 +167,9 @@ T = {
         c_ai="  parler (international, ai)",
         c_learn="  apprendre la langue de {nation}",
         c_cheap="   moins cher : quelqu'un de votre nation la parle", c_disc="   remise",
-        c_vote="  propose_vote", c_inv="  invest", c_inv_note="   le montant que vous choisissez",
+        c_vote="  propose_vote", c_obs="  observe_risk",
+        c_obs_note="   mesure les tours restants et la progression qu'exige un interceptor ; l'investissement national affine",
+        c_inv="  invest", c_inv_note="   le montant que vous choisissez",
         c_pro="  procreate", c_pro_note="   0  vous laissez un enfant et vous mourez",
         inv_hdr="effets d'invest",
         inv_well="  wellness   prolonge votre vie (d'une durée que vous ne pouvez pas connaître)",
@@ -245,6 +251,7 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
                     else (t["c_disc"] if cost < cfg.costs.learn_base else ""))
             lines.append(row(t["c_learn"].format(nation=c.id), cost, note))
     lines.append(row(t["c_vote"], cfg.costs.propose_vote))
+    lines.append(row(t["c_obs"], cfg.costs.observe_risk, t["c_obs_note"]))
     lines.append(row(t["c_ballot"], "", t["c_ballot_note"]))
     lines.append(row(t["c_inv"], "", t["c_inv_note"]))
     lines.append(row(t["c_pro"], "", t["c_pro_note"]))
@@ -312,7 +319,6 @@ def render_observation(world, agent, cfg, knob_ai: float,
         "",
         t["land"].format(v=land),
         t["prog"].format(v=c.progress),
-        t["thresh"].format(v=cfg.thresholds.interceptor),
         _proposal_line(world, c, t),
         "",
         t["roster"],

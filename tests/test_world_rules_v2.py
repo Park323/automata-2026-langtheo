@@ -343,17 +343,64 @@ def test_year_starts_at_42(cfg, world):
     assert "51" in prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
 
 
-def test_threshold_is_shown_but_success_prob_is_not(cfg, world):
-    """목표를 모르면 '자국의 진척: 728' 은 해석할 수 없는 숫자다.
+def test_threshold_is_no_longer_free(cfg, world):
+    """임계는 **관측으로만** 알 수 있다 — `observe_risk` 를 사서 재야 한다.
 
-    임계는 spec 4.1 은닉 목록에 없다 — 거기 있는 것은 `success_prob` 이다.
+    공짜로 보이면 진척과 임계가 둘 다 정확해져 산수로 풀리는 문제가 된다.
+    이제 둘 다 기술력에 따라 흐릿하고, 알아낸 값은 **개인의 것**이라 남에게 알리려면
+    말해야 한다 — 국제로 보내면 번역을 타고, 그게 지표 6a 가 재는 경로다.
     """
     from domains.meteor import prompts
     obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
-    assert str(int(cfg.thresholds.interceptor)) in obs
-    for hidden in ("0.3", "success_prob", str(int(cfg.thresholds.bunker_scale))):
-        assert hidden not in obs
+    for hidden in (str(int(cfg.thresholds.interceptor)), "0.3", "success_prob",
+                   str(int(cfg.thresholds.bunker_scale))):
+        assert hidden not in obs, hidden
+    assert "observe_risk" in obs          # 살 수 있다는 것은 안다
 
+
+def test_risk_reading_sharpens_with_national_capital(cfg, world):
+    """정확도는 **국가 자본(기술력)**이 좌우한다. `national` 투자에 두 번째 쓸모다."""
+    from core.agent_loop import Sink, execute_tool, risk_error
+    world.turn = 10
+    errs = []
+    for nc in (0.0, 3000.0, 12000.0):
+        world.countries["Asla"].national_capital = nc
+        a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 1000.0
+        sink = Sink()
+        r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, sink, 48.0)
+        assert r["ok"]
+        errs.append(r["margin_of_error"])
+        assert abs(r["turns_until_impact"] - (cfg.world.total_turns - world.turn)) <= r["margin_of_error"] + 1
+        assert abs(r["interceptor_needs"] - cfg.thresholds.interceptor) <= \
+            cfg.thresholds.interceptor * r["interceptor_margin_pct"] / 100 + 1
+    assert errs[0] > errs[1] > errs[2], errs
+    assert risk_error(world.countries["Asla"], cfg) == pytest.approx(errs[-1], abs=0.05)
+
+
+def test_each_reading_is_fresh_but_costs(cfg, world):
+    """매번 새로 잰다. 여러 번 재면 좁혀지지만 **공짜가 아니다** — 그 값이 곧
+    국가 자본과 겨루는 가격이다."""
+    from core.agent_loop import Sink, execute_tool
+    world.turn = 10
+    a = world.agents["Asla1"]; a.budget = 1000.0
+    sink = Sink()
+    seen = []
+    for _ in range(5):
+        a.ap = 1.0
+        r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, sink, 48.0)
+        seen.append(r["turns_until_impact"])
+    assert len(set(seen)) > 1, "매번 같으면 새 관측이 아니다"
+    assert a.budget == 1000.0 - 5 * cfg.costs.observe_risk
+    assert [o["nth"] for o in sink.observations] == [0, 1, 2, 3, 4]
+
+
+def test_reading_is_private(cfg, world):
+    """알아낸 값은 개인의 것이다. 남에게 알리려면 말해야 하고, 국제로 보내면 번역을 탄다."""
+    from core.agent_loop import Sink, execute_tool
+    world.turn = 10
+    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 1000.0
+    r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, Sink(), 48.0)
+    assert "nobody else" in r["note"]
 
 def test_production_multiplier_is_gone(cfg, world):
     """배수는 안 알려준다 — 수입에서 추론 가능하다."""

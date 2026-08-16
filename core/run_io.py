@@ -152,7 +152,8 @@ class RunWriter:
         for name, rows in (("vote", result.votes_log),
                            ("land_change", result.land_changes),
                            ("death", result.deaths_log),
-                           ("facility_gain", result.facility_gains)):
+                           ("facility_gain", result.facility_gains),
+                           ("risk_observe", result.risk_log)):
             for r in rows:
                 if r.get("turn") != turn or r.get("_written"):
                     continue
