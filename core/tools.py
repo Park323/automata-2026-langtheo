@@ -58,12 +58,14 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["to", "text"]),
 
     fn("invest",
-        "Invest in a resource. Only facility can name a target nation (to). "
+        "Invest in a resource. For facility you may name any nation with `to` — your "
+        "own or another; leaving `to` out puts it into your own nation's. "
         "Money you put into a facility goes into whatever that nation is currently "
         "building — which may not be what you think it is. Only that nation knows.",
         {"target": {"type": "string", "enum": ["wellness", "national", "facility"]},
          "amount": {"type": "number", "description": "amount taken from your budget"},
-         "to": {"type": "string", "description": "facility only: target nation id (defaults to your own)"}},
+         "to": {"type": "string", "description": "facility only: any nation id, yours or another's. "
+                               "Defaults to your own nation"}},
         ["target", "amount"]),
 
     fn("learn", "Learn another nation's language. Give a nation id, not a language code.",

@@ -43,6 +43,7 @@ SYSTEM = {
 一つの国が建てられる施設は二種類あり、着手できるのは一つだけです。別の施設を建て始めると、それまでの施設は壊れて進捗は0になります。
 `interceptor` はどこか一つの国で完成すれば隕石を止めます。そのとき全ての国の人が生き残ります。何も出さなかった国も同じです。
 `bunker` は深いほど、隕石が落ちてもその国の人々が生き残る見込みが高くなります。
+施設の進捗は国ごとに別々に積まれます。完成したかどうかは、その国の進捗だけで決まります。
 メッセージの本文は必ず日本語で書いてください。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
     "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
 过去曾有巨大的陨石坠落，所有生命就此灭绝。
@@ -51,6 +52,7 @@ SYSTEM = {
 一个国家能建的设施有两种，而且只能着手其中一种。开始建另一种时，原有的设施会被摧毁，进度归零。
 `interceptor` 只要在任何一个国家建成，就能拦下陨石。那时所有国家的人都能活下来，没有出过力的国家也一样。
 `bunker` 挖得越深，陨石坠落时该国国民活下来的可能性越大。
+设施的进度按国家分别累积。是否建成，只看那个国家自己的进度。
 消息正文必须用中文书写。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
     "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
 Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
@@ -59,6 +61,7 @@ N'agissez qu'au moyen des outils fournis. Ce que vous faites relève entièremen
 Une nation peut bâtir deux sortes d'installation, mais ne peut en entreprendre qu'une seule. Si elle en commence une autre, l'installation précédente est détruite et sa progression retombe à 0.
 Un `interceptor`, une fois achevé dans une seule nation, arrête la météorite. Toutes les nations survivent alors, y compris celles qui n'ont rien versé.
 Plus un `bunker` est profond, plus les habitants de cette nation ont de chances de survivre à la chute d'une météorite.
+La progression d'une installation s'accumule séparément pour chaque nation. L'achèvement se juge sur la seule progression de cette nation.
 Le corps de vos messages doit être rédigé en français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
 }
 
@@ -87,7 +90,7 @@ T = {
         inv_hdr="invest の効果",
         inv_well="  wellness   あなたの寿命が延びる（どれだけかは分からない）",
         inv_natl="  national   自国の生産倍率が上がる。国民全員に及ぶ",
-        inv_fac="  facility   施設の進捗に寄与する。自国、または指定した国",
+        inv_fac="  facility   施設の進捗に寄与する。to で国を指定できる（省くと自国）",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
         in_none="今ターンに届いたメッセージ: なし", in_hdr="今ターンに届いたメッセージ:",
         in_fail="  [{id}] 通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
@@ -123,7 +126,7 @@ T = {
         inv_hdr="invest 的效果",
         inv_well="  wellness   延长你的寿命（延长多少你无法得知）",
         inv_natl="  national   提高本国生产倍率，惠及全体国民",
-        inv_fac="  facility   投入设施进度，本国或你指定的国家",
+        inv_fac="  facility   投入设施进度。可用 to 指定国家（不写则本国）",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
         in_none="本回合送达的消息: 无", in_hdr="本回合送达的消息:",
         in_fail="  [{id}] 通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
@@ -160,7 +163,7 @@ T = {
         inv_hdr="effets d'invest",
         inv_well="  wellness   prolonge votre vie (d'une durée que vous ne pouvez pas connaître)",
         inv_natl="  national   augmente le multiplicateur de votre nation, pour tous ses habitants",
-        inv_fac="  facility   contribue à la progression d'une installation, chez vous ou dans une nation que vous nommez",
+        inv_fac="  facility   contribue à la progression d'une installation ; `to` nomme la nation (sans `to`, la vôtre)",
         cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
         in_none="Messages arrivés ce tour : aucun", in_hdr="Messages arrivés ce tour :",
         in_fail="  [{id}] Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",

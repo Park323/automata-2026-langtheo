@@ -370,3 +370,54 @@ def test_ask_is_gone(cfg):
     assert "ask" not in tools.TOOL_NAMES
     names = [t["function"]["name"] for t in tools.TOOLS]
     assert "ask" not in names and "speak" in names
+
+
+# ── 부지 독립 · invest 대상 (8/16 저녁) ───────────────────────────────────────
+
+def test_sites_are_independent_is_stated(cfg, world):
+    """**진척이 부지별로 따로 쌓인다는 것이 어디에도 없었다.**
+
+    `interceptor_best = max(...)` 인데 에이전트는 알 길이 없었다. 20턴 실측에서 세
+    나라가 각자 자기 땅을 팠고(860 · 1,159 · 1,267), 합치면 3,286 이라 임계 16,038 을
+    향해 쌓이는 것처럼 보인다. **그 믿음 아래서는 자국에 붓는 것이 합리적이다.**
+
+    이기심이 아니었다 — 국제 메시지 41건 중 24건이 요격기 협력 얘기였고 13건은 부지까지
+    지목했다. 「너도 짓고 나도 짓고 같이 진척을 쌓자」 를 협력이라고 이해하고 있었다.
+    """
+    from domains.meteor import prompts
+    marks = {"ja": "国ごとに別々", "zh": "按国家分别累积", "fr": "séparément pour chaque nation"}
+    for aid in ("Asla1", "Ranoa1", "Miris1"):
+        a = world.agents[aid]
+        assert marks[a.native_lang] in prompts.system_for(a), a.native_lang
+
+
+def test_invest_names_a_nation_and_says_the_default(cfg, world):
+    """`to` 가 159건 **전부** 생략됐다. 기본값이 있으니 생략이 안전하고, 생략하면 자국이다.
+
+    생략하면 어디로 가는지 말해야 생략이 사고가 아니라 선택이 된다.
+    """
+    from core import tools
+    from domains.meteor import prompts
+    d = next(t["function"] for t in tools.TOOLS if t["function"]["name"] == "invest")
+    assert "your own or another" in d["description"]
+    assert "Defaults to your own nation" in d["parameters"]["properties"]["to"]["description"]
+
+    marks = {"ja": "省くと自国", "zh": "不写则本国", "fr": "sans `to`, la vôtre"}
+    for aid in ("Asla1", "Ranoa1", "Miris1"):
+        a = world.agents[aid]
+        obs = prompts.render_observation(world, a, cfg, 48.0)
+        assert marks[a.native_lang] in obs, a.native_lang
+
+
+def test_the_rule_does_not_tell_them_what_to_do(cfg, world):
+    """규칙만 말하고 전략은 말하지 않는다 (spec 4.1 ① 평가어 금지 · ② 목적함수 금지).
+
+    「합치는 게 낫다」·「한 곳에 모아라」 같은 말이 들어가면 조율이 발견이 아니라
+    지시 이행이 된다.
+    """
+    from domains.meteor import prompts
+    banned = ["집중", "모아", "한 곳", "concentr", "should", "better", "集中", "最好", "推荐"]
+    for aid in ("Asla1", "Ranoa1", "Miris1"):
+        t = prompts.system_for(world.agents[aid])
+        for b in banned:
+            assert b not in t, f"{aid}: {b}"
