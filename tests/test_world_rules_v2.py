@@ -515,3 +515,22 @@ def test_procreate_also_announces_the_pair(cfg, world):
     (d,) = r.deaths_log
     assert (d["who"], d["by"]) == ("Asla1", "procreate")
     assert d["born"] == "Asla4" and d["born"] in world.agents
+
+
+def test_round_trip_takes_two_turns_is_stated(cfg, world):
+    """**도착만 알려주고 답신까지 한 턴 더라는 건 안 알려줬다.**
+
+    그래서 같은 말을 반복해서 보내는 일이 잦았다 — 답이 안 오니 안 갔다고 여긴 것이다.
+    """
+    from core import tools
+    from domains.meteor import prompts
+    d = next(t["function"]["description"] for t in tools.TOOLS
+             if t["function"]["name"] == "speak")
+    assert "round trip takes two turns" in d
+    assert "does not make it arrive sooner" in d
+
+    marks = {"ja": "返事が来るのはさらに次のターン", "zh": "回信要再下一回合",
+             "fr": "une réponse n'arrive qu'au tour d'après"}
+    for aid in ("Asla1", "Ranoa1", "Miris1"):
+        a = world.agents[aid]
+        assert marks[a.native_lang] in prompts.render_observation(world, a, cfg, 48.0)
