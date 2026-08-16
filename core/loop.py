@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from core import messaging, survival
+from core import agent_loop
 from core.agent_loop import Sink, run_agent_turn
 from core.policy import PROCREATE_AGE, dummy_policy
 from core.state import Agent, Country, World
@@ -362,9 +363,34 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     # a. 학습 반영 (다음 턴 관측부터 유효). known_langs 변경은 여기서 처음 일어난다.
     #    정렬 순으로 도는 이유 — 같은 턴에 둘이 배우면 국내 구사자 판정이 순서를 탄다.
     for rec in sorted(sink.learns, key=lambda r: r["agent"]):
-        if rec["agent"] in world.agents:
-            world.agents[rec["agent"]].known_langs.add(rec["lang"])
+        a = world.agents.get(rec["agent"])
         result.learns_log.append({"turn": world.turn, **rec})
+        if a is None:
+            continue
+        a.lang_progress[rec["lang"]] = a.lang_progress.get(rec["lang"], 0.0) + rec["charged"]
+    # 완료 판정은 **그 순간의** 학습가로 한다 (3.4). 같은 턴에 국내 구사자가 생기면
+    # 필요액이 절반이 되어, 반쯤 낸 사람이 그 자리에서 끝날 수 있다.
+    for aid in sorted(world.agents):
+        a = world.agents[aid]
+        for cid in sorted(world.countries):
+            c = world.countries[cid]
+            if cid == a.country or c.lang in a.known_langs:
+                continue
+            done = a.lang_progress.get(c.lang, 0.0)
+            if done <= 0:
+                continue
+            need, _ = agent_loop.learn_cost(a, cid, world, cfg)
+            if done >= need:
+                a.known_langs.add(c.lang)
+                result.learns_log.append({
+                    "turn": world.turn, "kind": "acquired", "agent": aid,
+                    "country": a.country, "target": cid, "lang": c.lang,
+                    "charged": round(done, 2), "required": need,
+                    "rung": round(need / cfg.costs.learn_base, 4),
+                    "age": a.age, "budget_after": round(a.budget, 2),
+                    "discount_domestic": agent_loop.learn_discounts(a, cid, world)[0],
+                    "discount_parent": agent_loop.learn_discounts(a, cid, world)[1],
+                })
     for o in sorted(sink.observations, key=lambda x: (x["agent"], x["nth"])):
         result.risk_log.append({"turn": world.turn, **o})
 

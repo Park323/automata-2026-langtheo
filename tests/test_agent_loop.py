@@ -164,26 +164,50 @@ def test_learn_self_not_counted(cfg, world):
     assert cost == 600                # 할인 안 됨
 
 
-def test_learn_defers_known_langs(cfg, world):
-    """learn 은 known_langs 를 즉시 바꾸지 않고 sink 에 넣는다 (병렬 레이스 방지).
+def test_learn_is_paid_in_instalments(cfg, world):
+    """**한 번에 다 낼 필요가 없다.** 낸 만큼 쌓이고 다 차야 읽을 수 있다.
 
-    Asla2 가 Miris(fr) 를 배운다 — Asla 에는 fr 구사자가 없어 **정가**다.
-    (Asla1 은 초기화로 zh 를 알고 있어 Ranoa 학습은 절반이 된다.)
+    Asla2 가 Miris(fr) 를 배운다 — Asla 에는 fr 구사자가 없어 정가 600 이다.
     """
-    script = [assistant_msg(tool_call("learn", "1", country="Miris")),
+    script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=250)),
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla2", script, budget=10000)
-    assert "fr" not in agent.known_langs          # 즉시 반영 안 됨
-    assert agent.budget == 10000 - 600            # 예산은 즉시 차감
-    assert agent.ap == cfg.turn.action_points - cfg.ap.learn
-
-    # 학습 1건 = x̂ 관측 1건. **어느 눈금이었는지와 나이가 없으면 x 를 구간으로
-    # 좁힐 수 없다** (spec 6.1 · 8.4) — 이 필드들이 x̂ 의 전제다.
+    assert agent.budget == 10000 - 250
     (rec,) = sink.learns
-    assert rec["agent"] == "Asla2" and rec["lang"] == "fr" and rec["target"] == "Miris"
-    assert rec["charged"] == 600 and rec["rung"] == 1.0
-    assert rec["discount_domestic"] is False and rec["discount_parent"] is False
-    assert rec["age"] == agent.age and rec["budget_after"] == 9400.0
+    assert rec["charged"] == 250 and rec["required"] == 600 and rec["rung"] == 1.0
+    assert rec["progress_before"] == 0.0
+    res = next(r for r in _results(client) if r.get("toward"))
+    assert res["progress"] == 250 and res["remaining"] == 350
+    assert "not enough yet" in res["effect"]
+
+
+def test_learn_never_takes_more_than_needed(cfg, world):
+    """넘치게 내면 필요한 만큼만 받는다 — 남는 돈이 조용히 사라지면 안 된다."""
+    script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=9999)),
+              assistant_msg(tool_call("end_turn", "2"))]
+    agent, sink, client, log = _run(world, cfg, "Asla2", script, budget=10000)
+    assert agent.budget == 10000 - 600
+    assert sink.learns[0]["charged"] == 600
+
+
+def test_learn_rejects_a_language_already_read(cfg, world):
+    """Asla1 은 초기화로 zh 를 안다. 또 낼 수 없다."""
+    script = [assistant_msg(tool_call("learn", "1", country="Ranoa", amount=100)),
+              assistant_msg(tool_call("end_turn", "2"))]
+    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
+    assert any((not r["ok"]) and "already read" in r.get("error", "")
+               for r in _results(client))
+    assert agent.budget == 10000 and sink.learns == []
+
+
+def test_learn_uses_less_than_a_whole_turn(cfg, world):
+    """분할 납부라 한 턴을 통째로 쓸 이유가 없다 (전에는 ap.learn = 1.0)."""
+    assert cfg.ap.learn < cfg.turn.action_points
+    script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=100)),
+              assistant_msg(tool_call("speak", "2", to="Asla3", text="x")),
+              assistant_msg(tool_call("end_turn", "3"))]
+    agent, sink, client, log = _run(world, cfg, "Asla2", script, budget=10000)
+    assert len(sink.learns) == 1 and len(sink.messages) == 1   # 같은 턴에 둘 다
 
 
 # ── #11 정보 은닉 (가장 중요) ────────────────────────────────────────────────

@@ -242,31 +242,46 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": f"unknown nation: {country_id}"}, None
         if country_id == agent.country:
             return {"ok": False, "error": "you already know your own language"}, None
-        c, reason = learn_cost(agent, country_id, world, cfg)
+        lang = world.countries[country_id].lang
+        if lang in agent.known_langs:
+            return {"ok": False, "error": f"you already read {country_id}'s language"}, None
+        try:
+            amount = float(args.get("amount", 0))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "amount must be a number"}, None
+        if amount <= 0:
+            return {"ok": False, "error": "amount must be positive"}, None
         if agent.ap < cfg.ap.learn:
             return {"ok": False, "error": f"not enough AP; learn needs {cfg.ap.learn}"}, None
-        if agent.budget < c:
-            return {"ok": False, "error": f"not enough budget; need {c:.0f}, have {agent.budget:.0f}"}, None
-        agent.budget -= c
+        if agent.budget < amount:
+            return {"ok": False,
+                    "error": f"not enough budget; need {amount:.0f}, have {agent.budget:.0f}"}, None
+        need, reason = learn_cost(agent, country_id, world, cfg)
+        done_before = agent.lang_progress.get(lang, 0.0)
+        # 넘치게 내면 필요한 만큼만 받는다 — 남는 돈이 조용히 사라지면 안 된다
+        amount = min(amount, max(0.0, need - done_before))
+        if amount <= 0:
+            return {"ok": False, "error": f"{country_id}'s language is already paid for"}, None
+        agent.budget -= amount
         agent.ap -= cfg.ap.learn
         # known_langs 는 다른 에이전트가 읽으므로(국내 구사자 판정) 즉시 바꾸지 않는다.
         # sink 에 넣어 정산 때(정렬 순) 반영한다 — 병렬 레이스·재현성 방지.
         domestic, parent = learn_discounts(agent, country_id, world)
         sink.learns.append({
             "agent": agent.id, "country": agent.country,
-            "target": country_id, "lang": world.countries[country_id].lang,
-            # ★ x̂ 의 전제. 어느 눈금이었는지가 없으면 "학습이 일어났다" 만 남고
-            #   x 를 구간으로 좁힐 수 없다 (spec 6.1 · 8.4).
-            "charged": c, "rung": round(c / cfg.costs.learn_base, 4),
+            "target": country_id, "lang": lang,
+            "charged": amount, "progress_before": round(done_before, 2),
+            "required": need, "rung": round(need / cfg.costs.learn_base, 4),
             "discount_domestic": domestic, "discount_parent": parent,
-            # 나이는 x̂ 의 최대 노이즈원이다 — 늙으면 회수 기간이 없어 같은 눈금도
-            #   사실상 더 비싸다. 층화하지 않으면 "안 배운 것" 이 x 가 작아서인지
-            #   늙어서인지 구분되지 않는다 (spec 8.4).
             "age": agent.age, "budget_after": round(agent.budget, 2),
             "lam": round(agent.lam, 4),
         })
-        return {"ok": True, "learned": country_id, "charged": c, "discount": reason,
-                "effect": "you can read it from next turn",
+        done = done_before + amount
+        return {"ok": True, "toward": country_id, "charged": amount,
+                "progress": round(done, 1), "required_now": need, "discount": reason,
+                "remaining": round(max(0.0, need - done), 1),
+                "effect": ("you can read it from next turn" if done >= need
+                           else "not enough yet; keep putting in"),
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "speak":

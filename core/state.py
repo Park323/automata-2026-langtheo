@@ -27,6 +27,10 @@ class Agent:
     last_prompt_tokens: int = 0   # 직전 호출의 실측 프롬프트 토큰 (압박 판정에 쓴다)
     budget_start: float = 0.0     # 이번 턴 **결정 시점**의 예산. x̂ 의 분모 (spec 8.4)
     wellness_spent: float = 0.0   # 생애 누적 wellness 출자. 본인에게는 비공개
+    # 언어별 학습 진척 {lang: 누적 지불액}. 한 번에 다 낼 필요가 없고, 진척은
+    # 관측에 그대로 보인다 (별도 관측 없이 투명). 완료 판정은 **그 순간의** 학습가로
+    # 하므로, 국내 구사자가 생기면 필요액이 절반이 되어 즉시 완료될 수 있다 (3.4).
+    lang_progress: dict = field(default_factory=dict)
 
 
 @dataclass

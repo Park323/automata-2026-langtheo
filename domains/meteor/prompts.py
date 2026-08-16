@@ -87,6 +87,7 @@ T = {
         c_orig_note="   相手が読めなければ届かない。費用は請求される",
         c_ai="  話す（国際・ai）",
         c_learn="  {nation} の言語を学ぶ",
+        c_learn_prog="   これまで {done:.0f} / {need:.0f}",
         c_cheap="   安い: 自国に話せる人がいる", c_disc="   割引あり",
         c_vote="  propose_vote", c_obs="  observe_risk",
         c_obs_note="   隕石までの残りターンと interceptor に要る進捗を測る。国家投資が精度を上げる",
@@ -126,6 +127,7 @@ T = {
         c_orig_note="   对方读不懂就送不到，费用照收",
         c_ai="  说话（国际·ai）",
         c_learn="  学习 {nation} 的语言",
+        c_learn_prog="   已投入 {done:.0f} / {need:.0f}",
         c_cheap="   较便宜: 本国有人会说", c_disc="   有折扣",
         c_vote="  propose_vote", c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几回合，以及 interceptor 需要多少进度。国家投资会提高精度",
@@ -166,6 +168,7 @@ T = {
         c_orig_note="   non délivré s'ils ne lisent pas votre langue ; le coût est prélevé quand même",
         c_ai="  parler (international, ai)",
         c_learn="  apprendre la langue de {nation}",
+        c_learn_prog="   déjà versé {done:.0f} / {need:.0f}",
         c_cheap="   moins cher : quelqu'un de votre nation la parle", c_disc="   remise",
         c_vote="  propose_vote", c_obs="  observe_risk",
         c_obs_note="   mesure les tours restants et la progression qu'exige un interceptor ; l'investissement national affine",
@@ -250,6 +253,10 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
             note = (t["c_cheap"] if cost == cfg.costs.learn_base * 0.5
                     else (t["c_disc"] if cost < cfg.costs.learn_base else ""))
             lines.append(row(t["c_learn"].format(nation=c.id), cost, note))
+            # 얼마나 냈고 얼마가 남았는지. **별도 관측 없이** 그대로 보인다.
+            done = agent.lang_progress.get(c.lang, 0.0)
+            if done > 0:
+                lines.append(t["c_learn_prog"].format(done=done, need=cost))
     lines.append(row(t["c_vote"], cfg.costs.propose_vote))
     lines.append(row(t["c_obs"], cfg.costs.observe_risk, t["c_obs_note"]))
     lines.append(row(t["c_ballot"], "", t["c_ballot_note"]))

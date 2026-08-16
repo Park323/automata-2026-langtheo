@@ -33,7 +33,7 @@ turn:
 ap:
   speak:        0.3
   ask:          0.3
-  learn:        1.0
+  learn:        0.3   # 분할 납부라 한 턴을 통째로 쓸 이유가 없다
   propose_vote: 0.3
   observe_risk: 0.3
   invest:       0.0

@@ -657,3 +657,35 @@ def test_initialisation_is_reproducible(cfg):
     b = loop.init_world(cfg, itertools.count(1), random.Random(7))
     assert [(k, v.age, sorted(v.known_langs)) for k, v in sorted(a.agents.items())] == \
            [(k, v.age, sorted(v.known_langs)) for k, v in sorted(b.agents.items())]
+
+
+def test_learning_progress_is_visible_without_paying_to_look(cfg, world):
+    """언어별 진척은 **별도 관측 없이** 그대로 보인다. 얼마 냈고 얼마 남았는지."""
+    from domains.meteor import prompts
+    a = world.agents["Asla2"]
+    a.lang_progress = {"fr": 400.0, "zh": 120.0}
+    obs = prompts.render_observation(world, a, cfg, 48.0)
+    assert "400 / 600" in obs        # Miris(fr) 정가 — Asla 에 fr 구사자 없음
+    assert "120 / 300" in obs        # Ranoa(zh) 절반 — Asla1 이 zh 를 안다
+
+
+def test_a_cheaper_price_can_finish_a_half_paid_language(cfg, world):
+    """완료 판정은 **그 순간의** 학습가로 한다 (3.4).
+
+    반쯤 낸 사람이 국내에 구사자가 생기는 순간 그 자리에서 끝난다 — 할인은 상태가
+    아니라 조건이고, 계보가 아니라 **지금 누가 살아 있는가**로 정해진다.
+    """
+    import random
+    a = world.agents["Asla2"]
+    a.lang_progress = {"fr": 400.0}          # 정가 600 중 400
+    r = loop.RunResult(world=world)
+    loop._settle_agentic(world, cfg, random.Random(0), Sink(), None, 48.0,
+                         itertools.count(500), r, itertools.count(900))
+    assert "fr" not in a.known_langs         # 아직 모자라다
+
+    world.agents["Asla3"].known_langs.add("fr")   # 국내 구사자 등장 → 필요액 300
+    loop._settle_agentic(world, cfg, random.Random(0), Sink(), None, 48.0,
+                         itertools.count(500), r, itertools.count(900))
+    assert "fr" in a.known_langs
+    (done,) = [x for x in r.learns_log if x.get("kind") == "acquired"]
+    assert done["charged"] == 400.0 and done["required"] == 300.0 and done["rung"] == 0.5

@@ -73,9 +73,17 @@ def _build(reasoning_arg: bool) -> list[dict]:
                                "Defaults to your own nation"}},
         ["target", "amount"]),
 
-    fn("learn", "Learn another nation's language. Give a nation id, not a language code.",
-        {"country": {"type": "string", "description": "the nation whose language to learn (e.g. Ranoa)"}},
-        ["country"]),
+    fn("learn",
+        "Put money toward learning another nation's language. Give a nation id, not a "
+        "language code. You do not have to pay it all at once — what you put in "
+        "accumulates, and your observation shows how far along you are and how much is "
+        "still needed. You can read the language once the accumulated amount reaches "
+        "what it costs. The cost can fall while you are partway through — if someone in "
+        "your nation comes to speak it, or if your parent did — and then you may finish "
+        "sooner than you expected.",
+        {"country": {"type": "string", "description": "the nation whose language to learn (e.g. Ranoa)"},
+         "amount": {"type": "number", "description": "amount taken from your budget"}},
+        ["country", "amount"]),
 
     fn("observe_risk",
         "Measure how many turns remain until the meteorite strikes, and how much "
