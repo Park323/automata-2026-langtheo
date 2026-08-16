@@ -74,7 +74,7 @@ class SurvivalCfg:
 @dataclass(frozen=True)
 class Risk:
     """운석 충돌까지 남은 턴의 관측. 정확도는 국가 자본(기술력)에 비례한다."""
-    base_error: float = 25.0        # 자본 0 일 때의 오차 폭 (턴)
+    base_error: float = 50.0        # 자본 0 일 때의 오차 폭 (턴). 전체 기간이 100턴
 
 
 @dataclass(frozen=True)
