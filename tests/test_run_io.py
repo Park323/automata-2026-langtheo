@@ -110,3 +110,58 @@ def test_refuses_to_append_to_existing_run(cfg, tmp_path):
     with _pytest.raises(FileExistsError):
         run_io.RunWriter("dup", root=tmp_path)
     run_io.RunWriter("dup", root=tmp_path, overwrite=True)      # 명시하면 허용
+
+
+def test_every_result_log_reaches_disk(tmp_path):
+    """**RunResult 에만 있고 파일에 안 남는 로그가 있으면 안 된다.**
+
+    투표·국토 전환·부고·진척 기여가 전부 그랬다 — 오늘 만든 규칙이 통째로 관측
+    불가였다. metrics 의 land 로 전환은 역산되지만 찬반 수·소실 진척은 복구되지 않는다.
+    """
+    from core import loop, run_io
+
+    class _W:
+        agents = {}
+        countries = {}
+
+    r = loop.RunResult(world=_W())
+    r.votes_log = [{"turn": 1, "kind": "propose", "by": "Ranoa1",
+                    "country": "Ranoa", "target": "bunker", "vote_turn": 5}]
+    r.land_changes = [{"turn": 1, "country": "Ranoa", "target": "bunker",
+                       "yes": 2, "no": 1, "passed": True, "progress_lost": 295.0}]
+    r.deaths_log = [{"turn": 1, "who": "Asla2", "country": "Asla", "by": "natural"}]
+    r.facility_gains = [{"turn": 1, "agent": "Asla1", "to": "Ranoa",
+                         "amount": 90.0, "gain": 27}]
+    r.agent_logs = [{}]
+
+    w = run_io.RunWriter("t", cfg_raw={"a": 1}, root=tmp_path)
+    w.on_turn_end(1, r)
+    w.close()
+
+    kinds = [json.loads(l)["type"]
+             for l in (tmp_path / "t" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert set(kinds) == {"vote", "land_change", "death", "facility_gain"}
+    # 행 안의 키가 이벤트 type 을 덮어쓰면 안 된다 (votes_log 의 kind=propose/ballot)
+    rows = [json.loads(l) for l in
+            (tmp_path / "t" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    vote = next(r for r in rows if r["type"] == "vote")
+    assert vote["kind"] == "propose" and vote["vote_turn"] == 5
+
+
+def test_logs_are_not_written_twice(tmp_path):
+    """턴마다 append 하므로 같은 행이 두 번 나가면 집계가 배로 뛴다."""
+    from core import loop, run_io
+
+    class _W:
+        agents = {}
+        countries = {}
+
+    r = loop.RunResult(world=_W())
+    r.deaths_log = [{"turn": 1, "who": "Asla2", "country": "Asla", "by": "natural"}]
+    r.agent_logs = [{}, {}]
+    w = run_io.RunWriter("t", cfg_raw={"a": 1}, root=tmp_path)
+    w.on_turn_end(1, r)
+    w.on_turn_end(2, r)          # 같은 기록이 남아 있어도 다시 안 쓴다
+    w.close()
+    lines = (tmp_path / "t" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    assert sum(1 for l in lines if json.loads(l)["type"] == "death") == 1

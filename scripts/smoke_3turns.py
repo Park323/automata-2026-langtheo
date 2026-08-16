@@ -84,6 +84,8 @@ def main() -> None:
                     help="에이전트 모델 출력 1M당 $ (비용 추정용, 선택)")
     ap.add_argument("--check", action="store_true", help="모델 검증만 하고 종료")
     ap.add_argument("--sequential", action="store_true")
+    ap.add_argument("--run-id", default=None,
+                    help="산출물 디렉터리 이름 (기본: smoke_{turns}t_seed{seed}_{시각})")
     args = ap.parse_args()
 
     # LLM reasoning 에 임의 유니코드(한자 등)가 섞여도 콘솔 인코딩으로 죽지 않게
@@ -121,8 +123,8 @@ def main() -> None:
     print("=" * 64)
     t0 = time.time()
     stamp = time.strftime("%m%d_%H%M%S")
-    writer = run_io.RunWriter(f"smoke_{args.turns}t_seed{args.seed}_{stamp}", cfg_raw=raw,
-                              knob_ai=knob, seed=args.seed)
+    run_id = args.run_id or f"smoke_{args.turns}t_seed{args.seed}_{stamp}"
+    writer = run_io.RunWriter(run_id, cfg_raw=raw, knob_ai=knob, seed=args.seed)
     agent_client.inner.recorder = writer.recorder(kind="agent")
     translator.inner.recorder = writer.recorder(kind="translate")
 

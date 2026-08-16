@@ -401,7 +401,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         c = world.countries.get(country)
         opened = {"target": target, "by": by, "opened_turn": world.turn,
                   "vote_turn": world.turn + VOTE_DELAY}
-        result.votes_log.append({"turn": world.turn, "type": "propose",
+        result.votes_log.append({"turn": world.turn, "kind": "propose",
                                  "by": by, "country": country, "target": target,
                                  "vote_turn": opened["vote_turn"]})
         if c is not None and c.proposal is None and c.land != target:
@@ -412,7 +412,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     ballots_by: dict[str, list] = defaultdict(list)
     for by, country, approve in sorted(sink.ballots):
         ballots_by[country].append((by, approve))
-        result.votes_log.append({"turn": world.turn, "type": "ballot",
+        result.votes_log.append({"turn": world.turn, "kind": "ballot",
                                  "by": by, "country": country, "approve": approve})
     for cid in sorted(world.countries):
         c = world.countries[cid]

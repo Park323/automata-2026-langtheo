@@ -139,6 +139,20 @@ class RunWriter:
                 lr["_written"] = True
                 self._append("events", {"type": "learn",
                                         **{k: v for k, v in lr.items() if k != "_written"}})
+        # ★ 아래 넷은 **RunResult 에만 있고 파일에는 안 남고 있었다.** 투표·국토 전환·
+        #   부고·진척 기여가 전부 그랬다 — 오늘 만든 규칙이 통째로 관측 불가였다는 뜻이다.
+        #   metrics 의 land 로 전환은 역산되지만 찬반 수·소실 진척은 복구되지 않는다.
+        for name, rows in (("vote", result.votes_log),
+                           ("land_change", result.land_changes),
+                           ("death", result.deaths_log),
+                           ("facility_gain", result.facility_gains)):
+            for r in rows:
+                if r.get("turn") != turn or r.get("_written"):
+                    continue
+                r["_written"] = True
+                # type 은 **마지막에** 넣는다 — 행 안에 같은 키가 있으면 덮어써 버린다
+                self._append("events", {**{k: v for k, v in r.items() if k != "_written"},
+                                        "type": name})
         for b in result.births:
             if b.get("turn") == turn and not b.get("_written"):
                 b["_written"] = True
