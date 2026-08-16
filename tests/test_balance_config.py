@@ -54,6 +54,16 @@ def test_newborns_do_not_mint_money(c):
 
 
 def test_expected_life_is_about_one_epoch(c):
-    """주기(10턴)는 기대수명의 반올림이다. 둘이 어긋나면 계보 회전이 설계와 달라진다."""
-    assert expected_life(c.surv_lambda, c.surv_k) == pytest.approx(8.28, abs=0.1)
-    assert c.epoch_turns == 10
+    """주기(20턴)는 기대수명의 반올림이다. 둘이 어긋나면 계보 회전이 설계와 달라진다."""
+    assert expected_life(c.surv_lambda, c.surv_k) == pytest.approx(16.06, abs=0.1)
+    assert c.epoch_turns == 20
+
+
+def test_a_lifetime_holds_several_conversation_round_trips(c):
+    """**소통 왕복 하나에 두 턴이 든다** — 보내면 다음 턴에 도착한다.
+
+    기대수명 8턴이던 시절엔 왕복 4회가 생애 전부라, 상대를 파악하고 조율에 이르는 것이
+    구조적으로 불가능에 가까웠다. 이 부등식이 100턴·수명 2배 전환의 이유다.
+    """
+    round_trips = expected_life(c.surv_lambda, c.surv_k) / 2
+    assert round_trips >= 8, f"생애 왕복 {round_trips:.1f}회 — 조율을 배우기엔 짧다"

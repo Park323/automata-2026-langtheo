@@ -26,10 +26,12 @@ def _run(cfg, seed):
 
 def test_survival_numbers(cfg):
     lam, k = cfg.survival.lambda_base, cfg.survival.k
-    assert survival.expected_life(lam, k) == pytest.approx(8.28, abs=0.02)
-    assert survival.survival(10, lam, k) == pytest.approx(0.0099, abs=0.001)
-    haz = [round(survival.hazard(a, lam, k), 2) for a in range(10)]
-    assert haz == [0.00, 0.00, 0.00, 0.00, 0.01, 0.06, 0.17, 0.40, 0.70, 0.93]
+    # 수명 2배 (lambda 8.26 → 16.52). **소통 왕복 하나에 두 턴이 든다** —
+    # 기대수명 8턴이면 왕복 4회가 생애 전부라 조율을 배울 시간이 구조적으로 없다.
+    assert survival.expected_life(lam, k) == pytest.approx(16.06, abs=0.02)
+    assert survival.survival(20, lam, k) == pytest.approx(0.0099, abs=0.001)
+    haz = [round(survival.hazard(a, lam, k), 2) for a in range(0, 20, 2)]
+    assert haz == [0.00, 0.00, 0.00, 0.00, 0.00, 0.02, 0.07, 0.18, 0.38, 0.66]
 
 
 # ── 합격 기준 표 ─────────────────────────────────────────────────────────────
@@ -125,14 +127,14 @@ def test_death_count(cfg):
 
 @pytest.mark.calibration
 def test_lifespan(cfg):
-    """3. 마지막 생존 나이 평균 7.1 ~ 7.4, 최대 12 이하 (자연사 격리).
+    """3. 마지막 생존 나이 평균 14.6 ~ 15.5, 최대 24 이하 (자연사 격리).
 
     death_ages 는 '마지막 생존 나이'(죽는 턴의 age) 규약이다(spec 2.2).
-    Σ_(a≥1) S(a) = 7.28. '살아낸 턴 수'(=기대수명 8.28)와는 1 만큼 다르다 — 후자는
+    Σ_(a≥1) S(a) = 15.06. '살아낸 턴 수'(=기대수명 16.06)와는 1 만큼 다르다 — 후자는
     survival.expected_life() 가 담당한다.
     """
     ages = []
     for s in range(30):
         ages += run(cfg, random.Random(s), procreate_age=None).death_ages
-    assert max(ages) <= 12
-    assert 7.1 <= statistics.mean(ages) <= 7.4, f"평균 수명 {statistics.mean(ages):.2f}"
+    assert max(ages) <= 24
+    assert 14.6 <= statistics.mean(ages) <= 15.5, f"평균 수명 {statistics.mean(ages):.2f}"

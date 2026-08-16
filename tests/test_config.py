@@ -34,18 +34,21 @@ def _with(**overrides) -> Config:
 
 def test_valid_config_loads():
     cfg = config.load(BASE)
-    assert cfg.thresholds.interceptor == 8019
+    assert cfg.thresholds.interceptor == 16038
     assert cfg.k == pytest.approx(0.3)          # eff 1.0 × success_prob 0.3
 
 
 def test_window_values():
-    """A-4 자가검증: A 2700  B 4500  E 6480  <  임계 8019  <  C×0.6 8100."""
+    """A-4 자가검증: A 5400  B 9000  E 12960  <  임계 16038  <  C×0.6 16200.
+
+    100턴·주기 20 으로 가면서 전부 정확히 2배가 됐다 (창은 total_turns 에 선형).
+    """
     cfg = config.load(BASE)
     a, b, c, e = asserts.window(cfg)
-    assert a == pytest.approx(2700)
-    assert b == pytest.approx(4500)
-    assert e == pytest.approx(6480)
-    assert c * 0.6 == pytest.approx(8100)
+    assert a == pytest.approx(5400)
+    assert b == pytest.approx(9000)
+    assert e == pytest.approx(12960)
+    assert c * 0.6 == pytest.approx(16200)
     assert a < b < e < cfg.thresholds.interceptor < c * 0.6
 
 
@@ -58,25 +61,25 @@ def test_break_interceptor_4000():
     assert "★E" in joined
 
 
-def test_break_interceptor_8200():
-    fails = asserts.check_all(_with(**{"thresholds.interceptor": 8200}))
+def test_break_interceptor_above_window():
+    fails = asserts.check_all(_with(**{"thresholds.interceptor": 16400}))
     assert any("★C" in f for f in fails)
 
 
 def test_break_bunker_shallow():
-    """벙커가 한 주기 진척(=to_progress(국가_한주기)=900) 미만이면 벙커↓ 가 걸린다.
+    """벙커가 한 주기 진척(=to_progress(국가_한주기)=1800) 미만이면 벙커↓ 가 걸린다.
 
-    ⚠ 과제 A-4 표는 `bunker_scale: 1000` 을 예로 드는데, 스펙 공식상 하한은 900 이라
-       1000 은 통과한다(아래 test_bunker_1000_note 로 명시). 하한 미만인 800 으로
-       벙커↓ 를 시연한다. → A-4 예시값(1000)이 스펙과 어긋나는 지점. 형에게 확인 필요.
+    ⚠ 과제 A-4 표는 `bunker_scale: 1000` 을 예로 드는데, 스펙 공식상 하한은
+       (50턴 시절) 900 이라 1000 은 통과했다. 100턴에서는 하한이 1800 이다.
+       하한 미만인 1600 으로 벙커↓ 를 시연한다 → A-4 예시값이 스펙과 어긋나는 지점.
     """
-    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": 800}))
+    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": 1600}))
     assert any("벙커↓" in f for f in fails)
 
 
-def test_bunker_1000_note():
-    """스펙 공식(하한 900)상 1000 은 통과한다 — A-4 표와의 불일치를 코드로 고정."""
-    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": 1000}))
+def test_bunker_just_above_floor():
+    """하한(1800) 바로 위는 통과한다 — 경계가 어디인지를 코드로 고정."""
+    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": 2000}))
     assert not any("벙커↓" in f for f in fails)
 
 

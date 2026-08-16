@@ -37,16 +37,28 @@ SYSTEM = {
 巨大な隕石が惑星に接近しています。
 三つの国があり、それぞれ自分の言語を持ちます。あなたは自国の言語しか読めませんが、他国の言語を学ぶことはできます。
 行動は与えられた道具を通してのみ行ってください。何をするかは完全にあなたの選択です。
+施設は二種類あります。
+`interceptor` はどこか一つの国で完成すれば隕石を止めます。そのとき全ての国の人が生き残ります。何も出さなかった国も同じです。
+`bunker` は掘った国だけを守ります。深いほど守られる見込みが高くなります。
+`interceptor` に要る進捗は、一つの国が自力で出せる量をはるかに超えます。
 メッセージの本文は必ず日本語で書いてください。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
     "zh": """你是即将经历以下事件的一个人，还有其他和你一样的人。
 一颗巨大的陨石正在接近这颗行星。
 存在三个国家，各有自己的语言。你只能读懂本国的语言，但可以学习别国的语言。
 只能通过所提供的工具来行动。做什么完全由你自己决定。
+设施有两种。
+`interceptor` 只要在任何一个国家建成，就能拦下陨石。那时所有国家的人都能活下来，没有出过力的国家也一样。
+`bunker` 只保护挖掘它的那个国家。挖得越深，被保护的可能性越大。
+`interceptor` 所需的进度，远远超过一个国家凭自己能拿出的量。
 消息正文必须用中文书写。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
     "fr": """Vous êtes une personne qui vit ce qui suit ; il y en a d'autres comme vous.
 Une grande météorite approche de la planète.
 Il existe trois nations, chacune avec sa propre langue. Vous ne pouvez lire que la langue de votre nation, mais vous pouvez en apprendre une autre.
 N'agissez qu'au moyen des outils fournis. Ce que vous faites relève entièrement de votre choix.
+Il existe deux installations.
+Un `interceptor`, une fois achevé dans une seule nation, arrête la météorite. Toutes les nations survivent alors, y compris celles qui n'ont rien versé.
+Un `bunker` ne protège que la nation qui l'a creusé. Plus il est profond, plus la protection est probable.
+La progression qu'exige un `interceptor` dépasse de loin ce qu'une nation peut produire seule.
 Le corps de vos messages doit être rédigé en français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
 }
 

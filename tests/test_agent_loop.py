@@ -138,19 +138,19 @@ def test_procreate_ends_turn(cfg, world):
 # ── #10 학습 할인 ────────────────────────────────────────────────────────────
 
 def test_learn_discount_levels(cfg, world):
-    """국내 구사자 없음/있음/부모까지 → 300 / 150 / 75."""
+    """국내 구사자 없음/있음/부모까지 → 600 / 300 / 150 (L · L/2 · L/4)."""
     a1 = world.agents["Asla1"]           # 국가 A, ja
     # 아무 할인 없음
     cost, _ = learn_cost(a1, "Ranoa", world, cfg)       # B = zh
-    assert cost == 300
+    assert cost == 600
     # 국내 구사자: A2 가 zh 를 앎
     world.agents["Asla2"].known_langs.add("zh")
     cost, reason = learn_cost(a1, "Ranoa", world, cfg)
-    assert cost == 150 and "nation" in reason
+    assert cost == 300 and "nation" in reason
     # 부모까지: a1 의 부모가 zh
     a1.parent_langs.add("zh")
     cost, reason = learn_cost(a1, "Ranoa", world, cfg)
-    assert cost == 75
+    assert cost == 150
 
 
 def test_learn_self_not_counted(cfg, world):
@@ -158,7 +158,7 @@ def test_learn_self_not_counted(cfg, world):
     a1 = world.agents["Asla1"]
     a1.known_langs.add("zh")          # 자기가 zh 를 알아도
     cost, _ = learn_cost(a1, "Ranoa", world, cfg)
-    assert cost == 300                # 할인 안 됨
+    assert cost == 600                # 할인 안 됨
 
 
 def test_learn_defers_known_langs(cfg, world):
@@ -167,16 +167,16 @@ def test_learn_defers_known_langs(cfg, world):
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
     assert "zh" not in agent.known_langs          # 즉시 반영 안 됨
-    assert agent.budget == 10000 - 300            # 예산은 즉시 차감
+    assert agent.budget == 10000 - 600            # 예산은 즉시 차감
     assert agent.ap == cfg.turn.action_points - cfg.ap.learn
 
     # 학습 1건 = x̂ 관측 1건. **어느 눈금이었는지와 나이가 없으면 x 를 구간으로
     # 좁힐 수 없다** (spec 6.1 · 8.4) — 이 필드들이 x̂ 의 전제다.
     (rec,) = sink.learns
     assert rec["agent"] == "Asla1" and rec["lang"] == "zh" and rec["target"] == "Ranoa"
-    assert rec["charged"] == 300 and rec["rung"] == 1.0
+    assert rec["charged"] == 600 and rec["rung"] == 1.0
     assert rec["discount_domestic"] is False and rec["discount_parent"] is False
-    assert rec["age"] == 0 and rec["budget_after"] == 9700.0
+    assert rec["age"] == 0 and rec["budget_after"] == 9400.0
 
 
 # ── #11 정보 은닉 (가장 중요) ────────────────────────────────────────────────

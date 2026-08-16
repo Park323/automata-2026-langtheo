@@ -9,12 +9,16 @@ costs:
   comm_domestic:      3
   comm_intl_learner:  5
   ask_clarification:  3
-  learn_base:       300
+  # 100턴·수명 2배로 가면서 300 → 600. 생애소득이 828 → 1,606 으로 배가 되므로
+  # 300 을 두면 학습이 생애소득의 36% → 19% 로 싸져 **자의 눈금이 바뀐다.**
+  # 그리고 L/4 = 75 < 턴소득 100 이면 예산이 제약을 멈춰 자의 바닥이 죽는다 (7장).
+  # 600 이면 L/4 = 150 > 100 이라 네 눈금이 다 살아 있다.
+  learn_base:       600
   propose_vote:       6
 
 thresholds:
-  interceptor: 8019               # 창 [6480, 8100] 안의 0.95 지점
-  bunker_scale: 2700              # 한 주기 전력 진척(900)의 3배
+  interceptor: 16038              # 창 [12960, 16200] 안의 0.95 지점
+  bunker_scale: 5400              # 한 주기 전력 진척(1800)의 3배
 
 income:
   per_turn:      100
@@ -37,11 +41,13 @@ growth:
   # 9% 만 대면 된다. 0.2 로 내리면 혼자 69% 라 31% 를 대야 하고, 성장 이득은 1.23× 로
   # 남아 farsighted 가 여전히 의미를 갖는다. 0.15 아래면 성장이 무의미해진다.
   growth_coef:  0.2               # multiplier = 1 + coef × √(national_capital / scale)
-  growth_scale: 1500
+  growth_scale: 3000
 
 survival:                         # spec 2.2. 세대 경계를 대신한다
   k:          8
-  lambda_base: 8.26               # 기대수명 8.28턴, 10턴을 넘길 확률 1%
+  # 8.26 → 16.52. **소통 왕복 하나에 두 턴이 든다** (보내면 다음 턴 도착).
+  # 기대수명 8턴이면 왕복 4회가 생애 전부라 조율을 배울 시간이 구조적으로 없다.
+  lambda_base: 16.52              # 기대수명 16.06턴, 20턴을 넘길 확률 1%
 
 wellness:
   gain: 0.008                     # 투자 1당 lambda 증가량. 에이전트에게 비공개
@@ -63,8 +69,8 @@ world:
     - {id: Ranoa, lang: zh}
     - {id: Miris, lang: fr}
   agents_per_country: 3
-  total_turns: 50
-  epoch_turns: 10                 # 창(A·E) 계산에 쓰는 '한 사람 몫의 기간'
+  total_turns: 100
+  epoch_turns: 20                 # 창(A·E) 계산에 쓰는 '한 사람 몫의 기간'. 기대수명 반올림
   success_prob: 0.3               # 에이전트 비공개. 임계값이 이 값 기준으로 유도됨
 
 inheritance:
