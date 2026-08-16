@@ -114,9 +114,11 @@ def main() -> None:
         return
 
     agent_client = CountingClient(
-        OpenRouterClient(agent_model, api_key=key, temperature=cfg.llm.temperature), "agent")
+        OpenRouterClient(agent_model, api_key=key, temperature=cfg.llm.temperature,
+                         max_tokens=cfg.llm.max_tokens), "agent")
     translator = CountingClient(
-        OpenRouterClient(translate_model, api_key=key, temperature=0.2), "translate")
+        OpenRouterClient(translate_model, api_key=key, temperature=0.2,
+                         max_tokens=cfg.llm.max_tokens), "translate")
 
     print("\n" + "=" * 64)
     print(f"3턴 스모크 실행  (turns={args.turns}, knob={knob}, seed={args.seed})")

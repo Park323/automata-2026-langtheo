@@ -193,3 +193,42 @@ def test_exhausted_still_means_exhausted(cfg, world):
                         prompts.system_for(a),
                         prompts.render_observation(world, a, cfg, 48.0))
     assert lg["ended_by"] == "exhausted" and lg["steps"] == 0
+
+
+def test_recovers_a_call_closed_with_a_paren():
+    """모델이 마지막을 `}` 대신 `)` 로 닫는다 — 실측 2건, **둘 다 learn** 이었다."""
+    from core.agent_loop import recover_tool_calls as R
+    (c,) = R('{"name": "learn", "arguments": {"country": "Ranoa", "reasoning": "r"})')
+    assert c["function"]["name"] == "learn"
+
+
+def test_prose_after_acting_is_left_alone():
+    """이미 행동한 뒤의 마무리 말은 **줍지 않는다.**
+
+    회수 실패 36건 중 20건이 이것이고, 전부 그 턴에 도구를 부른 뒤였다. 사실상
+    `end_turn` 이라 정상이다. 이걸 호출로 오인하면 세계가 하지도 않은 일을 한다.
+    """
+    from core.agent_loop import recover_tool_calls as R
+    assert R("我已经成功提议将本国设施的目标改为拦截器。接下来，我将等待 Ranoa2 的回复。") == []
+    assert R("Ce tour, je me suis concentré sur ma santé en investissant dans la wellness.") == []
+
+
+def test_max_tokens_is_sent(monkeypatch):
+    """상한이 없으면 반복 붕괴가 안 잘린다 — 실측 최악 40,935자."""
+    import io
+    import json as _json
+    from core import llm as _llm
+
+    seen = {}
+
+    def _fake(req, timeout=None):
+        seen["body"] = _json.loads(req.data.decode())
+        return io.StringIO(_json.dumps({"choices": [{"message": {"content": "ok"}}]}))
+
+    monkeypatch.setattr(_llm.urllib.request, "urlopen", _fake)
+    _llm.OpenRouterClient("m", api_key="k", max_tokens=1024).chat([{"role": "user", "content": "x"}])
+    assert seen["body"]["max_tokens"] == 1024
+
+    seen.clear()
+    _llm.OpenRouterClient("m", api_key="k").chat([{"role": "user", "content": "x"}])
+    assert "max_tokens" not in seen["body"]          # 안 주면 안 보낸다

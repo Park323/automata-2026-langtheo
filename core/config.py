@@ -122,6 +122,9 @@ class LLM:
     # 사후 채점 전용 (spec 6.2). 런에는 쓰이지 않으므로 없으면 번역 모델을 쓴다 —
     # 판정자는 6방향 언어쌍을 다 읽어야 해서 에이전트용 7B 로는 부족하다.
     judge_model: str | None = None
+    # 응답 상한. 없으면 모델이 같은 문장을 반복하다 붕괴한다 — 실측 최악 40,935자.
+    # reasoning 인자까지 담아야 하므로 넉넉히 잡는다 (메시지 상한은 fr 400자).
+    max_tokens: int | None = 1024
 
 
 @dataclass(frozen=True)

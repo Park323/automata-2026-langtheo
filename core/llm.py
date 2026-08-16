@@ -51,7 +51,7 @@ class OpenRouterClient:
 
     def __init__(self, model: str, api_key: str | None = None,
                  temperature: float = 0.7, retries: int = 4, timeout: int = 120,
-                 recorder=None, deadline: float = 90.0):
+                 recorder=None, deadline: float = 90.0, max_tokens: int | None = None):
         self.model = model
         self.api_key = api_key or load_key()
         self.temperature = temperature
@@ -59,6 +59,7 @@ class OpenRouterClient:
         self.timeout = timeout
         self.recorder = recorder      # 호출 1회(재시도 각각)를 raw 로 남긴다 (spec 9장)
         self.deadline = deadline      # 호출 1회의 **벽시계** 상한. 아래 설명 참조
+        self.max_tokens = max_tokens  # 응답 상한. 없으면 반복 붕괴가 안 잘린다
 
     def _call_with_deadline(self, req):
         """urlopen 을 별도 스레드에서 돌리고 `deadline` 초 안에 안 오면 버린다.
@@ -96,6 +97,8 @@ class OpenRouterClient:
             "messages": messages,
             "temperature": self.temperature if temperature is None else temperature,
         }
+        if self.max_tokens:
+            body["max_tokens"] = self.max_tokens
         if tools:
             body["tools"] = tools
             body["tool_choice"] = "auto"

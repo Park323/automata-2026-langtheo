@@ -117,7 +117,9 @@ def recover_tool_calls(content: str | None) -> list[dict]:
     """
     if not content:
         return []
-    texts = [content, *(m.group(1) for m in _FENCE.finditer(content))]
+    # 모델이 마지막을 `}` 대신 `)` 로 닫는 일이 있다 — 실측 2건, **둘 다 learn** 이었다.
+    repaired = re.sub(r"\)\s*$", "}", content.strip())
+    texts = [content, repaired, *(m.group(1) for m in _FENCE.finditer(content))]
     out: list[dict] = []
     for t in texts:
         for blob in _json_objects(t):

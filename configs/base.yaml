@@ -93,6 +93,13 @@ llm:
   agent_model:     "qwen/qwen-2.5-7b-instruct"           # qwen-2.5 계열 7B. tools OK, out $0.20/1M, ~1s/콜
   translate_model: "mistralai/mistral-small-3.2-24b-instruct"  # 파일럿 확정 — 고정 (바꾸지 말 것)
   temperature:     0.7
+  # 응답 상한. 없으면 모델이 같은 문장을 반복하다 붕괴한다 — 실측에서 한 응답이
+  # 40,935자였고 그 턴의 벽시계를 통째로 잡아먹었다. 우리 세계에 없는 이름(Lionel)을
+  # 지어내며 혼자 대화를 이어쓴 것이다.
+  # 1024 인 이유 — 메시지 상한이 fr 400자라 본문에는 512 도 남지만, 모든 도구가
+  # reasoning 을 함께 받고 **나중에 thinking 모델로 올리면 사고 토큰이 여기 얹힌다.**
+  # 그때 다시 봐야 한다 (spec 12.1 미결).
+  max_tokens:     1024
 
 run:
   seed: 1
