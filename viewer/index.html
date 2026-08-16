@@ -75,7 +75,9 @@
   .badge{font-size:9px;padding:0 4px;border-radius:3px;border:1px solid var(--line);color:var(--dim)}
 
   /* 이벤트 */
-  .ev{font-size:12px;padding:4px 0;border-bottom:1px solid #1b212a;display:flex;gap:7px}
+  .ev{font-size:12px;padding:4px 0;border-bottom:1px solid #1b212a;display:flex;gap:7px;
+      align-items:flex-start}
+  .ev>span:last-child{min-width:0;overflow-wrap:anywhere}
   .ev:last-child{border-bottom:none}
   .ek{font-size:10px;padding:0 5px;border-radius:3px;flex:none;height:16px;line-height:16px}
   .ek.vote{background:#22283a;color:#8ab4f8}
@@ -84,6 +86,7 @@
   .ek.birth{background:#16241a;color:var(--ok)}
   .ek.learn{background:#2a1f3d;color:var(--ai)}
   .ek.facility_gain{background:#1d2b2e;color:#56d4dd}
+  .ek.risk_observe{background:#332a1a;color:#e3b341}
 
   details.reason{margin-top:6px}
   details.reason summary{cursor:pointer;font-size:11px;color:var(--dim)}
@@ -328,7 +331,13 @@ function describe(e){
     case "learn": return `${e.agent} 가 ${e.target} 말을 배움 · ${Math.round(e.charged)}원 (L×${e.rung})` +
       (e.discount_domestic ? " · 국내 구사자" : "") + (e.discount_parent ? " · 부모" : "");
     case "facility_gain": return `${e.agent} 의 ${Math.round(e.amount)}원 → ${e.to} 진척 +${e.gain}`;
-    default: return JSON.stringify(e);
+    case "risk_observe": {
+      const dt = e.observed - e.truth, dh = e.threshold_observed - e.threshold_truth;
+      return `${e.agent} 관측 — 남은 턴 ${e.observed} (실제 ${e.truth}, ${dt >= 0 ? "+" : ""}${dt})`
+           + ` · 임계 ${e.threshold_observed} (${dh >= 0 ? "+" : ""}${dh})`
+           + ` · ±${e.error} 자본 ${Math.round(e.national_capital)}`;
+    }
+    default: return JSON.stringify(e).slice(0, 200);
   }
 }
 

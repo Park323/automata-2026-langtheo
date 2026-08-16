@@ -45,16 +45,27 @@ class Sink:
 
 # ── 학습 비용 (spec 3.4) ──────────────────────────────────────────────────────
 
-def risk_error(country, cfg) -> float:
-    """관측 오차 폭. **국가 자본(기술력)이 좁힌다.**
+def risk_sigma(country, cfg) -> float:
+    """관측의 **상대 표준편차**. 국가 자본(기술력)이 좁힌다.
 
-        오차 = base_error / (1 + √(national_capital / growth_scale))
+        σ비율 = sigma_ratio / (1 + √(national_capital / growth_scale))
+
+    남은 턴과 임계 둘 다 이 하나에서 유도한다. 절대 턴 수로 두면 total_turns 를 줄인
+    런에서 깨진다 — 20턴 런에서 ±50턴, 임계 ±250% 가 나왔다.
+
+    **정규분포다.** 꼬리에서는 크게 빗나간다 — 의도된 것이다. 관측이 대체로 맞되
+    가끔 크게 틀리는 쪽이, 늘 일정 폭 안에서 틀리는 것보다 실제 계측에 가깝다.
 
     `national` 투자에 두 번째 쓸모를 준다 — 그전에는 생산 배수뿐이었다.
     """
     import math
-    return cfg.risk.base_error / (
+    return cfg.risk.sigma_ratio / (
         1.0 + math.sqrt(country.national_capital / cfg.growth.growth_scale))
+
+
+def risk_error(country, cfg) -> float:
+    """남은 턴의 σ (턴 단위)."""
+    return risk_sigma(country, cfg) * cfg.world.total_turns
 
 
 def learn_discounts(agent, country_id: str, world) -> tuple[bool, bool]:
@@ -305,23 +316,23 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         n = sink.observations_by.get(agent.id, 0)
         sink.observations_by[agent.id] = n + 1
         rng = random.Random(f"{cfg.run.seed}|{world.turn}|{agent.uid}|{n}")
-        seen = max(0, round(truth + rng.uniform(-err, err)))
+        seen = max(0, round(truth + rng.gauss(0, err)))
         # 임계도 같은 기술력으로 잰다. 턴 오차를 전체 기간으로 나눠 **비율 오차**로 옮긴다
         # (자본 0 이면 ±25%, 자본이 쌓이면 같은 비율로 좁아진다).
-        rel = err / cfg.world.total_turns
+        rel = risk_sigma(world.countries[agent.country], cfg)
         thr_truth = cfg.thresholds.interceptor
-        thr_seen = max(1, round(thr_truth * (1 + rng.uniform(-rel, rel))))
+        thr_seen = max(1, round(thr_truth * (1 + rng.gauss(0, rel))))
         sink.observations.append({
             "agent": agent.id, "country": agent.country, "nth": n,
             "truth": truth, "observed": seen, "error": round(err, 2),
             "threshold_truth": thr_truth, "threshold_observed": thr_seen,
-            "threshold_rel_error": round(rel, 4),
+            "threshold_sigma": round(rel, 4),
             "national_capital": round(world.countries[agent.country].national_capital, 1),
         })
         return {"ok": True,
-                "turns_until_impact": seen, "margin_of_error": round(err, 1),
+                "turns_until_impact": seen, "typical_error": round(err, 1),
                 "interceptor_needs": thr_seen,
-                "interceptor_margin_pct": round(rel * 100, 1),
+                "interceptor_typical_error_pct": round(rel * 100, 1),
                 "note": "your own reading; nobody else has it",
                 "charged": cfg.costs.observe_risk,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None

@@ -81,7 +81,8 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "Measure how many turns remain until the meteorite strikes, and how much "
         "progress an interceptor needs. Both readings are imprecise; your nation's "
         "accumulated national investment is what sharpens them, and the result tells "
-        "you its own margin of error. Each reading is a fresh measurement and costs "
+        "you the typical size of its error — a single reading can be much further off "
+        "than that. Each reading is a fresh measurement and costs "
         "money. What you learn is yours alone — nobody else sees it.",
         {}, []),
 

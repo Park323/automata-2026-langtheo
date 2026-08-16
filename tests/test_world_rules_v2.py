@@ -369,12 +369,32 @@ def test_risk_reading_sharpens_with_national_capital(cfg, world):
         sink = Sink()
         r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, sink, 48.0)
         assert r["ok"]
-        errs.append(r["margin_of_error"])
-        assert abs(r["turns_until_impact"] - (cfg.world.total_turns - world.turn)) <= r["margin_of_error"] + 1
-        assert abs(r["interceptor_needs"] - cfg.thresholds.interceptor) <= \
-            cfg.thresholds.interceptor * r["interceptor_margin_pct"] / 100 + 1
+        errs.append(r["typical_error"])
     assert errs[0] > errs[1] > errs[2], errs
     assert risk_error(world.countries["Asla"], cfg) == pytest.approx(errs[-1], abs=0.05)
+
+
+def test_readings_are_normal_around_the_truth(cfg, world):
+    """**정규분포다.** 꼬리에서 크게 빗나가도 된다 — 대체로 맞되 가끔 크게 틀리는 쪽이
+    늘 일정 폭 안에서 틀리는 것보다 실제 계측에 가깝다.
+
+    평균은 진실에 붙고 표준편차는 보고된 값과 맞아야 한다.
+    """
+    import statistics
+    from core.agent_loop import Sink, execute_tool
+    world.turn = 10
+    world.countries["Asla"].national_capital = 3000.0
+    a = world.agents["Asla1"]; a.budget = 1e9
+    sink = Sink()
+    seen = []
+    for _ in range(400):
+        a.ap = 1.0
+        r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, sink, 48.0)
+        seen.append(r["turns_until_impact"])
+    truth = cfg.world.total_turns - world.turn
+    assert statistics.mean(seen) == pytest.approx(truth, abs=0.15 * r["typical_error"])
+    assert statistics.pstdev(seen) == pytest.approx(r["typical_error"], rel=0.25)
+    assert max(seen) - min(seen) > 3 * r["typical_error"], "꼬리가 없다"
 
 
 def test_each_reading_is_fresh_but_costs(cfg, world):
