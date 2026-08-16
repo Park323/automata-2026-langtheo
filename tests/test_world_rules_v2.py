@@ -316,7 +316,7 @@ def test_testament_becomes_the_child_s_memory(cfg, world):
     world.agents["Asla1"].memory = "부모의 메모"
     loop._procreate_child(world, "Asla1", "요격기에만 내라", cfg,
                           itertools.count(800), loop.RunResult(world=world))
-    child = world.agents["Asla1"]
+    child = world.agents["Asla4"]
     assert child.memory == "요격기에만 내라"
     assert "부모의 메모" not in child.memory
 
@@ -451,3 +451,37 @@ def test_the_rule_still_hides_which_nation_decided(cfg, world):
     assert "Ranoa" in obs and "Miris" in obs        # 명단에는 있다
     for tok in ("interceptor 未定", "Ranoa: interceptor", "Miris: 未定"):
         assert tok not in obs
+
+
+# ── id 를 재사용하지 않는다 (8/16 밤) ────────────────────────────────────────
+
+def test_ids_are_never_reused(cfg, world):
+    """**「Asla1 이 죽었다」 는 부고 직후 명단에 Asla1 이 그대로 있으면 말이 안 된다.**
+
+    죽은 자리에는 Asla4, Asla5 … 로 새 번호가 온다. 덤으로 id 가 곧 개체 식별자가 되어
+    로그 조인이 깔끔해진다 (전에는 id 가 슬롯이라 uid 를 따로 봐야 했다).
+    """
+    import random
+    for a in world.agents.values():
+        a.age = 40                                   # 확실히 죽게
+    r = loop.RunResult(world=world)
+    loop._death_birth(world, cfg, random.Random(1), sorted(world.agents), set(),
+                      itertools.count(700), r)
+    dead = {d["who"] for d in r.deaths_log}
+    assert dead and not (dead & set(world.agents)), "죽은 id 가 명단에 남아 있다"
+    born = {b["id"] for b in r.births}
+    assert born <= set(world.agents)
+    assert all(b["replaces"] in dead for b in r.births)   # 누구 자리인지 남는다
+    assert len(world.agents) == 9                          # 인구는 그대로
+
+
+def test_roster_sorts_by_number_not_alphabetically(cfg, world):
+    """사전순이면 Asla10 이 Asla2 앞에 온다. 번호가 두 자리로 넘어가므로 숫자순."""
+    from domains.meteor import prompts
+    from core.state import Agent
+    for n in (10, 2):
+        world.agents[f"Asla{n}"] = Agent(id=f"Asla{n}", country="Asla", native_lang="ja",
+                                         known_langs={"ja"}, parent_langs=set(), budget=0)
+    line = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
+    row = next(l for l in line.splitlines() if "Asla1" in l and "Ranoa1" in l)
+    assert row.index("Asla2") < row.index("Asla10")

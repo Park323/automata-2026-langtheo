@@ -211,11 +211,15 @@ def _roster(world, agent, t: dict) -> str:
     spec 4.1 의 "절대 넣지 않는 것" 은 타국의 **진척·예산·국토·언어 능력·내심** 이지
     존재 자체가 아니다. 여기에는 id 와 소속만 넣는다.
     """
+    import re as _re
     parts = []
     for cid in world.countries:
-        names = [f"{a.id}{t['roster_you'] if a.id == agent.id else ''}"
-                 for a in world.agents.values() if a.country == cid]
-        parts.append(" ".join(sorted(names)))
+        mine = [a for a in world.agents.values() if a.country == cid]
+        # 번호 순으로. 사전순이면 Asla10 이 Asla2 앞에 온다 — id 를 재사용하지 않으므로
+        # 번호가 두 자리로 넘어간다.
+        mine.sort(key=lambda a: int(_re.sub(r"\D", "", a.id) or 0))
+        parts.append(" ".join(
+            f"{a.id}{t['roster_you'] if a.id == agent.id else ''}" for a in mine))
     return "  ·  ".join(parts)
 
 

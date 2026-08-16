@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Agent:
-    id: str                  # "A1" (슬롯. 죽으면 신규가 같은 id 를 물려받는다)
+    id: str                  # "Asla1". **재사용하지 않는다** — 죽으면 Asla4 가 온다
     country: str             # "A"
     native_lang: str         # "ja"
     known_langs: set[str]    # 읽을 수 있는 언어. 초기값은 모국어만
@@ -19,7 +19,7 @@ class Agent:
     alive: bool = True
     born_turn: int = 0
     born_by: str = "natural"  # "natural" | "procreate"
-    uid: int = 0              # 인스턴스 고유 번호. id 는 슬롯이라 세대마다 재사용된다
+    uid: int = 0              # 인스턴스 고유 번호. id 도 유일하지만 하위 호환으로 남긴다
     memory: str = ""          # 기억 블록. memory_write 로 덮어쓴다 (spec 4.5)
     # 대화 이력. 태어나서 죽을 때까지 이어진다. 죽으면 소멸 — procreate 로도 안 넘어간다.
     # 넘기려면 1문장으로 압축해 유언에 옮겨야 하고, 그 압축이 곧 구전 감쇠다.
@@ -61,3 +61,7 @@ class World:
     # 메시지 큐. 이번 턴 발신은 다음 턴 도착 (spec 3.1). 각 원소:
     #   {"deliver_turn": t, "to": agent_id, "msg": inbox_dict}
     inbox_queue: list = field(default_factory=list)
+    # 나라별 다음 번호. **id 를 재사용하지 않는다** — Asla1 이 죽고 그 자리에 다시
+    # Asla1 이 나오면 「Asla1 이 죽었다」 는 부고 직후 명단에 Asla1 이 그대로 있게 된다.
+    # Asla4, Asla5 … 로 이어 간다. 덤으로 id 가 곧 개체 식별자가 되어 로그 조인이 깔끔해진다.
+    next_idx: dict = field(default_factory=dict)

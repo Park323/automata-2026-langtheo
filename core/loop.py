@@ -75,7 +75,23 @@ def init_world(cfg, counter: "itertools.count") -> World:
                 turn=0, born_by="natural", cfg=cfg, counter=counter,
             )
             testaments[aid] = []
-    return World(turn=0, countries=countries, agents=agents, testaments=testaments)
+    return World(turn=0, countries=countries, agents=agents, testaments=testaments,
+                 next_idx={c.id: cfg.world.agents_per_country + 1 for c in countries.values()})
+
+
+def _next_id(world: World, country: str) -> str:
+    """그 나라의 다음 이름. **재사용하지 않는다** (spec 2.2)."""
+    n = world.next_idx.get(country, 1)
+    world.next_idx[country] = n + 1
+    return f"{country}{n}"
+
+
+def _replace(world: World, old: str, child: Agent, carry: list[str]) -> None:
+    """죽은 사람을 새 이름의 아이로 갈아 끼운다. 큐에 남은 메시지는 uid 로 걸러진다."""
+    del world.agents[old]
+    world.testaments.pop(old, None)
+    world.agents[child.id] = child
+    world.testaments[child.id] = carry
 
 
 def _newborn(aid: str, country: str, lang: str, budget: float, parent_langs: set,
@@ -134,14 +150,14 @@ def _death_birth(world: World, cfg, rng: random.Random, snapshot_ids, procreated
             # 자연사는 계보와 무관한 '자연발생한 뒷세대' (spec 3.2). 개인에 속한 것은 전부
             # 소실(예산·언어·부모 할인 자격·쌓인 유언), 국가·세계는 유지(국토·진척·national_capital).
             child = _newborn(
-                aid, a.country, a.native_lang, cfg.income.initial_budget,
+                _next_id(world, a.country), a.country, a.native_lang,
+                cfg.income.initial_budget,
                 set(),                        # parent_langs: 자연사에는 부모가 없다 → 빈 집합
                 world.turn, "natural", cfg, counter,
             )
-            world.agents[aid] = child
-            world.testaments[aid] = []        # 쌓인 유언도 계보와 함께 소실
+            _replace(world, aid, child, [])   # 쌓인 유언도 계보와 함께 소실
             result.births.append(
-                {"turn": world.turn, "id": aid, "uid": child.uid,
+                {"turn": world.turn, "id": child.id, "replaces": aid, "uid": child.uid,
                  "born_by": "natural", "budget": child.budget}
             )
         else:
@@ -153,17 +169,19 @@ def _procreate_child(world: World, aid: str, testament: str, cfg,
     """spec 3.3. procreate 로 죽고, 예산·유언·부모 언어 할인 자격을 아이에게 넘긴다."""
     a = world.agents[aid]
     carry = ([testament] + world.testaments.get(aid, []))[: cfg.inheritance.testament_carry]
-    world.testaments[aid] = carry
-    child = _newborn(aid, a.country, a.native_lang, a.budget, a.known_langs,
-                     world.turn, "procreate", cfg, counter)
+    child = _newborn(_next_id(world, a.country), a.country, a.native_lang,
+                     a.budget, a.known_langs, world.turn, "procreate", cfg, counter)
     # 유언은 별도 블록이 아니라 **아이의 기억 초기값**이다. 다른 모든 것과 같은
     # 컨텍스트에서 관리되고, 아이가 memory_write 로 덮어쓰면 사라진다 — 그게 구전의 감쇠다.
     child.memory = "\n".join(x for x in carry if x)
-    world.agents[aid] = child
+    _replace(world, aid, child, carry)
     result.deaths += 1
     result.death_ages.append(a.age)
-    result.births.append({"turn": world.turn, "id": aid, "uid": child.uid,
-                          "born_by": "procreate", "budget": child.budget})
+    result.deaths_log.append({"turn": world.turn, "who": aid, "country": a.country,
+                              "by": "procreate"})
+    result.births.append({"turn": world.turn, "id": child.id, "replaces": aid,
+                          "uid": child.uid, "born_by": "procreate",
+                          "budget": child.budget})
 
 
 # ─────────────────────────────────────────── 턴 (더미) ─────────────────────────────
@@ -217,18 +235,17 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
                 # 유언 계승 (구전의 감쇠: 최근 testament_carry 개)
                 carry = world.testaments.get(aid, [])
                 carry = ([act.get("testament", "")] + carry)[: cfg.inheritance.testament_carry]
-                world.testaments[aid] = carry
                 child = _newborn(
-                    aid, a.country, a.native_lang, a.budget, a.known_langs,
-                    world.turn, "procreate", cfg, counter,
+                    _next_id(world, a.country), a.country, a.native_lang,
+                    a.budget, a.known_langs, world.turn, "procreate", cfg, counter,
                 )
-                world.agents[aid] = child
+                _replace(world, aid, child, carry)
                 procreated.add(aid)
                 result.deaths += 1
                 result.death_ages.append(a.age)   # procreate: 현재 나이에 죽음
                 result.births.append(
-                    {"turn": world.turn, "id": aid, "uid": child.uid,
-                     "born_by": "procreate", "budget": child.budget}
+                    {"turn": world.turn, "id": child.id, "replaces": aid,
+                     "uid": child.uid, "born_by": "procreate", "budget": child.budget}
                 )
                 break  # procreate 뒤쪽 행동은 전부 버림 (이미 죽었다)
 

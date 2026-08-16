@@ -254,7 +254,10 @@ function nations(b){
 
 function agents(b){
   if (!b.state.length) return `<h2>사람</h2><div class="empty">—</div>`;
-  const rows = b.state.map(s => {
+  // 사전순이면 Asla10 이 Asla2 앞에 온다 — id 를 재사용하지 않아 두 자리로 넘어간다
+  const num = x => parseInt((x.match(/\d+/) || [0])[0], 10);
+  const rows = [...b.state].sort((x, y) =>
+      x.country.localeCompare(y.country) || num(x.agent) - num(y.agent)).map(s => {
     const learned = (s.known_langs || []).length > 1;
     const col = !s.alive ? "#30363d" : learned ? "var(--ai)" : "var(--ok)";
     return `<div class="ag">
@@ -319,7 +322,8 @@ function describe(e){
       ? `${e.country} → ${e.target} (찬 ${e.yes} 반 ${e.no}) · 진척 ${Math.round(e.progress_lost)} 소실`
       : `${e.country} 부결 (찬 ${e.yes} 반 ${e.no}) · ${e.target} 로 바뀌지 않음`;
     case "death": return `${e.who} 사망 (${e.country})`;
-    case "birth": return `${e.id} 출생 · ${e.born_by === "procreate" ? "계승" : "자연발생"} · ${Math.round(e.budget)}원`;
+    case "birth": return `${e.id} 출생${e.replaces ? ` (${e.replaces} 의 자리)` : ""}`
+      + ` · ${e.born_by === "procreate" ? "계승" : "자연발생"} · ${Math.round(e.budget)}원`;
     case "learn": return `${e.agent} 가 ${e.target} 말을 배움 · ${Math.round(e.charged)}원 (L×${e.rung})` +
       (e.discount_domestic ? " · 국내 구사자" : "") + (e.discount_parent ? " · 부모" : "");
     case "facility_gain": return `${e.agent} 의 ${Math.round(e.amount)}원 → ${e.to} 진척 +${e.gain}`;

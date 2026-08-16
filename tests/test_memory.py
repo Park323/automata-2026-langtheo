@@ -81,11 +81,13 @@ def test_only_the_testament_survives_death(cfg, world):
     a.convo.append({"role": "user", "content": "옛 기억"})
     loop._procreate_child(world, "Asla1", "유언만 넘어간다", cfg,
                           itertools.count(9000), loop.RunResult(world=world))
-    child = world.agents["Asla1"]
+    assert "Asla1" not in world.agents        # id 는 재사용하지 않는다
+    child = world.agents["Asla4"]             # 3명 다음이니 4번
     assert child.convo == []                       # 대화 이력은 소실
     assert "내가 평생 알아낸 것" not in child.memory  # 부모의 메모도 소실
     assert child.memory == "유언만 넘어간다"          # 유언만 기억으로
-    assert world.testaments["Asla1"][0] == "유언만 넘어간다"
+    assert world.testaments["Asla4"][0] == "유언만 넘어간다"   # 유언은 아이에게
+    assert "Asla1" not in world.testaments                    # 죽은 자리는 비운다
 
 
 # ── 압박·축출 ─────────────────────────────────────────────────────────────────
