@@ -11,13 +11,28 @@
 # 자질 4개 중 12.7 0순위 감축 시에는 condition 과 subject 만 남긴다.
 
 meta:
-  version: 0
+  version: 1
   derived_from: docs/pilot/sentences.md
   note: |
     파일럿(12.2 ①)에서 검증하고 갱신할 것.
     S4 의 ja→fr / zh→fr 에서 subject 생성이 잡히지 않으면 이 파일이 틀린 것이다.
     그 방향은 fr 이 주어를 문법적으로 강제하므로 구조적으로 100% 에 가까워야 한다
     — 양성 대조로 쓴다.
+  v1_note: |
+    v0 는 파일럿 10문장에서 **역산**한 목록이라 그 10문장만 100% 였다. 실제 에이전트가
+    쓰는 변형을 12건 찔러보니 10건이 빠져나갔다 — 쉼표 없는 「〜すれば30を出します」,
+    「s'il」(si 축약), 「semble」(활용형. 사전엔 부정형 sembler 만 있었다), 「持ち帰って」,
+    「有难度」, 보통체 「投資した」, 「投資しますので」(ます 뒤에 문장이 이어지는 경우).
+    소실률의 분모가 Σ sent 라 **발신 언어에서 못 잡으면 그 자질은 아예 집계되지 않는다.**
+
+    v1 이 지킨 경계 — 넓히되 대조를 깨지 않는다:
+      · S4(ja/zh 주어 없음 → fr 만 있음)가 여전히 0/0/>0 이어야 한다. 양성 대조다
+      · zh 는 시제가 문법화되어 있지 않다는 것이 관측 대상이다. 「还没」「尚未」처럼
+        S4·S5 를 건드리는 것은 **일부러 넣지 않았다** — 넣으면 zh→fr 시제 생성이
+        측정에서 사라진다
+      · 역접(mais·が·但)은 condition 에 넣지 않는다 (spec: 흔한 단어는 지표를 무의미하게)
+      · 「若」은 「若干」에 걸리던 오검출을 부정 전방탐색으로 막았다
+    회귀는 tests/test_lexicon_coverage.py 가 고정한다 (양성·음성 대조 양쪽).
 
 # ─────────────────────────────────────────────────────────────
 # condition — 조건절
@@ -25,19 +40,29 @@ meta:
 # ─────────────────────────────────────────────────────────────
 condition:
   ja:
+    literal: [もし, 万一, 仮に, 条件, 次第, とすれば, とすると]
     regex:
-      - 'ば(?=、|$|\s)'          # 〜れば
-      - 'たら(?=、|$|\s)'
+      # 動詞仮定形 + ば. v0 는 'ば(?=、|$|\s)' 라 **쉼표가 없으면 놓쳤다** —
+      # 「確約すれば30を出します」가 그대로 빠져나갔다. 에 단(e-단) + ば 로 잡으면
+      # 쉼표 없이 주절이 이어져도 걸리고, 「選ばれる」「呼ばれ」(ば 앞이 한자)나
+      # 「〜するばかり」(앞이 る)는 걸리지 않는다.
+      - '[えけげせてねべめれ]ば'
+      - 'ば(?=、|$|\s)'          # 위에서 안 걸리는 잔여형 (한자 어간 등)
+      - 'たら'                   # v0 는 쉼표를 요구해 「決まったら教えて」를 놓쳤다
       - 'なら(ば)?'
       - 'であれば'
       - '場合'
       - '限り'
   zh:
-    literal: [如果, 要是, 假如, 若, 倘若, 的话, 只要, 除非]
+    literal: [如果, 要是, 假如, 倘若, 的话, 只要, 除非, 一旦, 万一, 假设, 前提是, 条件是, 只有]
     regex:
       - '就(?=.{0,6}$)'          # 「如果…就…」 후항
+      - '若(?!干)'               # 「若干」(약간)은 조건이 아니다 — v0 의 오검출
   fr:
-    literal: [si, sinon, "à condition que", "au cas où", "pourvu que", "à moins que"]
+    # v0 는 "si" 만 있어 축약형 「s'il」「s'ils」를 통째로 놓쳤다. 협상문에서 가장 흔한 형태다.
+    literal: [si, "s'il", "s'ils", sinon, "à condition que", "à condition de",
+              "au cas où", "pourvu que", "à moins que", "sauf si", "en cas de",
+              "dès lors que", "tant que", "sous réserve de", "dans ce cas"]
 
 # ─────────────────────────────────────────────────────────────
 # hedge — 유보 · 추정 · 완곡
@@ -48,34 +73,75 @@ hedge:
     literal:
       - かもしれ
       - でしょう
+      - だろう
       - と思われ
       - と思い          # 「と思います」. と思われ 만으로는 못 잡는다
+      - ように思
+      - と考え
+      - と存じ
+      - とみられ
       - ようです
       - ような
       - ほど
       - ぐらい
       - くらい
       - 確かで
+      - 不確か
       - おそらく
       - 恐らく
-    # 완곡 거절 — 형태는 긍정이지만 기능은 거절. 별도 하위 태그로 센다
+      - たぶん
+      - 多分
+      - 可能性
+      - もしかす
+      - はず
+      - 一応
+    # 완곡 거절 — 형태는 긍정이지만 기능은 거절. 별도 하위 태그로 센다.
+    # ★ 이슈 #13 이 지목한 "표지는 남는데 기능이 뒤집히는 층위"(파일럿 S2)가 여기다.
+    #   v0 는 5개뿐이라 「持ち帰って検討します」「見送らせていただきます」가 다 빠졌다.
     euphemistic_refusal:
       - 検討
       - 難しい
       - 厳しい
       - 善処
       - 前向きに
+      - 持ち帰
+      - 見送
+      - 遠慮
+      - 慎重
+      - 難色
+      - 調整が必要
+      - 考えさせて
+      - 一存
+      - 心苦しい
+      - 残念ながら
+      - ご容赦
+      - 立場上
   zh:
-    literal: [可能, 也许, 大概, 左右, 应该, 不太确定, 恐怕, 似乎, 好像]
-    euphemistic_refusal: [研究一下, 考虑一下, 有困难, 不太方便]
+    literal: [可能, 也许, 或许, 大概, 大约, 左右, 应该, 应当, 不太确定, 恐怕, 似乎,
+              好像, 估计, 差不多, 说不定, 未必, 不一定, 看起来, 我觉得, 觉得, 多半]
+    euphemistic_refusal: [研究一下, 考虑一下, 有困难, 不太方便, 再看看, 再说, 看情况,
+                          有难度, 不好办, 需要研究, 需要协调, 内部讨论, 请示, 汇报,
+                          暂时不, 目前不, 以后再, 下次再]
   fr:
-    literal: ["peut-être", "il se peut", "sans doute", environ, "à peu près", "sembler", "paraître"]
+    # ⚠ v0 는 부정형 "sembler"/"paraître" 만 있었다. 단어 경계 때문에 실제로 쓰이는
+    #   활용형 "semble"·"paraît" 가 하나도 안 잡혔다 — 유보의 주력이 통째로 빠진 것이다.
+    literal: ["peut-être", "il se peut", "sans doute", environ, "à peu près",
+              "sembler", "semble", "semblent", "paraître", "paraît", "parait",
+              probablement, apparemment, éventuellement, "à mon avis",
+              "je pense", "nous pensons", "je crois", "nous croyons", "on dirait",
+              "il est possible", plutôt, presque, "autour de", "aux alentours de"]
     regex:
       - '\b\w+rai[st]\b'         # 조건법 1·3인칭 단수 (serait, pourrait)
       - '\b\w+rions\b'           # 조건법 1인칭 복수 (pourrions)
       - '\b\w+riez\b'
       - '\b\w+raient\b'
-    euphemistic_refusal: ["examiner", "étudier la question", "délicat"]
+      # 접속법 — spec 6.2 표가 "조건법·접속법" 이라 적었는데 v0 엔 조건법만 있었다.
+      - '\b(soit|soient|puisse|puissent|puissions|fasse|fassent)\b'
+    euphemistic_refusal: ["examiner", "étudier la question", "délicat", "difficile",
+                          "compliqué", "complexe", "pas évident", "nous verrons",
+                          "on verra", "à voir", "réfléchir", "en discuter", "consulter",
+                          "prendre note", "revenir vers vous", "pas pour le moment",
+                          "ultérieurement"]
 
 # ─────────────────────────────────────────────────────────────
 # tense — 시제 · 상
@@ -84,14 +150,24 @@ hedge:
 # ─────────────────────────────────────────────────────────────
 tense:
   ja:
+    # ⚠ 순서가 곧 우선순위다. 정규식은 길이 정렬을 안 하고 나열 순으로 시도하므로
+    #   긴 것을 먼저 둔다 — 'ます' 를 위에 두면 「ました」가 ます 로 잘려 이중 계수된다.
     regex:
-      - 'ました'                 # 과거 긍정
       - 'ませんでした'           # 과거 부정 ← 「決められませんでした」
-      - 'でした'
+      - 'ました'                 # 과거 긍정
+      - 'ていました'
       - 'ています'               # 진행·상태
-      - 'ます(?=。|$)'           # 비과거
+      - 'ていた'
+      - 'ている'
+      - 'でした'
+      - 'だった'
+      - 'ます'                   # 비과거. v0 는 'ます(?=。|$)' 라 「投資しますので」를 놓쳤다
+      - 'した(?=。|、|\s|$)'     # 보통체 과거 「投資した」. 에이전트가 언제나 정중체는 아니다
   zh:
-    literal: [了, 过, 会, 将, 正在, 已经]   # 상 표지만. 시제 표지 아님
+    # 상 표지만. 시제 표지가 아니다 — 그리고 그 부재가 관측 대상이다.
+    # ⚠ 「还没」「尚未」는 **일부러 넣지 않는다.** 넣으면 S4「用地还没定下来」가 시제를
+    #   가진 것으로 잡혀 zh→fr 시제 생성(지표 7)이 측정에서 사라진다.
+    literal: [了, 过, 会, 将, 将要, 快要, 正在, 已经, 已, 曾经, 曾, 刚刚, 刚才, 一直]
   fr:
     # ⚠ 조동사와 분사 사이에 부정(pas)·부사(encore, plutôt)가 낀다.
     #   "n'avons pas pu" · "n'est pas encore décidé" 를 놓치면 안 된다.
@@ -103,6 +179,10 @@ tense:
       - '\b\w+(rons|rez|ront)\b'                 # futur simple
       - '\b\w+(rai|ras|ra)\b'
       - '\b(vais|vas|va|allons|allez|vont)\s+\w+(er|ir|re)\b'   # futur proche
+      - '\b(viens|vient|venons|venez|viennent)\s+de\s+\w+(er|ir|re)\b'   # passé récent
+      # imparfait. (?<!r) 로 조건법(-rais/-rait)을 제외한다 — 그건 hedge 로 세는 것이고
+      # 여기서 또 세면 한 낱말이 두 자질에 잡혀 시제가 부풀려진다.
+      - '\b\w+(?<!r)(ais|ait|aient)\b'
 
 # ─────────────────────────────────────────────────────────────
 # subject — 주체 명시   ★ 생성률의 주력
@@ -110,16 +190,25 @@ tense:
 #   fr 은 주어가 필수이므로 →fr 방향에서 구조적으로 생성된다.
 # ─────────────────────────────────────────────────────────────
 subject:
+  # ⚠ S4 양성 대조를 깨뜨리지 말 것 — 「用地を決められませんでした」(ja) 와
+  #   「用地还没定下来」(zh) 는 **주어가 0 이어야** →fr 생성이 측정된다.
+  #   아래 추가어는 전부 그 두 문장에 없다 (tests/test_lexicon_coverage.py 가 고정).
   ja:
-    literal: [私, 私たち, 我々, われわれ, 当方, こちら, 弊国, 我が国]
+    literal: [私, 私たち, 我々, われわれ, 当方, こちら, そちら, 弊国, 我が国, 我が方,
+              自国, 他国, 両国, 三国, 各国, 貴国, 貴方, あなた, 皆さん,
+              Asla, Ranoa, Miris]
   zh:
     # 긴 것부터 매칭할 것. 「我们」이 「我」에도 걸려 이중 계수되면 안 된다
-    literal: [我们, 我国, 咱们, 你们, 贵国, 他们, 我, 你]
+    literal: [我们, 我国, 我方, 咱们, 你们, 贵国, 贵方, 他们, 双方, 对方, 本国, 该国,
+              各国, 两国, 三国, 大家, 我, 你, 他, 她,
+              Asla, Ranoa, Miris]
     plural_marker: [们, 些]      # 복수 표지. zh 는 대개 없어 →fr 에서 수가 생성된다
   fr:
     # 도메인 명사구도 주어가 된다. 대명사만 두면 "Les pays s'opposent" 를 놓친다.
     literal: [je, "j'", nous, vous, il, elle, ils, elles, "on",
               "notre pays", "les pays", "le pays", "notre nation",
+              "mon pays", "votre pays", "leur pays", "ce pays", "l'autre pays",
+              "les deux pays", "les trois pays", "notre gouvernement",
               Asla, Ranoa, Miris]
 
 # ─────────────────────────────────────────────────────────────
