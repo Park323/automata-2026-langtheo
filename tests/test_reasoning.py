@@ -34,10 +34,19 @@ def _run(cfg, scripts, turns=1):
                             parallel=False)
 
 
-def test_every_tool_requires_reasoning():
-    """예외 없이 전부. 하나라도 빠지면 그 행동의 근거가 사라진다."""
+def test_every_acting_tool_requires_reasoning():
+    """**행동하는** 도구는 전부. 하나라도 빠지면 그 행동의 근거가 사라진다.
+
+    `end_turn` 만 예외다 — 행동이 아니라 행동을 그만두는 신호라 "행동 하나에 근거
+    하나" 에 대응하지 않는다. 실측에서 근거가 있는 에이전트턴 407 중 end_turn 근거
+    **뿐**인 것은 14건(3%)이라, 빼도 지표 4 의 표본이 3% 준다.
+    """
     for t in tools.TOOLS:
         f = t["function"]
+        if f["name"] == "end_turn":
+            assert "reasoning" not in f["parameters"]["properties"]
+            assert f["parameters"]["required"] == []
+            continue
         assert "reasoning" in f["parameters"]["required"], f"{f['name']} 에 없다"
         assert "reasoning" in f["parameters"]["properties"]
 

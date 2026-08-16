@@ -8,22 +8,30 @@ condition is ambiguous).
 from __future__ import annotations
 
 
-def _fn(name: str, description: str, properties: dict, required: list[str]) -> dict:
-    """모든 도구에 reasoning 을 필수로 붙인다.
+def _fn(name: str, description: str, properties: dict, required: list[str],
+        reasoning: bool = True) -> dict:
+    """**행동**하는 도구에 reasoning 을 필수로 붙인다.
 
     spec 4.2 가 reasoning 을 "필수. 사후 분류의 감사 표면" 이라고 한 그대로다.
     행동마다 근거가 남으므로 지표 4(의도 실패율)를 여기서 역추적한다 — 별도의
     understood 수집 도구는 두지 않는다. 세계를 바꾸지 않는 도구는 모델이 부르지
     않는다는 것이 실측으로 확인됐다 (MAX_STEPS 8·20 양쪽에서 0건).
+
+    `end_turn` 만 예외다 (`reasoning=False`). 행동이 아니라 **행동을 그만두는 신호**라
+    "행동 하나에 근거 하나" 에 대응하지 않는다. 실측에서 근거가 있는 에이전트턴 407 중
+    end_turn 근거 **뿐**인 것은 14건(3%)뿐이라, 빼도 지표 4 의 표본이 3% 줄 뿐이다.
     """
-    props = {**properties, "reasoning": _REASONING}
+    props = dict(properties)
+    req = list(required)
+    if reasoning:
+        props["reasoning"] = _REASONING
+        req.append("reasoning")
     return {
         "type": "function",
         "function": {
             "name": name,
             "description": description,
-            "parameters": {"type": "object", "properties": props,
-                           "required": [*required, "reasoning"]},
+            "parameters": {"type": "object", "properties": props, "required": req},
         },
     }
 
@@ -88,7 +96,9 @@ TOOLS: list[dict] = [
         {"text": {"type": "string", "description": "your notes, replacing whatever was there"}},
         ["text"]),
 
-    _fn("end_turn", "You have nothing more to do this turn. Ends the loop.", {}, []),
+    # 유일하게 reasoning 이 없는 도구 — 행동이 아니라 행동을 그만두는 신호다.
+    _fn("end_turn", "You have nothing more to do this turn. Ends the loop.", {}, [],
+        reasoning=False),
 ]
 
 TOOL_NAMES = {t["function"]["name"] for t in TOOLS}

@@ -201,9 +201,9 @@
 
 ### `end_turn`
 
-`{ok: true, ended: true}`.
+`{ok: true, ended: true}`. **인자가 없습니다** — 유일하게 `reasoning` 도 안 받습니다.
 
-### 모든 도구 공통 — `reasoning` 필수
+### 행동하는 모든 도구 공통 — `reasoning` 필수
 
 실패한 호출에도 붙습니다. *"왜 그걸 시도했는가"* 가 남아야 하기 때문입니다.
 지표 4 가 이것으로 산출되고(2단계 판정), `understood` 를 받는 도구는 폐기했습니다 —
