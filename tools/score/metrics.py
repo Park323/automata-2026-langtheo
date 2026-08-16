@@ -26,6 +26,11 @@ from tools.score import judge, markers  # noqa: E402
 LANGS = ("ja", "zh", "fr")
 
 
+def _act_type(a) -> str:
+    """행동 로그는 `{type, ...인자}` 다. 구버전 런은 종류만 담긴 문자열이라 둘 다 받는다."""
+    return a.get("type") if isinstance(a, dict) else a
+
+
 def country_of(agent_id: str) -> str:
     return re.sub(r"\d+$", "", agent_id or "")
 
@@ -91,7 +96,8 @@ def policy_shift(messages: list[dict], events: list[dict]) -> dict:
     """
     voted: set[tuple[int, str]] = set()
     for e in events:
-        if e.get("type") == "agent_turn" and "propose_vote" in (e.get("actions") or []):
+        if e.get("type") == "agent_turn" and any(
+                _act_type(a) == "propose_vote" for a in (e.get("actions") or [])):
             voted.add((e["turn"], e["agent"]))
 
     pairs: set[tuple[int, str]] = set()

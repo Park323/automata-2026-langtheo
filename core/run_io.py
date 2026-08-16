@@ -139,7 +139,12 @@ class RunWriter:
                 "no_tool_content": lg.get("no_tool_content"),
                 "elapsed_ms": lg.get("elapsed_ms"), "llm_ms": lg.get("llm_ms"),
                 "ms_per_step": lg.get("ms_per_step"),
-                "actions": [a.get("type") for a in lg.get("actions", [])],
+                # **인자까지 남긴다.** 전에는 종류만 남아서 "누가 어디에 냈는가" 를
+                # 사후에 볼 수 없었다 — raw_calls 에도 agent id 가 없어 호출 단위
+                # 분석이 통째로 막혔다. 본문(text·testament)은 messages 에 있으므로 뺀다.
+                "actions": [{k: v for k, v in a.items()
+                             if k not in ("text", "reasoning", "testament")}
+                            for a in lg.get("actions", [])],
             })
         for lr in result.learns_log:
             if lr.get("turn") == turn and not lr.get("_written"):

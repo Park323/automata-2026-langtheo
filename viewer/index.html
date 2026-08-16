@@ -351,7 +351,14 @@ function acts(b){
   const rows = turns.map(e => {
     const rs = (e.reasonings || []).filter(r => r.reasoning);
     const failed = (e.reasonings || []).filter(r => r.ok === false).length;
-    const did = (e.actions || []);
+    // 행동 로그는 {type, ...인자} — 구버전 런은 문자열이라 둘 다 받는다
+    const did = (e.actions || []).map(a => {
+      if (typeof a === "string") return a;
+      const extra = Object.entries(a)
+        .filter(([k]) => k !== "type")
+        .map(([k, v]) => `${k}=${v}`).join(" ");
+      return extra ? `${a.type}(${extra})` : a.type;
+    });
     const ms = e.elapsed_ms;
     return `<div style="padding:6px 0;border-bottom:1px solid #1b212a${
               did.length ? "" : ";opacity:.55"}">
