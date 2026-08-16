@@ -113,6 +113,11 @@ NEGATIVE = [
     ("jeunesse", "fr", "subject", "je 가 아니다 (단어 경계)"),
     ("Le budget est serré mais suffisant.", "fr", "condition", "역접 mais 는 조건이 아니다"),
     ("我们同意但预算不足", "zh", "condition", "역접 但 은 조건이 아니다"),
+    # ↓ v1 확장 중 실측으로 잡은 오검출. 넓히다 삼킨 것들이라 여기서 못 박는다.
+    ("其他国家反对这个方案", "zh", "subject", "「其他」(그 밖의)의 他 는 3인칭 주어가 아니다"),
+    ("次第に増えています", "ja", "condition", "「次第に」(점차)는 부사이지 조건이 아니다"),
+    ("あたらしい提案です", "ja", "condition", "「あたらしい」의 たら"),
+    ("Notre souhait est clair.", "fr", "tense", "souhait(명사)은 시제가 아니다"),
 ]
 
 
@@ -120,6 +125,20 @@ NEGATIVE = [
 def test_no_false_positives(text, lang, feature, why, lex):
     """spec 6.2: 흔한 낱말을 자질에 넣으면 그 지표가 무의미해진다."""
     assert markers.count(text, lang, feature, lex) == 0, f"{why}: {text}"
+
+
+def test_expansion_kept_true_positives(lex):
+    """오검출을 막으면서 정당한 매칭까지 죽이지 않았는지 — 음성 대조의 짝이다.
+
+    「其他」를 막느라 「他们」을 못 잡거나, 「次第に」를 막느라 「結果次第で」를 못 잡으면
+    오검출만 옮겨간 것이다.
+    """
+    assert markers.count("他们已经决定了", "zh", "subject", lex) > 0        # 他们
+    assert markers.count("其他两国还没决定", "zh", "subject", lex) > 0      # 两国 (其他는 아님)
+    assert markers.count("結果次第で決めます", "ja", "condition", lex) > 0   # 次第で
+    assert markers.count("決まったら教えてください", "ja", "condition", lex) > 0
+    assert markers.count("Le budget était serré.", "fr", "tense", lex) > 0  # imparfait
+    assert markers.count("Nous avions décidé.", "fr", "tense", lex) > 0
 
 
 def test_no_double_count_after_expansion(lex):
