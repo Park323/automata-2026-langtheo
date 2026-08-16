@@ -421,3 +421,33 @@ def test_the_rule_does_not_tell_them_what_to_do(cfg, world):
         t = prompts.system_for(world.agents[aid])
         for b in banned:
             assert b not in t, f"{aid}: {b}"
+
+
+def test_investing_before_a_territory_is_settled_is_stated(cfg, world):
+    """**국토가 정해지기 전에 부은 돈은 그냥 사라진다.** 20턴 실측에서 16% 가 증발했다
+    (2,509원 / 15,278원). 투표가 t5~8 에 통과하는데 t1 부터 붓기 때문이다.
+
+    일반 규칙만 말한다 — 어느 나라가 정했는지는 여전히 안 알려준다. 그건 10원짜리
+    조회가 되고 "타국 사정은 소통해야만 안다" 는 전제가 무너진다.
+    """
+    from core import tools
+    from domains.meteor import prompts
+    marks = {"ja": "積むものがありません", "zh": "没有可积累的东西",
+             "fr": "n'a rien où accumuler"}
+    for aid in ("Asla1", "Ranoa1", "Miris1"):
+        a = world.agents[aid]
+        assert marks[a.native_lang] in prompts.system_for(a), a.native_lang
+    d = next(t["function"]["description"] for t in tools.TOOLS
+             if t["function"]["name"] == "invest")
+    assert "has not settled its territory" in d and "buys no progress" in d
+
+
+def test_the_rule_still_hides_which_nation_decided(cfg, world):
+    """규칙은 말하되 **어느 나라가 정했는지는 여전히 감춘다.**"""
+    from domains.meteor import prompts
+    world.countries["Ranoa"].land = "interceptor"
+    world.countries["Miris"].land = None
+    obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
+    assert "Ranoa" in obs and "Miris" in obs        # 명단에는 있다
+    for tok in ("interceptor 未定", "Ranoa: interceptor", "Miris: 未定"):
+        assert tok not in obs

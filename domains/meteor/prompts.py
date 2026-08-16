@@ -44,6 +44,7 @@ SYSTEM = {
 `interceptor` はどこか一つの国で完成すれば隕石を止めます。そのとき全ての国の人が生き残ります。何も出さなかった国も同じです。
 `bunker` は深いほど、隕石が落ちてもその国の人々が生き残る見込みが高くなります。
 施設の進捗は国ごとに別々に積まれます。完成したかどうかは、その国の進捗だけで決まります。
+国土がまだ決まっていない国には積むものがありません。そこへ出した分は進捗になりません。
 メッセージの本文は必ず日本語で書いてください。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
     "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
 过去曾有巨大的陨石坠落，所有生命就此灭绝。
@@ -53,6 +54,7 @@ SYSTEM = {
 `interceptor` 只要在任何一个国家建成，就能拦下陨石。那时所有国家的人都能活下来，没有出过力的国家也一样。
 `bunker` 挖得越深，陨石坠落时该国国民活下来的可能性越大。
 设施的进度按国家分别累积。是否建成，只看那个国家自己的进度。
+国土尚未定下来的国家没有可积累的东西。投到那里的钱不会变成进度。
 消息正文必须用中文书写。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
     "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
 Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
@@ -62,6 +64,7 @@ Une nation peut bâtir deux sortes d'installation, mais ne peut en entreprendre 
 Un `interceptor`, une fois achevé dans une seule nation, arrête la météorite. Toutes les nations survivent alors, y compris celles qui n'ont rien versé.
 Plus un `bunker` est profond, plus les habitants de cette nation ont de chances de survivre à la chute d'une météorite.
 La progression d'une installation s'accumule séparément pour chaque nation. L'achèvement se juge sur la seule progression de cette nation.
+Une nation dont le territoire n'est pas encore fixé n'a rien où accumuler ; ce qu'on y verse ne devient pas de la progression.
 Le corps de vos messages doit être rédigé en français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
 }
 
