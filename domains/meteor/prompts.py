@@ -84,7 +84,7 @@ T = {
         multi="予算が許す限り複数の行動ができます。メッセージは1ターンに3件まで。",
         costs_hdr="行動の費用",
         c_dom="  話す（自国内）", c_orig="  話す（国際・original）",
-        c_orig_note="   どちらかが相手の言語を扱えなければ届かない。費用は請求される",
+        c_orig_note="   相手の国の言語をあなたが扱えるなら、相手が何を読めるかに関わらず届く。\n                          扱えないなら、あなたの言語を読める相手にだけ届く。費用は届かなくても請求される",
         c_ai="  話す（国際・ai）",
         c_learn="  {nation} の言語を学ぶ",
         c_learn_prog="   これまで {done:.0f} / {need:.0f}",
@@ -124,7 +124,7 @@ T = {
         multi="只要预算允许，你可以采取多项行动。每回合最多 3 条消息。",
         costs_hdr="行动费用",
         c_dom="  说话（本国内）", c_orig="  说话（国际·original）",
-        c_orig_note="   双方都不懂对方的语言就送不到，费用照收",
+        c_orig_note="   你会对方国家的语言时，无论对方读得懂什么都能送到。\n                          你不会时，只能送到读得懂你的语言的人那里。送不到也照收费用",
         c_ai="  说话（国际·ai）",
         c_learn="  学习 {nation} 的语言",
         c_learn_prog="   已投入 {done:.0f} / {need:.0f}",
@@ -165,7 +165,8 @@ T = {
         multi="Vous pouvez agir plusieurs fois si le budget le permet. Jusqu'à 3 messages par tour.",
         costs_hdr="Coûts des actions",
         c_dom="  parler (dans votre nation)", c_orig="  parler (international, original)",
-        c_orig_note="   non délivré si aucun de vous ne manie la langue de l'autre ; le coût est prélevé quand même",
+        c_orig_note="   si vous maniez la langue de sa nation, le message arrive quoi que sache lire le destinataire.\n"
+                          "   sinon, il n'arrive qu'à quelqu'un qui lit la vôtre. le coût est prélevé même s'il n'arrive pas",
         c_ai="  parler (international, ai)",
         c_learn="  apprendre la langue de {nation}",
         c_learn_prog="   déjà versé {done:.0f} / {need:.0f}",
@@ -237,7 +238,8 @@ def _roster(world, agent, t: dict) -> str:
 
 def render_costs(world, agent, cfg, knob_ai: float) -> str:
     t = T[agent.native_lang]
-    w = 34          # 항목명 폭. 라벨 길이가 언어마다 달라 값 정렬을 맞춘다
+    w = 37          # 항목명 폭. 라벨 길이가 언어마다 달라 값 정렬을 맞춘다
+                    # (fr 의 "parler (international, original)" 이 34 를 꽉 채워 값이 붙었다)
 
     def row(label: str, val, note: str = "") -> str:
         v = f"{val:g}" if val != "" else ""

@@ -38,9 +38,10 @@ def _fn(name: str, description: str, properties: dict, required: list[str],
 
 _ROUTE = {"type": "string", "enum": ["original", "ai"],
           "description": "international only; ignored for a recipient in your own nation. "
-                         "`original` sends your words untranslated — it only lands if one "
-                         "of you can handle the other's language, and you are not told "
-                         "beforehand whether they can"}
+                         "`original` sends your words untranslated. If you can handle the "
+                         "recipient's national language it always lands, whatever they can "
+                         "read. If you cannot, it lands only on someone who reads yours — "
+                         "and you are not told beforehand whether they do"}
 _TEXT = {"type": "string", "description": "the message body, written in your own language"}
 _TR_INSTR = {"type": "string",
              "description": "an instruction for the translator; leave empty for a neutral default"}
