@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import itertools
+import json
 import random
 
 import pytest
@@ -164,6 +165,34 @@ def test_money_into_an_undecided_nation_just_vanishes(cfg, world):
     assert world.countries["Miris"].progress == 0.0
     (g,) = r.facility_gains
     assert g["gain"] == 0 and g["amount"] == 200.0
+
+
+def test_foreign_money_digs_whatever_they_are_building(cfg, world):
+    """**벙커라도 들어간다.** 요격기를 짓는 척하며 벙커를 파고 타국 출자를 받는
+    전략이 성립합니다 (spec 4.4 개정).
+
+    이전 판은 "벙커는 자국에만" 이었는데, 그대로 두면 배신이 *"남 손해"* 에 그칩니다.
+    이렇게 두면 **배신이 실제로 이득**이 되고, 동시에 *"너희 무엇을 짓고 있는가"* 가
+    이 세계에서 가장 값비싼 정보가 됩니다 — 그 답은 번역을 거쳐야만 오니까요.
+    """
+    world.countries["Ranoa"].land = "bunker"
+    sink = Sink()
+    sink.facility = [("Ranoa", 300.0, "Asla1")]        # 외국인이 낸 돈
+    r = _settle(world, cfg, sink)
+    assert world.countries["Ranoa"].progress > 0       # 남의 돈으로 벙커가 깊어진다
+    (g,) = r.facility_gains
+    assert g["agent"] == "Asla1" and g["gain"] > 0
+    # 출자자는 진척이 얼마나 늘었는지만 알 뿐, **무엇이 깊어졌는지는 모른다**
+    (e,) = [x for x in world.inbox_queue if "fac_gain" in x["msg"]]
+    assert "bunker" not in json.dumps(e["msg"]) and "interceptor" not in json.dumps(e["msg"])
+
+
+def test_invest_tool_states_the_rule(cfg):
+    """규칙을 모르면 그 도박이 선택이 아니라 우연이 된다."""
+    from core import tools
+    d = {t["function"]["name"]: t["function"]["description"] for t in tools.TOOLS}
+    assert "whatever that nation is currently building" in d["invest"]
+    assert "Only that nation knows" in d["invest"]
 
 
 def test_the_gain_notice_arrives_either_way(cfg, world):

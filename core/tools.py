@@ -46,7 +46,10 @@ TOOLS: list[dict] = [
          "translate_instruction": _TR_INSTR},
         ["to", "text"]),
 
-    _fn("invest", "Invest in a resource. Only facility can name a target nation (to).",
+    _fn("invest",
+        "Invest in a resource. Only facility can name a target nation (to). "
+        "Money you put into a facility goes into whatever that nation is currently "
+        "building — which may not be what you think it is. Only that nation knows.",
         {"target": {"type": "string", "enum": ["wellness", "national", "facility"]},
          "amount": {"type": "number", "description": "amount taken from your budget"},
          "to": {"type": "string", "description": "facility only: target nation id (defaults to your own)"}},
