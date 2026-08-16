@@ -165,21 +165,25 @@ def test_learn_self_not_counted(cfg, world):
 
 
 def test_learn_defers_known_langs(cfg, world):
-    """learn 은 known_langs 를 즉시 바꾸지 않고 sink 에 넣는다 (병렬 레이스 방지)."""
-    script = [assistant_msg(tool_call("learn", "1", country="Ranoa")),
+    """learn 은 known_langs 를 즉시 바꾸지 않고 sink 에 넣는다 (병렬 레이스 방지).
+
+    Asla2 가 Miris(fr) 를 배운다 — Asla 에는 fr 구사자가 없어 **정가**다.
+    (Asla1 은 초기화로 zh 를 알고 있어 Ranoa 학습은 절반이 된다.)
+    """
+    script = [assistant_msg(tool_call("learn", "1", country="Miris")),
               assistant_msg(tool_call("end_turn", "2"))]
-    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
-    assert "zh" not in agent.known_langs          # 즉시 반영 안 됨
+    agent, sink, client, log = _run(world, cfg, "Asla2", script, budget=10000)
+    assert "fr" not in agent.known_langs          # 즉시 반영 안 됨
     assert agent.budget == 10000 - 600            # 예산은 즉시 차감
     assert agent.ap == cfg.turn.action_points - cfg.ap.learn
 
     # 학습 1건 = x̂ 관측 1건. **어느 눈금이었는지와 나이가 없으면 x 를 구간으로
     # 좁힐 수 없다** (spec 6.1 · 8.4) — 이 필드들이 x̂ 의 전제다.
     (rec,) = sink.learns
-    assert rec["agent"] == "Asla1" and rec["lang"] == "zh" and rec["target"] == "Ranoa"
+    assert rec["agent"] == "Asla2" and rec["lang"] == "fr" and rec["target"] == "Miris"
     assert rec["charged"] == 600 and rec["rung"] == 1.0
     assert rec["discount_domestic"] is False and rec["discount_parent"] is False
-    assert rec["age"] == 0 and rec["budget_after"] == 9400.0
+    assert rec["age"] == agent.age and rec["budget_after"] == 9400.0
 
 
 # ── #11 정보 은닉 (가장 중요) ────────────────────────────────────────────────

@@ -601,3 +601,59 @@ def test_round_trip_takes_two_turns_is_stated(cfg, world):
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
         assert marks[a.native_lang] in prompts.render_observation(world, a, cfg, 48.0)
+
+
+# ── 초기화 (8/17) ────────────────────────────────────────────────────────────
+
+def test_one_speaker_per_nation_at_the_start(cfg):
+    """나라마다 **한 명**이 이웃 나라 말을 이미 안다 (순환).
+
+    그전에는 국내에 구사자가 아무도 없어 학습이 **늘 정가 600** 이었고, 20턴 동안
+    학습 시도가 **0건**이었다. `x̂` 는 L/2 눈금이 존재해야 구간으로 좁혀진다 (spec 7장).
+    """
+    import random
+    from core.agent_loop import learn_cost
+    w = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    langs = {c.id: c.lang for c in w.countries.values()}
+
+    for cid in w.countries:
+        mine = [a for a in w.agents.values() if a.country == cid]
+        bi = [a for a in mine if len(a.known_langs) > 1]
+        assert len(bi) == 1, f"{cid}: {len(bi)}명"
+        (extra,) = bi[0].known_langs - {langs[cid]}
+        assert extra != langs[cid]
+
+    # 어느 나라도 고립되지 않고, 어느 나라도 두 개를 갖지 않는다
+    seeded = {next(iter(a.known_langs - {langs[a.country]}))
+              for a in w.agents.values() if len(a.known_langs) > 1}
+    assert seeded == set(langs.values()) - set()  # 세 언어가 각각 한 번씩
+    assert len(seeded) == 3
+
+    # 그 나라 사람들에게 그 언어 학습이 절반이 된다
+    other = next(a for a in w.agents.values()
+                 if a.country == "Asla" and len(a.known_langs) == 1)
+    speaker = next(a for a in w.agents.values()
+                   if a.country == "Asla" and len(a.known_langs) > 1)
+    tgt_lang = next(iter(speaker.known_langs - {"ja"}))
+    tgt = next(c.id for c in w.countries.values() if c.lang == tgt_lang)
+    cost, why = learn_cost(other, tgt, w, cfg)
+    assert cost == cfg.costs.learn_base / 2 and "nation" in why
+
+
+def test_initial_ages_are_spread(cfg):
+    """전원 0살이면 **한꺼번에 죽는다.** 20턴 실측에서 t14~19 에 9명이 전부 교체됐고
+    그 6턴 사이에 쌓아둔 기억·관계·예산이 통째로 사라졌다."""
+    import random
+    w = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    ages = [a.age for a in w.agents.values()]
+    assert all(1 <= x <= cfg.world.init_age_max for x in ages)
+    assert len(set(ages)) >= 4, ages
+
+
+def test_initialisation_is_reproducible(cfg):
+    """같은 시드면 나이도 같아야 한다 — 안 그러면 재현성 검사가 통째로 깨진다."""
+    import random
+    a = loop.init_world(cfg, itertools.count(1), random.Random(7))
+    b = loop.init_world(cfg, itertools.count(1), random.Random(7))
+    assert [(k, v.age, sorted(v.known_langs)) for k, v in sorted(a.agents.items())] == \
+           [(k, v.age, sorted(v.known_langs)) for k, v in sorted(b.agents.items())]

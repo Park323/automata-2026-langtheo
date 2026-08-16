@@ -106,6 +106,8 @@ class World:
     total_turns: int
     epoch_turns: int
     success_prob: float
+    # 초기 나이를 1..이 값에서 뽑는다. 전원 0살이면 한꺼번에 죽어 세계가 백지가 된다.
+    init_age_max: int = 10
 
 
 @dataclass(frozen=True)

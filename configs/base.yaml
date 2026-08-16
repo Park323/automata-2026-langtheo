@@ -94,6 +94,9 @@ world:
   total_turns: 100
   epoch_turns: 20                 # 창(A·E) 계산에 쓰는 '한 사람 몫의 기간'. 기대수명 반올림
   success_prob: 0.3               # 에이전트 비공개. 임계값이 이 값 기준으로 유도됨
+  # 초기 나이를 1..10 에서 뽑는다. 전원 0살이면 **한꺼번에 죽는다** — 20턴 실측에서
+  # t14~19 에 9명이 전부 교체됐고 쌓아둔 기억·관계·예산이 통째로 사라졌다.
+  init_age_max: 10
 
 inheritance:
   testament_max_chars: 120        # A-1 기본값

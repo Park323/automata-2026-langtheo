@@ -62,19 +62,40 @@ class RunResult:
 
 # ─────────────────────────────────────────── 초기화 ───────────────────────────────
 
-def init_world(cfg, counter: "itertools.count") -> World:
-    """spec 2.1. 국가 3 × 3명 = 9명, 전원 동일 초기값."""
+def init_world(cfg, counter: "itertools.count", rng: random.Random | None = None) -> World:
+    """spec 2.1. 국가 3 × 3명 = 9명.
+
+    **전원 동일 초기값이 아니다.** 둘을 흩어 놓는다.
+
+    ① 나이 — `1 ~ init_age_max` 에서 뽑는다. 전원 0살로 시작하면 **한꺼번에 죽는다.**
+       20턴 실측에서 t14~19 에 9명이 전부 교체됐고, 그 6턴 사이에 쌓아둔 기억·관계·예산이
+       통째로 사라졌다. 세계가 주기적으로 백지가 되면 구전 감쇠를 관측할 수 없다.
+
+    ② 언어 — 나라마다 **한 명**이 다른 나라 말을 이미 안다 (순환: Asla→Ranoa→Miris→Asla).
+       그래야 국내 구사자 할인(×0.5)이 처음부터 살아 있다. 그전에는 국내에 구사자가
+       아무도 없어 학습이 **늘 정가 600** 이었고, 20턴 동안 학습 시도가 **0건**이었다.
+       `x̂` 는 L/2 눈금이 존재해야 구간으로 좁혀진다 (spec 7장).
+    """
+    rng = rng or random.Random(cfg.run.seed)
     countries: dict[str, Country] = {}
     agents: dict[str, Agent] = {}
     testaments: dict[str, list[str]] = {}
-    for cdef in cfg.world.countries:
+    defs = list(cfg.world.countries)
+    for n, cdef in enumerate(defs):
         countries[cdef.id] = Country(id=cdef.id, lang=cdef.lang)
+        # 순환으로 이웃 나라 말을 하나 심는다. 어느 나라도 고립되지 않고,
+        # 어느 나라도 두 개를 갖지 않는다.
+        seeded = defs[(n + 1) % len(defs)].lang
         for i in range(1, cfg.world.agents_per_country + 1):
             aid = f"{cdef.id}{i}"
-            agents[aid] = _newborn(
+            a = _newborn(
                 aid, cdef.id, cdef.lang, cfg.income.initial_budget, set(),
                 turn=0, born_by="natural", cfg=cfg, counter=counter,
             )
+            a.age = rng.randint(1, cfg.world.init_age_max)
+            if i == 1:
+                a.known_langs.add(seeded)
+            agents[aid] = a
             testaments[aid] = []
     return World(turn=0, countries=countries, agents=agents, testaments=testaments,
                  next_idx={c.id: cfg.world.agents_per_country + 1 for c in countries.values()})
@@ -308,7 +329,7 @@ def run(cfg, rng: random.Random, procreate_age: int | None = PROCREATE_AGE) -> R
     procreate_age=None 이면 procreate 를 끈다 (수명 모델만 격리 측정 — 캘리브레이션용).
     """
     counter = itertools.count(1)
-    world = init_world(cfg, counter)
+    world = init_world(cfg, counter, rng)
     result = RunResult(world=world)
     for t in range(1, cfg.world.total_turns + 1):
         world.turn = t
@@ -565,7 +586,7 @@ def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
     """
     counter = itertools.count(1)
     msg_ids = itertools.count(1)      # 전역 메시지 id — understood 의 조인 키 (spec 6.1)
-    world = init_world(cfg, counter)
+    world = init_world(cfg, counter, rng)
     result = RunResult(world=world)
     for t in range(1, cfg.world.total_turns + 1):
         world.turn = t
