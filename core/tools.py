@@ -59,15 +59,16 @@ TOOLS: list[dict] = [
     _fn("propose_vote",
         "Open a proposal to set your nation's facility. Your nation only. "
         "Nothing changes yet: three turns pass so people can talk it over, and on the "
-        "fourth turn everyone in your nation may cast a ballot with `vote`. "
-        "It passes if approvals outnumber rejections. A nation can hold only one "
-        "proposal at a time.",
+        "fourth turn the ballot is held. **Only people of your own nation may vote on "
+        "it** — a foreigner cannot, no matter what they say. It passes if approvals "
+        "outnumber rejections. A nation can hold only one proposal at a time.",
         {"target": {"type": "string", "enum": ["bunker", "interceptor"]}},
         ["target"]),
 
     _fn("vote",
-        "Cast your ballot on your nation's open proposal. Only on the turn the ballot "
-        "is held; the observation tells you which turn that is.",
+        "Cast your ballot on **your own nation's** open proposal — you cannot vote on "
+        "another nation's. Only on the turn the ballot is held; the observation tells "
+        "you which turn that is.",
         {"approve": {"type": "boolean", "description": "true to approve, false to reject"}},
         ["approve"]),
 

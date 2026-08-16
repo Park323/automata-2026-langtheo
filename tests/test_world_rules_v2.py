@@ -153,6 +153,31 @@ def test_can_invest_once_decided(cfg, world):
     assert res["ok"] and sink.facility == [("Ranoa", 100.0, "Asla1")]
 
 
+def test_only_nationals_may_vote(cfg, world):
+    """투표는 그 나라 주민에 한한다. **도구 설명에 명시돼 있어야 한다.**
+
+    8턴 실측에서 Asla2 가 외국인 Ranoa2 에게 자국 제안의 투표를 부탁했다 —
+    「Asla2はinterceptorの建設に賛成し、Ranoa2の投票を依頼します」. 자연스러운
+    오해지만 의도 밖이라 규칙을 말로 적었다.
+    """
+    from core import tools
+    d = {t["function"]["name"]: t["function"]["description"] for t in tools.TOOLS}
+    assert "own nation" in d["propose_vote"] and "foreigner cannot" in d["propose_vote"]
+    assert "your own nation" in d["vote"] and "another nation" in d["vote"]
+
+    # 말뿐이 아니라 코드도 막는다 — vote 는 언제나 제안자 자신의 나라에만 들어간다
+    from core.agent_loop import execute_tool
+    world.turn = 10
+    _propose(world, cfg, "Ranoa1", "bunker")           # Ranoa 에 제안이 열림
+    a = world.agents["Asla1"]                          # 외국인
+    a.ap = 1.0
+    sink = Sink()
+    res, _ = execute_tool("vote", {"approve": True, "reasoning": "r"},
+                          world, a, cfg, sink, 48.0)
+    assert not res["ok"] and "no open proposal" in res["error"]
+    assert sink.ballots == []
+
+
 # ── 진척 공개 ───────────────────────────────────────────────────────────────────
 
 def test_progress_gain_is_reported_after_the_fact(cfg, world):
