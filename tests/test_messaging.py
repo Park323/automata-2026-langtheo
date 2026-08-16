@@ -172,3 +172,32 @@ def test_marker_scoring_uses_the_delivered_language(cfg):
     for feat, v in r["overall"].items():
         if feat != "n" and v["sent"]:
             assert v["loss_rate"] == 0.0, feat      # 같은 글이니 소실이 없어야 한다
+
+
+def test_no_route_ever_ships_the_original_alongside(cfg):
+    """**원문은 어느 경로에서도 함께 가지 않는다.** 뷰어 배지가 "수신자가 원문을 읽을
+    수 있었음" 이라 적혀 있어 원문이 실려 간 것처럼 읽혔다 — 그건 사후 관측이다.
+    """
+    cases = [
+        (_intl(route="ai"), {"zh"}, {"ja"}),            # 못 읽는 수신자
+        (_intl(route="ai"), {"zh", "ja"}, {"ja"}),      # 읽을 수 있는 수신자
+        (_intl(route="original"), {"zh", "ja"}, {"ja"}),
+        (dict(_intl(), to="Asla2", to_country="Asla", to_lang="ja"), {"ja"}, {"ja"}),
+    ]
+    for sent, recip, sender in cases:
+        p = messaging.process_message(sent, recip, cfg, _translator("译文"), 24.0,
+                                      sender_known_langs=sender)
+        assert p["inbox"]["original"] is None, sent.get("route")
+
+
+def test_direct_ok_records_the_counterfactual(cfg):
+    """`ai` 로 갔지만 `original` 로도 닿았을 경우를 사후에 셀 수 있어야 한다 —
+    5원이면 될 것을 24~48원 냈다는 뜻이다."""
+    p = messaging.process_message(_intl(route="ai"), {"zh", "ja"}, cfg,
+                                  _translator("译文"), 24.0, sender_known_langs={"ja"})
+    assert p["kind"] == "ai" and p["meta"]["direct_ok"] is True
+    assert p["meta"]["direct_by"] == "reader"
+
+    p = messaging.process_message(_intl(route="ai"), {"zh"}, cfg,
+                                  _translator("译文"), 24.0, sender_known_langs={"ja", "zh"})
+    assert p["meta"]["direct_ok"] is True and p["meta"]["direct_by"] == "writer"

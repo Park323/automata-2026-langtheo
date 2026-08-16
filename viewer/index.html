@@ -293,7 +293,10 @@ function messages(b){
         <span class="mono"><b>${m.from}</b> → <b>${m.to}</b></span>
         <span class="route ${m.route}">${m.route}</span>
         ${t.truncated ? `<span class="cut">${t.chars_cut}자 잘림</span>` : ""}
-        ${t.reader && m.route === "ai" ? `<span class="badge">수신자가 원문을 읽을 수 있었음</span>` : ""}
+        ${t.direct_ok && m.route === "ai"
+          ? `<span class="badge" title="원문은 어느 경로에서도 함께 가지 않습니다 — 이 배지는 사후 관측입니다">`
+            + `original 로 갔어도 닿았음 (${t.direct_by === "writer" ? "발신자가 상대 말을 안다" : "수신자가 발신 말을 읽는다"})</span>`
+          : ""}
       </div>
       <div class="pair">
         <div class="side ${t.src_lang}">
