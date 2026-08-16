@@ -124,7 +124,7 @@ class LLM:
     judge_model: str | None = None
     # 응답 상한. 없으면 모델이 같은 문장을 반복하다 붕괴한다 — 실측 최악 40,935자.
     # reasoning 인자까지 담아야 하므로 넉넉히 잡는다 (메시지 상한은 fr 400자).
-    max_tokens: int | None = 4096
+    max_tokens: int | None = 2048
     # 사고 예산. OpenRouter 통합 파라미터를 그대로 넘긴다 (effort / max_tokens /
     # enabled / exclude). **max_tokens 와 나눠 써야 한다** — 사고가 전부 먹으면
     # 도구 호출이 안 나온다 (실측: qwen3.7-flash 6/68 이 length 로 잘림).

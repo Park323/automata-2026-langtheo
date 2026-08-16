@@ -19,6 +19,14 @@ from domains.meteor import prompts
 
 
 @pytest.fixture
+def cfg_think(cfg):
+    """사고형 모드 (도구 reasoning 없음). base.yaml 은 지금 켠 상태다 — DeepInfra 에서
+    effort 가 안 먹어 사고를 아예 끄고 도구 인자로 되돌렸다."""
+    import dataclasses
+    return dataclasses.replace(cfg, llm=dataclasses.replace(cfg.llm, tool_reasoning=False))
+
+
+@pytest.fixture
 def cfg_tool(cfg):
     """도구마다 reasoning 을 받는 모드 (비사고형 모델용). base.yaml 은 지금 끈 상태다."""
     import dataclasses
@@ -243,16 +251,16 @@ def test_max_tokens_is_sent(monkeypatch):
 
 # ── 사고형 모델 모드 (tool_reasoning: false) ─────────────────────────────────
 
-def test_thinking_replaces_the_tool_reasoning_argument(cfg):
+def test_thinking_replaces_the_tool_reasoning_argument(cfg_think):
     """사고형 모델에서는 도구마다 reasoning 을 또 받지 않는다 (spec 12.1).
 
     **그냥 끄면 지표 4 가 죽는다** — 2단계 판정의 ①이 읽을 근거가 통째로 사라진다.
     그래서 모델 자신의 사고를 `reasonings` 스트림에 넣어 이어준다.
     """
-    assert cfg.llm.tool_reasoning is False          # base.yaml 이 사고형 모델을 쓴다
+    assert cfg_think.llm.tool_reasoning is False          # base.yaml 이 사고형 모델을 쓴다
     msg = assistant_msg(tool_call("speak", "1", to="Asla2", text="x"))
     msg["reasoning"] = "같은 나라라 싸니 먼저 말을 걸어본다"
-    log = _run(cfg, {"Asla1": [msg]}).agent_logs[0]["Asla1"]
+    log = _run(cfg_think, {"Asla1": [msg]}).agent_logs[0]["Asla1"]
     rs = log["reasonings"]
     assert rs[0]["source"] == "thinking"
     assert rs[0]["reasoning"] == "같은 나라라 싸니 먼저 말을 걸어본다"
@@ -260,21 +268,21 @@ def test_thinking_replaces_the_tool_reasoning_argument(cfg):
     assert log["reasoning_missing"] is False        # 판정이 읽을 것이 있다
 
 
-def test_tool_schema_drops_reasoning_in_thinking_mode(cfg):
+def test_tool_schema_drops_reasoning_in_thinking_mode(cfg_think):
     """스키마에서 빠져야 모델이 그 자리를 안 채운다 — 안 그러면 사고를 두 번 시킨다."""
     from core import tools as _t
-    picked = _t.tools_for(cfg)
+    picked = _t.tools_for(cfg_think)
     assert picked is _t.TOOLS_NO_REASONING
     for t in picked:
         assert "reasoning" not in t["function"]["parameters"]["properties"]
 
 
-def test_judge_can_still_read_the_stream(cfg):
+def test_judge_can_still_read_the_stream(cfg_think):
     """판정 1단계는 `reasonings[*].reasoning` 을 읽는다. 모드가 바뀌어도 그대로여야 한다."""
     from tools.score import judge
     msg = assistant_msg(tool_call("speak", "1", to="Asla2", text="x"))
     msg["reasoning"] = "Ranoa1 이 보낸 요격기 얘기에 답한다"
-    log = _run(cfg, {"Asla1": [msg]}).agent_logs[0]["Asla1"]
+    log = _run(cfg_think, {"Asla1": [msg]}).agent_logs[0]["Asla1"]
     ev = [{"turn": 2, "type": "agent_turn", "agent": "Asla1",
            "reasonings": log["reasonings"]}]
     ms = [{"turn": 1, "msg_id": 1, "from": "Ranoa1", "to": "Asla1", "route": "ai",
