@@ -20,7 +20,7 @@ ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 
 class LLMClient(Protocol):
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
-             temperature: float | None = None) -> dict:
+             temperature: float | None = None, tool_choice: str | None = None) -> dict:
         """OpenAI 호환 응답을 그대로 반환한다.
 
         반환에서 쓰는 것: choices[0].message (content 또는 tool_calls)
@@ -94,7 +94,7 @@ class OpenRouterClient:
         return box["resp"]
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
-             temperature: float | None = None) -> dict:
+             temperature: float | None = None, tool_choice: str | None = None) -> dict:
         body: dict = {
             "model": self.model,
             "messages": messages,
@@ -108,7 +108,7 @@ class OpenRouterClient:
             body["provider"] = dict(self.provider)
         if tools:
             body["tools"] = tools
-            body["tool_choice"] = "auto"
+            body["tool_choice"] = tool_choice or "auto"
         req = urllib.request.Request(
             ENDPOINT,
             data=json.dumps(body).encode(),
@@ -171,8 +171,9 @@ class StubClient:
         self.recorder = recorder             # 실물과 같은 raw 기록 경로 (테스트에서 형식 검증)
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
-             temperature: float | None = None) -> dict:
-        self.calls.append({"messages": list(messages), "tools": tools})   # 스냅샷
+             temperature: float | None = None, tool_choice: str | None = None) -> dict:
+        self.calls.append({"messages": list(messages), "tools": tools,
+                           "tool_choice": tool_choice})                   # 스냅샷
         _t0 = time.time()
         if self._i >= len(self._script):
             # 스크립트 소진 → 도구 없이 종료 신호

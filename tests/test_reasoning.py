@@ -293,3 +293,25 @@ def test_judge_can_still_read_the_stream(cfg_think):
     (r,) = judge.link(ms, ev)
     assert r["skip"] is None
     assert "요격기" in r["reasonings"][0]
+
+
+def test_first_step_forces_a_tool_call(cfg, world):
+    """**첫 스텝은 도구 호출을 강제한다.**
+
+    사고를 끈 뒤로 모델이 content 에 숙고를 쏟고 그대로 끝내는 일이 잦았다 —
+    실측에서 턴의 2~7% 가 통째로 날아갔다. 계획만 적거나(「1. propose_vote
+    2. observe_risk 3. invest — これら3つの行動を行います」) 메시지 본문을 산문으로
+    쓰는(「Ranoa1さん、こんにちは！」) 식이라 JSON 회수기도 못 잡았다.
+
+    `end_turn` 도 도구이므로 "할 게 없다" 는 여전히 표현된다.
+    """
+    from core.agent_loop import Sink, run_agent_turn
+    stub = StubClient([assistant_msg(tool_call("speak", "1", to="Asla3", text="x",
+                                               reasoning="r")),
+                       assistant_msg(tool_call("end_turn", "2"))])
+    a = world.agents["Asla2"]; a.ap, a.budget = 1.0, 500.0
+    run_agent_turn(world, a, cfg, stub, Sink(), 48.0,
+                   prompts.system_for(a), prompts.render_observation(world, a, cfg, 48.0))
+    assert stub.calls[0]["tool_choice"] == "required"
+    # 둘째 스텝부터는 자유 — 멈추는 것도 선택이어야 한다
+    assert stub.calls[1]["tool_choice"] is None
