@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -50,13 +51,43 @@ class OpenRouterClient:
 
     def __init__(self, model: str, api_key: str | None = None,
                  temperature: float = 0.7, retries: int = 4, timeout: int = 120,
-                 recorder=None):
+                 recorder=None, deadline: float = 90.0):
         self.model = model
         self.api_key = api_key or load_key()
         self.temperature = temperature
         self.retries = retries
         self.timeout = timeout
         self.recorder = recorder      # 호출 1회(재시도 각각)를 raw 로 남긴다 (spec 9장)
+        self.deadline = deadline      # 호출 1회의 **벽시계** 상한. 아래 설명 참조
+
+    def _call_with_deadline(self, req):
+        """urlopen 을 별도 스레드에서 돌리고 `deadline` 초 안에 안 오면 버린다.
+
+        ⚠ `urlopen(timeout=)` 은 **소켓 읽기 하나**의 제한이지 호출 전체가 아니다.
+          응답이 찔끔찔끔 오면 타이머가 매번 초기화돼 상한이 아무것도 묶지 못한다.
+          50턴 실측에서 이것 때문에 한 호출이 **31분** 걸렸고, 전체 1,395콜 중
+          30초 넘는 20건(1.4%)이 벽시계 149분 중 146분을 먹었다. 나머지 1,375건은
+          전부 5초 미만이었다.
+
+        버려진 스레드는 데몬이라 프로세스 종료를 막지 않는다. 소켓이 결국 닫히면
+        알아서 끝나고, 그 사이 우리는 재시도를 진행한다.
+        """
+        box: dict = {}
+
+        def _work():
+            try:
+                box["resp"] = json.load(urllib.request.urlopen(req, timeout=self.timeout))
+            except BaseException as e:       # 스레드 안의 예외를 밖으로 옮긴다
+                box["exc"] = e
+
+        t = threading.Thread(target=_work, daemon=True)
+        t.start()
+        t.join(self.deadline)
+        if t.is_alive():
+            raise TimeoutError(f"deadline {self.deadline:.0f}s 초과 — 호출을 버립니다")
+        if "exc" in box:
+            raise box["exc"]
+        return box["resp"]
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
              temperature: float | None = None) -> dict:
@@ -77,7 +108,7 @@ class OpenRouterClient:
         for attempt in range(self.retries):
             t0 = time.time()
             try:
-                resp = json.load(urllib.request.urlopen(req, timeout=self.timeout))
+                resp = self._call_with_deadline(req)
                 self._record(body, attempt + 1, t0, response=resp)
                 return resp
             except urllib.error.HTTPError as e:

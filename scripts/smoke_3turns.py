@@ -131,14 +131,26 @@ def main() -> None:
               f"에이전트 {agent_client.calls}콜 / 번역 {translator.calls}콜",
               flush=True)
 
-    # 실제 API 는 stateless 라 9명이 같은 client 를 공유해도 안전
-    res = run_agentic(cfg, random.Random(args.seed),
-                      client_for=lambda aid: agent_client, translator=translator,
-                      knob_ai=knob, render_obs=prompts.render_observation,
-                      system_prompt=prompts.system_for, parallel=not args.sequential,
-                      on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)))
+    # 실제 API 는 stateless 라 9명이 같은 client 를 공유해도 안전.
+    # 죽더라도 **거기까지의 산출물은 닫아서** 남긴다 — 50턴 런이 43턴에서 죽었을 때
+    # 로그 4종은 온전했는데 summary.json 이 없어 채점기가 outcome 을 못 읽었다.
+    try:
+        res = run_agentic(cfg, random.Random(args.seed),
+                          client_for=lambda aid: agent_client, translator=translator,
+                          knob_ai=knob, render_obs=prompts.render_observation,
+                          system_prompt=prompts.system_for, parallel=not args.sequential,
+                          on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)))
+    except BaseException as e:
+        writer.close({"final": {"outcome": "aborted"}, "deaths": None,
+                      "aborted": f"{type(e).__name__}: {e}"[:300],
+                      "elapsed_s": round(time.time() - t0, 1),
+                      "raw_calls": writer.counts})
+        print(f"\n✗ 런 중단 — {type(e).__name__}: {e}")
+        print(f"  거기까지의 산출물은 남았습니다: {writer.dir}")
+        raise
     elapsed = time.time() - t0
     writer.close({"final": res.final, "deaths": res.deaths,
+                  "elapsed_s": round(elapsed, 1),
                   "raw_calls": writer.counts})
     print(f"\n산출물        {writer.dir}")
 

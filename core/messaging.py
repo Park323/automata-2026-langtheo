@@ -100,8 +100,24 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
                 "sender_notice": notice, "meta": meta}
 
     # 국제 AI: 번역 경유, 항상 전달, [AI 번역] 라벨. 읽을 수 있으면 원문 병기.
-    tr = translate_mod.translate(translator, from_lang, to_lang, text_sent,
-                                 sent.get("translate_instruction"))
+    #
+    # ⚠ 번역이 실패하면 **런 전체를 죽이지 않고** 미전달로 떨어뜨린다. 50턴 실측에서
+    #   번역 호출 하나가 재시도를 소진해 2.5시간짜리 런이 통째로 날아갔다.
+    #   에이전트 호출은 실패를 잡아 lg["error"] 로 남기는데 여기만 무방비였다.
+    #
+    #   `translate_failed` 를 따로 두는 이유 — 이건 **엔진 장애지 세계의 사건이 아니다.**
+    #   route=original 의 미전달(지표 9)과 섞이면 "읽을 수 없어서 못 받았다" 로
+    #   오독된다. 조건별로 빈도가 다르면 4a 도 오염되므로 반드시 따로 센다.
+    try:
+        tr = translate_mod.translate(translator, from_lang, to_lang, text_sent,
+                                     sent.get("translate_instruction"))
+    except Exception as e:
+        meta["translate_failed"] = f"{type(e).__name__}: {e}"[:200]
+        inbox = {"from": sent["from"], "label": None, "text": None,
+                 "original": None, "unreadable": True, "reply_to": sent.get("reply_to")}
+        return {"kind": kind, "delivered": False, "inbox": inbox,
+                "sender_notice": {"type": "delivery_failed", "to": sent["to"]},
+                "meta": meta}
     meta["translate_prompt"] = tr["prompt"]
     meta["logprob_mean"] = tr["logprob_mean"]
     meta["text_delivered"] = tr["text"]             # 번역 경유 (지표 4a·6a·7)

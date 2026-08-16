@@ -129,8 +129,13 @@ def message_shape(messages: list[dict]) -> dict:
 
     orig = [m for m in messages if m.get("route") == "original"]
     failed = sum(1 for m in orig if not m.get("delivered"))
+    # 번역 호출 실패는 **엔진 장애**다. 지표 9(전달 실패율)에 섞으면 "읽을 수 없어서
+    # 못 받았다" 로 오독된다. 조건 간 빈도가 다르면 4a·7 도 오염되므로 따로 센다.
+    tr_failed = sum(1 for m in messages if (m.get("meta") or {}).get("translate_failed"))
 
     return {
+        "engine_translate_failed": {"n": tr_failed,
+                                    "rate": _rate(tr_failed, len(messages))},
         "n": {"total": len(messages), **{k: v for k, v in sorted(n.items()) if k}},
         "pair_dist": {k: round(v / len(intl), 4) for k, v in sorted(pair.items())} if intl else {},
         "pair_counts": dict(sorted(pair.items())),
@@ -271,6 +276,10 @@ def format_run(r: dict) -> str:
              f"n={r['9_delivery_failure']['n']}")
     L.append(f"10 원문 직통 시도      {_pct(r['10_original_attempt']['rate'])}  "
              f"n={r['10_original_attempt']['n_intl']}")
+    tf = r["engine_translate_failed"]
+    if tf["n"]:
+        L.append(f"\n⚠ 번역 호출 실패 {tf['n']}건 ({_pct(tf['rate'])}) — **엔진 장애**입니다. "
+                 "지표 9 와 별개이고,\n  조건 간 빈도가 다르면 4a·7 비교가 오염됩니다.")
     return "\n".join(L)
 
 

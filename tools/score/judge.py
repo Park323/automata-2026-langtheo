@@ -62,6 +62,9 @@ LANG_NAME = {"ja": "Japanese", "zh": "Chinese", "fr": "French"}
 SKIP_UNREADABLE = "unreadable"        # 못 읽었다 (지표 9 의 몫)
 SKIP_NO_TURN = "no_receiver_turn"     # 수신자가 다음 턴에 없다 (사망·마지막 턴)
 SKIP_NO_REASONING = "no_reasoning"    # 턴은 있었으나 근거를 한 줄도 안 썼다
+# 번역 호출이 실패했다. **엔진 장애지 세계의 사건이 아니다** — 못 읽어서 못 받은 것과
+# 섞으면 지표 9 가 부풀고, 조건별 빈도가 다르면 4a 도 오염된다.
+SKIP_TRANSLATE_FAILED = "translate_failed"
 
 
 # ── 링크 ────────────────────────────────────────────────────────────────────────
@@ -93,6 +96,10 @@ def link(messages: list[dict], events: list[dict]) -> list[dict]:
             "reasonings": [], "skip": None,
         }
         # 못 읽은 것은 route=original 에서 delivered=False 로 이미 표시된다 (지표 9 의 몫).
+        if meta.get("translate_failed"):
+            rec["skip"] = SKIP_TRANSLATE_FAILED
+            out.append(rec)
+            continue
         if not m.get("delivered") or not meta.get("text_delivered"):
             rec["skip"] = SKIP_UNREADABLE
             out.append(rec)
