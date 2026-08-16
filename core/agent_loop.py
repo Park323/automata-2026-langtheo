@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 
 from core import messaging
@@ -349,6 +350,10 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     ended_by = "exhausted"  # ended | exhausted | error | repeat_guard | runaway
     seen: dict[str, int] = {}       # (도구,인자) 반복 카운터 — 실패는 자원을 안 쓴다
     steps = 0
+    # 한 사람이 한 턴을 사는 데 걸린 시간. llm_ms 를 따로 재는 이유 — 벽시계의 거의
+    # 전부가 API 대기라서, 둘이 갈리면 우리 코드가 병목이라는 뜻이다.
+    t_turn = time.time()
+    llm_ms = 0.0
 
     while True:
         if steps >= RUNAWAY_CAP:
@@ -362,11 +367,14 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
         agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, _TOOL_TOKENS)
         evicted += dropped
         messages = [{"role": "system", "content": system_prompt}, *agent.convo]
+        t_call = time.time()
         try:
             resp = client.chat(messages, tools=TOOLS)
         except Exception as e:                          # 이 에이전트만 턴 종료
+            llm_ms += (time.time() - t_call) * 1000
             error = f"{type(e).__name__}: {str(e)[:200]}"
             break
+        llm_ms += (time.time() - t_call) * 1000
         # 압박 판정은 실측 토큰으로 한다. 없으면(Stub) 추정치.
         usage = resp.get("usage") or {}
         agent.last_prompt_tokens = int(usage.get("prompt_tokens")
@@ -445,4 +453,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             "reasoning_missing": not any(r["reasoning"] for r in reasonings),
             "steps": steps, "prompt_tokens": agent.last_prompt_tokens,
             "pressured": pressured, "evicted_blocks": evicted,
-            "memory_len": len(agent.memory)}
+            "memory_len": len(agent.memory),
+            "elapsed_ms": round((time.time() - t_turn) * 1000),
+            "llm_ms": round(llm_ms),
+            "ms_per_step": round(llm_ms / steps) if steps else None}

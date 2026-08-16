@@ -165,3 +165,46 @@ def test_logs_are_not_written_twice(tmp_path):
     w.close()
     lines = (tmp_path / "t" / "events.jsonl").read_text(encoding="utf-8").splitlines()
     assert sum(1 for l in lines if json.loads(l)["type"] == "death") == 1
+
+
+def test_agent_turn_records_its_own_wall_time():
+    """**한 사람이 한 턴을 사는 데 걸린 시간**을 남긴다.
+
+    llm_ms 를 따로 재는 이유 — 벽시계의 거의 전부가 API 대기여야 정상이고, 둘이
+    갈리면 우리 코드가 병목이라는 뜻이다. 3턴 실측에서 32,523 / 32,526 ms 였다.
+    """
+    import itertools
+    from core import config, loop
+    from core.agent_loop import Sink, run_agent_turn
+    from core.llm import StubClient, assistant_msg, tool_call
+    from domains.meteor import prompts
+
+    cfg = config.load("configs/base.yaml")
+    w = loop.init_world(cfg, itertools.count(1))
+    a = w.agents["Asla1"]; a.ap = 1.0; a.budget = 500.0
+    lg = run_agent_turn(
+        w, a, cfg, StubClient([assistant_msg(tool_call("end_turn", "1"))]),
+        Sink(), 48.0, prompts.system_for(a), prompts.render_observation(w, a, cfg, 48.0))
+    for k in ("elapsed_ms", "llm_ms", "ms_per_step"):
+        assert lg[k] is not None and lg[k] >= 0, k
+    assert lg["llm_ms"] <= lg["elapsed_ms"] + 1
+
+
+def test_wellness_spend_accumulates_over_a_life():
+    """개인 누적 wellness 출자. **본인에게는 여전히 비공개**이고 로그에만 남는다."""
+    import itertools
+    import random
+    from core import config, loop
+    from core.agent_loop import Sink
+
+    cfg = config.load("configs/base.yaml")
+    w = loop.init_world(cfg, itertools.count(1))
+    r = loop.RunResult(world=w)
+    for _ in range(3):
+        sink = Sink(); sink.wellness = [("Asla1", 40.0)]
+        loop._settle_agentic(w, cfg, random.Random(0), sink, None, 48.0,
+                             itertools.count(500), r, itertools.count(900))
+    assert w.agents["Asla1"].wellness_spent == 120.0
+
+    obs = prompts.render_observation(w, w.agents["Asla1"], cfg, 48.0)
+    assert "120" not in obs                      # 관측에는 안 나온다

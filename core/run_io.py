@@ -114,6 +114,7 @@ class RunWriter:
                 "lambda": round(a.lam, 4), "known_langs": sorted(a.known_langs),
                 "parent_langs": sorted(a.parent_langs), "budget": round(a.budget, 4),
                 "budget_start": round(a.budget_start, 4),
+                "wellness_spent": round(a.wellness_spent, 4),
                 "born_turn": a.born_turn, "born_by": a.born_by, "alive": a.alive,
                 "uid": a.uid,
             })
@@ -132,6 +133,10 @@ class RunWriter:
                 "steps": lg.get("steps"), "prompt_tokens": lg.get("prompt_tokens"),
                 "pressured": lg.get("pressured"), "evicted_blocks": lg.get("evicted_blocks"),
                 "memory_len": lg.get("memory_len"),
+                # 한 사람이 한 턴을 사는 데 걸린 시간. llm_ms 가 elapsed 의 거의 전부여야
+                # 정상이고, 갈리면 우리 코드가 병목이라는 뜻이다.
+                "elapsed_ms": lg.get("elapsed_ms"), "llm_ms": lg.get("llm_ms"),
+                "ms_per_step": lg.get("ms_per_step"),
                 "actions": [a.get("type") for a in lg.get("actions", [])],
             })
         for lr in result.learns_log:
@@ -174,6 +179,9 @@ class RunWriter:
             "llm_failure_rate": round(failed / len(logs), 4) if logs else 0.0,
             "ended_by": ends,
             "prompt_tokens_max": max((lg.get("prompt_tokens") or 0 for lg in logs.values()), default=0),
+            # 턴 벽시계는 9명 병렬이라 **가장 느린 사람**이 정한다
+            "turn_wall_ms": max((lg.get("elapsed_ms") or 0 for lg in logs.values()), default=0),
+            "agent_ms_sum": sum(lg.get("elapsed_ms") or 0 for lg in logs.values()),
             "pressured": sum(1 for lg in logs.values() if lg.get("pressured")),
             "memory_writes": sum(1 for lg in logs.values()
                                  for a in lg.get("actions", []) if a.get("type") == "memory_write"),

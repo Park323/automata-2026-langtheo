@@ -188,8 +188,10 @@ function start(data, name){
   $("#drop").hidden = true; $("#app").hidden = false;
   $("#scrub").max = D.turns; $("#scrub").value = 1;
   const f = D.summary.final || {};
+  const secs = D.summary.elapsed_s;
   $("#runinfo").textContent =
     `${name}  ·  노브 ${D.knob ?? "?"}  시드 ${D.seed ?? "?"}  ·  ${D.turns}턴` +
+    (secs ? `  ·  ${(secs / 60).toFixed(1)}분 (${(secs / D.turns).toFixed(1)}s/턴)` : "") +
     (f.outcome ? `  ·  ${f.outcome}` : "");
   render();
 }
@@ -237,11 +239,12 @@ function agents(b){
       <span class="langs mono" style="color:${learned ? "var(--ai)" : "var(--dim)"}">
         ${(s.known_langs || []).join("·")}</span>
       <span style="flex:1"></span>
-      <span class="muted mono" style="font-size:11px">${Math.round(s.budget)}원 · ${s.age}살</span>
+      <span class="muted mono" style="font-size:11px">${Math.round(s.budget)}원 · ${s.age}살${
+        s.wellness_spent ? ` · <span style="color:var(--ok)">♥${Math.round(s.wellness_spent)}</span>` : ""}</span>
       ${s.born_by === "procreate" ? `<span class="badge">계승</span>` : ""}
     </div>`;
   }).join("");
-  return `<h2>사람 <span class="muted">(${b.state.filter(s=>s.alive).length}명)</span></h2>${rows}`;
+  return `<h2>사람 <span class="muted">(${b.state.filter(s=>s.alive).length}명 · ♥ = 누적 wellness)</span></h2>${rows}`;
 }
 
 function messages(b){
@@ -301,18 +304,37 @@ function describe(e){
 }
 
 function acts(b){
-  const rows = b.events.filter(e => e.type === "agent_turn" && (e.actions || []).length)
-    .map(e => {
-      const rs = (e.reasonings || []).filter(r => r.reasoning);
-      return `<div style="padding:6px 0;border-bottom:1px solid #1b212a">
-        <div class="mono" style="font-size:12px"><b>${e.agent}</b>
-          <span class="muted">${(e.actions || []).join(" · ")}</span></div>
-        ${rs.length ? `<details class="reason"><summary>왜 그랬는가 (${rs.length})</summary>
-          ${rs.map(r => `<div class="r"><span class="muted mono">${r.tool}${r.ok ? "" : " ✗"}</span>
-            ${esc(r.reasoning)}</div>`).join("")}</details>` : ""}
-      </div>`;
-    }).join("");
-  return `<h2>누가 무엇을 했는가</h2>${rows || `<div class="empty">아무도 움직이지 않았습니다</div>`}`;
+  // **생존자 전원**을 보여준다. 행동이 0건인 것도 관측이고 (실측에서 32%),
+  // 그 사람이 무엇을 시도했다 실패했는지는 reasoning 에만 남는다.
+  const turns = b.events.filter(e => e.type === "agent_turn")
+    .sort((x, y) => x.agent.localeCompare(y.agent));
+  if (!turns.length) return `<h2>누가 무엇을 했는가</h2><div class="empty">—</div>`;
+  const acted = turns.filter(e => (e.actions || []).length).length;
+  const rows = turns.map(e => {
+    const rs = (e.reasonings || []).filter(r => r.reasoning);
+    const failed = (e.reasonings || []).filter(r => r.ok === false).length;
+    const did = (e.actions || []);
+    const ms = e.elapsed_ms;
+    return `<div style="padding:6px 0;border-bottom:1px solid #1b212a${
+              did.length ? "" : ";opacity:.55"}">
+      <div class="mono" style="font-size:12px;display:flex;gap:6px;align-items:baseline">
+        <b>${e.agent}</b>
+        <span class="muted" style="flex:1">${
+          did.length ? did.join(" · ") : "아무것도 하지 않음"}</span>
+        ${failed ? `<span class="badge" style="color:var(--bad)">실패 ${failed}</span>` : ""}
+        ${e.pressured ? `<span class="badge" style="color:var(--warn)">기억 압박</span>` : ""}
+        ${e.error ? `<span class="badge" style="color:var(--bad)">오류</span>` : ""}
+      </div>
+      <div class="muted mono" style="font-size:10px">
+        ${e.steps ?? "?"}스텝${ms != null ? ` · ${(ms / 1000).toFixed(1)}s` : ""}${
+          e.ms_per_step != null ? ` · 결정당 ${(e.ms_per_step / 1000).toFixed(1)}s` : ""} · ${
+          e.ended_by ?? ""}${e.prompt_tokens ? ` · ${e.prompt_tokens}토큰` : ""}</div>
+      ${rs.length ? `<details class="reason"><summary>왜 그랬는가 (${rs.length})</summary>
+        ${rs.map(r => `<div class="r"><span class="muted mono">${r.tool}${r.ok === false ? " ✗" : ""}</span>
+          ${esc(r.reasoning)}</div>`).join("")}</details>` : ""}
+    </div>`;
+  }).join("");
+  return `<h2>누가 무엇을 했는가 <span class="muted">(${acted}/${turns.length} 움직임)</span></h2>${rows}`;
 }
 
 function render(){
@@ -323,7 +345,9 @@ function render(){
   $("#events").innerHTML  = events(b);
   $("#acts").innerHTML    = acts(b);
   $("#scrub").value = turn;
-  $("#turnlab").textContent = `${FIRST_YEAR + turn - 1}년  (턴 ${turn}/${D.turns})`;
+  const m = b.metric;
+  const wall = m && m.turn_wall_ms ? `  ·  ${(m.turn_wall_ms / 1000).toFixed(1)}s` : "";
+  $("#turnlab").textContent = `${FIRST_YEAR + turn - 1}년  (턴 ${turn}/${D.turns})${wall}`;
 }
 
 // ── 조작 ──────────────────────────────────────────────────────────────────

@@ -26,6 +26,7 @@ class Agent:
     convo: list = field(default_factory=list)
     last_prompt_tokens: int = 0   # 직전 호출의 실측 프롬프트 토큰 (압박 판정에 쓴다)
     budget_start: float = 0.0     # 이번 턴 **결정 시점**의 예산. x̂ 의 분모 (spec 8.4)
+    wellness_spent: float = 0.0   # 생애 누적 wellness 출자. 본인에게는 비공개
 
 
 @dataclass

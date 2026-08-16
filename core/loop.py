@@ -363,6 +363,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     for aid, amount in sink.wellness:
         if aid in world.agents:
             world.agents[aid].lam += amount * cfg.wellness.gain
+            world.agents[aid].wellness_spent += amount
     for cid, amount, _ in sink.national:
         world.countries[cid].national_capital += amount
 
