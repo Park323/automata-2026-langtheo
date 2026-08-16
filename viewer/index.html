@@ -321,7 +321,8 @@ function describe(e){
     case "land_change": return e.passed
       ? `${e.country} → ${e.target} (찬 ${e.yes} 반 ${e.no}) · 진척 ${Math.round(e.progress_lost)} 소실`
       : `${e.country} 부결 (찬 ${e.yes} 반 ${e.no}) · ${e.target} 로 바뀌지 않음`;
-    case "death": return `${e.who} 사망 (${e.country})`;
+    case "death": return `${e.who} 사망 → ${e.born || "?"} 출생 (${e.country}, ${
+      e.by === "procreate" ? "계승" : "자연사"})`;
     case "birth": return `${e.id} 출생${e.replaces ? ` (${e.replaces} 의 자리)` : ""}`
       + ` · ${e.born_by === "procreate" ? "계승" : "자연발생"} · ${Math.round(e.budget)}원`;
     case "learn": return `${e.agent} 가 ${e.target} 말을 배움 · ${Math.round(e.charged)}원 (L×${e.rung})` +

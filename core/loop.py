@@ -143,10 +143,6 @@ def _death_birth(world: World, cfg, rng: random.Random, snapshot_ids, procreated
         if rng.random() < survival.hazard(a.age, a.lam, cfg.survival.k):
             result.deaths += 1
             result.death_ages.append(a.age)   # 마지막 생존 나이 = 죽는 턴의 age (spec 2.2)
-            # 부고는 **같은 나라 사람에게만.** 타국의 인구 구성은 메시지로만 알 수 있다
-            # (spec 4.1). 국내 구사자 할인이 사라진 이유를 알 수 있게 하는 정보이기도 하다.
-            result.deaths_log.append({"turn": world.turn, "who": aid,
-                                      "country": a.country, "by": "natural"})
             # 자연사는 계보와 무관한 '자연발생한 뒷세대' (spec 3.2). 개인에 속한 것은 전부
             # 소실(예산·언어·부모 할인 자격·쌓인 유언), 국가·세계는 유지(국토·진척·national_capital).
             child = _newborn(
@@ -156,6 +152,11 @@ def _death_birth(world: World, cfg, rng: random.Random, snapshot_ids, procreated
                 world.turn, "natural", cfg, counter,
             )
             _replace(world, aid, child, [])   # 쌓인 유언도 계보와 함께 소실
+            # 부고는 **같은 나라 사람에게만** (spec 4.1). 누가 죽고 누가 그 자리에 왔는지를
+            # 한 쌍으로 알린다 — 이름이 안 이어지면 명단만 보고는 짝지을 수 없다.
+            # 국내 구사자 할인이 사라진 이유를 알 수 있게 하는 정보이기도 하다.
+            result.deaths_log.append({"turn": world.turn, "who": aid, "born": child.id,
+                                      "country": a.country, "by": "natural"})
             result.births.append(
                 {"turn": world.turn, "id": child.id, "replaces": aid, "uid": child.uid,
                  "born_by": "natural", "budget": child.budget}
@@ -177,8 +178,8 @@ def _procreate_child(world: World, aid: str, testament: str, cfg,
     _replace(world, aid, child, carry)
     result.deaths += 1
     result.death_ages.append(a.age)
-    result.deaths_log.append({"turn": world.turn, "who": aid, "country": a.country,
-                              "by": "procreate"})
+    result.deaths_log.append({"turn": world.turn, "who": aid, "born": child.id,
+                              "country": a.country, "by": "procreate"})
     result.births.append({"turn": world.turn, "id": child.id, "replaces": aid,
                           "uid": child.uid, "born_by": "procreate",
                           "budget": child.budget})
@@ -539,7 +540,8 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
                     continue
                 world.inbox_queue.append({
                     "deliver_turn": world.turn + 1, "to": aid, "to_uid": a.uid,
-                    "msg": {"msg_id": next(msg_ids), "died": d["who"]}})
+                    "msg": {"msg_id": next(msg_ids), "died": d["who"],
+                            "born": d.get("born")}})
 
     result.acted.append(snapshot_uids)
     result.alive_counts.append(sum(1 for a in world.agents.values() if a.alive))

@@ -485,3 +485,33 @@ def test_roster_sorts_by_number_not_alphabetically(cfg, world):
     line = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
     row = next(l for l in line.splitlines() if "Asla1" in l and "Ranoa1" in l)
     assert row.index("Asla2") < row.index("Asla10")
+
+
+def test_the_obituary_names_the_successor(cfg, world):
+    """**누가 죽고 누가 그 자리에 왔는지를 한 쌍으로 알린다.**
+
+    id 를 재사용하지 않으므로 이름만으로는 짝지을 수 없다 — 「Asla1 이 죽었다」 만
+    보면 명단에 새로 생긴 Asla4 가 그 자리인지 알 수 없다.
+    """
+    import random
+    from domains.meteor import prompts
+    for a in world.agents.values():
+        a.age = 40
+    r = loop.RunResult(world=world)
+    loop._death_birth(world, cfg, random.Random(1), sorted(world.agents), set(),
+                      itertools.count(700), r)
+    for d in r.deaths_log:
+        assert d["born"] in world.agents and d["born"] != d["who"]
+
+    d = next(x for x in r.deaths_log if x["country"] == "Asla")
+    line = prompts.render_inbox([{"msg_id": 1, "died": d["who"], "born": d["born"]}], "ja")
+    assert d["who"] in line and d["born"] in line
+
+
+def test_procreate_also_announces_the_pair(cfg, world):
+    """스스로 죽는 것도 같은 나라 사람에게는 같은 사건이다."""
+    r = loop.RunResult(world=world)
+    loop._procreate_child(world, "Asla1", "유언", cfg, itertools.count(900), r)
+    (d,) = r.deaths_log
+    assert (d["who"], d["by"]) == ("Asla1", "procreate")
+    assert d["born"] == "Asla4" and d["born"] in world.agents
