@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -65,6 +66,87 @@ def learn_cost(agent, country_id: str, world, cfg) -> tuple[float, str]:
     if parent:
         reasons.append("your parent spoke it (x0.5)")
     return base * mult, " · ".join(reasons) if reasons else "no discount"
+
+
+# ── 새어나온 도구 호출 회수 ──────────────────────────────────────────────────
+
+_FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
+
+
+def _json_objects(text: str):
+    """중괄호 짝을 세어 최상위 JSON 객체들을 뽑는다. 문자열 안의 괄호는 건너뛴다."""
+    depth = start = 0
+    in_str = esc = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                yield text[start:i + 1]
+            elif depth < 0:
+                depth = 0
+
+
+def recover_tool_calls(content: str | None) -> list[dict]:
+    """모델이 `tool_calls` 대신 `content` 에 넣은 도구 호출을 주워담는다.
+
+    **전송 장애이지 세계의 사건이 아니다.** 8턴 실측에서 도구를 안 부른 응답 19건이
+    **전부** content 안의 도구 호출이었고 (learn 6 · vote 6 · invest 3 · end_turn 2 …),
+    그대로 버려지고 있었다. "학습 0건" 의 원인이 여기 있을 수 있다 — 모델은 배우려
+    했는데 호출이 도구 채널로 안 나갔다.
+
+    스펙이 "자주 틀리는 곳 8" 로 적어둔 그것이다. qwen-2.5-7b 는 tools 를 지원하는데도
+    8% 가 샌다.
+
+    ⚠ **조건 간에 균등하게 새지 않을 수 있다** — 노브가 비싸면 learn 을 더 자주
+      시도할 텐데 그게 더 많이 새면 학습률이 조건 의존적으로 왜곡된다. 그래서 버리지
+      않고 줍는다. 주운 건수는 `recovered` 로 따로 센다.
+    """
+    if not content:
+        return []
+    texts = [content, *(m.group(1) for m in _FENCE.finditer(content))]
+    out: list[dict] = []
+    for t in texts:
+        for blob in _json_objects(t):
+            try:
+                o = json.loads(blob)
+            except json.JSONDecodeError:
+                continue
+            calls = o.get("tool_calls") if isinstance(o, dict) else None
+            for c in (calls if isinstance(calls, list) else [o]):
+                if not isinstance(c, dict):
+                    continue
+                fn = c.get("function") if isinstance(c.get("function"), dict) else c
+                name = fn.get("name")
+                if name not in TOOL_NAMES:
+                    continue
+                args = fn.get("arguments", fn.get("parameters", {}))
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = {}
+                if not isinstance(args, dict):
+                    args = {}
+                out.append({"id": f"rec_{len(out)}", "type": "function",
+                            "function": {"name": name,
+                                         "arguments": json.dumps(args, ensure_ascii=False)}})
+        if out:
+            break                     # 원문에서 건졌으면 코드펜스는 같은 것의 중복이다
+    return out
 
 
 # ── 도구 실행 ────────────────────────────────────────────────────────────────
@@ -354,6 +436,8 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     # 전부가 API 대기라서, 둘이 갈리면 우리 코드가 병목이라는 뜻이다.
     t_turn = time.time()
     llm_ms = 0.0
+    recovered = 0                   # content 로 새어 회수한 도구 호출 수
+    no_tool_content = ""            # 끝내 회수 못 한 응답 본문 (진단용)
 
     while True:
         if steps >= RUNAWAY_CAP:
@@ -386,7 +470,15 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             api_reasoning = str(msg["reasoning"])
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
-            break
+            # 도구 채널이 아니라 content 로 샌 호출을 줍는다 (전송 장애)
+            tool_calls = recover_tool_calls(msg.get("content"))
+            if tool_calls:
+                recovered += len(tool_calls)
+                msg = {**msg, "content": None}     # 회수했으니 본문은 비운다
+            else:
+                ended_by = "no_tool_call"          # **"exhausted" 로 뭉뚱그리지 않는다**
+                no_tool_content = (msg.get("content") or "")[:400]
+                break
         # tool_call 에 id 를 보장한다 (없으면 echo 한 assistant 와 tool 응답의 짝이 어긋나 400)
         # 그리고 arguments 를 **정규화**한다. 모델이 출력 상한에 걸려 잘린 JSON 을 주면
         # 그대로 되돌려줄 때 프로바이더가 400 을 낸다 (실측 218콜 중 8건).
@@ -454,6 +546,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             "steps": steps, "prompt_tokens": agent.last_prompt_tokens,
             "pressured": pressured, "evicted_blocks": evicted,
             "memory_len": len(agent.memory),
+            "recovered_calls": recovered, "no_tool_content": no_tool_content,
             "elapsed_ms": round((time.time() - t_turn) * 1000),
             "llm_ms": round(llm_ms),
             "ms_per_step": round(llm_ms / steps) if steps else None}

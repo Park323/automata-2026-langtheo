@@ -106,3 +106,90 @@ def test_intent_is_gone(cfg):
     res = _run(cfg, {"Asla1": [
         assistant_msg(tool_call("speak", "1", to="Asla2", text="x", reasoning="r")), end]})
     assert "intent" not in res.messages_log[0]
+
+
+# ── 새어나온 도구 호출 회수 (8/16) ────────────────────────────────────────────
+
+@pytest.fixture
+def world(cfg):
+    import itertools
+    return loop.init_world(cfg, itertools.count(1))
+
+
+def test_recovers_a_tool_call_that_leaked_into_content():
+    """모델이 `tool_calls` 대신 `content` 에 도구 호출을 넣는다. **전송 장애다.**
+
+    8턴 실측에서 도구를 안 부른 응답 19건이 **전부** content 안의 도구 호출이었고
+    (learn 6 · vote 6 · invest 3 …) 통째로 버려지고 있었다. 43턴 런에서는 learn 만
+    19건이 날아갔다 — "학습 0건" 의 원인이 여기 있을 수 있다.
+    """
+    from core.agent_loop import recover_tool_calls as R
+    import json as _json
+
+    cases = [
+        ('{\n"name": "learn",\n"arguments": {"country": "Ranoa", "reasoning": "r"}\n}',
+         "learn", {"country": "Ranoa", "reasoning": "r"}),
+        ('```json\n{"name":"vote","arguments":{"approve":true,"reasoning":"r"}}\n```',
+         "vote", {"approve": True, "reasoning": "r"}),
+        ('설명입니다. {"name":"invest","arguments":{"target":"facility","amount":50,'
+         '"reasoning":"r"}} 끝.',
+         "invest", {"target": "facility", "amount": 50, "reasoning": "r"}),
+        ('{"tool_calls":[{"function":{"name":"speak","arguments":'
+         '"{\\"to\\":\\"Ranoa1\\",\\"text\\":\\"x\\",\\"reasoning\\":\\"r\\"}"}}]}',
+         "speak", {"to": "Ranoa1", "text": "x", "reasoning": "r"}),
+    ]
+    for content, name, args in cases:
+        (c,) = R(content)
+        assert c["function"]["name"] == name
+        assert _json.loads(c["function"]["arguments"]) == args
+
+
+def test_recovery_ignores_prose_and_unknown_tools():
+    """잡담을 도구 호출로 오인하면 세계가 하지도 않은 일을 한다."""
+    from core.agent_loop import recover_tool_calls as R
+    assert R("그냥 잡담입니다") == []
+    assert R('{"name":"unknown_tool","arguments":{}}') == []
+    assert R(None) == [] and R("") == []
+    assert R('{"country": "Ranoa"}') == []          # name 이 없다
+
+
+def test_recovered_call_actually_runs(cfg, world):
+    """회수한 호출이 실제로 세계를 바꾼다 — 줍기만 하고 안 쓰면 의미가 없다."""
+    from core.agent_loop import Sink, run_agent_turn
+    a = world.agents["Asla1"]
+    a.ap, a.budget = 1.0, 5000.0
+    leaked = {"role": "assistant",
+              "content": '{"name":"learn","arguments":{"country":"Ranoa","reasoning":"r"}}'}
+    lg = run_agent_turn(world, a, cfg, StubClient([leaked]), Sink(), 48.0,
+                        prompts.system_for(a), prompts.render_observation(world, a, cfg, 48.0))
+    assert lg["recovered_calls"] == 1
+    assert [x["type"] for x in lg["actions"]] == ["learn"]
+    assert a.budget == 5000.0 - cfg.costs.learn_base
+
+
+def test_no_tool_call_is_not_reported_as_exhausted(cfg, world):
+    """**로그가 거짓말을 하고 있었다.** tool_calls 가 비어 끝난 것을 `exhausted`
+    (자원 고갈)로 기록했다 — 실측에서 행동 0건 23건 중 21건이 이 경우였고,
+    Phase 1 을 "에이전트가 가난해서 못 움직인다" 로 읽을 뻔했다.
+    """
+    from core.agent_loop import Sink, run_agent_turn
+    a = world.agents["Asla1"]
+    a.ap, a.budget = 1.0, 5000.0                      # 자원은 충분하다
+    lg = run_agent_turn(world, a, cfg,
+                        StubClient([{"role": "assistant", "content": "생각 중입니다"}]),
+                        Sink(), 48.0, prompts.system_for(a),
+                        prompts.render_observation(world, a, cfg, 48.0))
+    assert lg["ended_by"] == "no_tool_call"
+    assert lg["recovered_calls"] == 0
+    assert "생각 중입니다" in lg["no_tool_content"]    # 무엇을 답했는지 남는다
+
+
+def test_exhausted_still_means_exhausted(cfg, world):
+    """진짜 자원 고갈은 그대로 `exhausted` 여야 한다."""
+    from core.agent_loop import Sink, run_agent_turn
+    a = world.agents["Asla1"]
+    a.ap, a.budget = 0.0, 0.0
+    lg = run_agent_turn(world, a, cfg, StubClient([]), Sink(), 48.0,
+                        prompts.system_for(a),
+                        prompts.render_observation(world, a, cfg, 48.0))
+    assert lg["ended_by"] == "exhausted" and lg["steps"] == 0

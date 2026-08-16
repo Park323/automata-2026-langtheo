@@ -101,8 +101,9 @@
     <h1>langtheo <span class="muted">런 뷰어</span></h1>
     <span id="runinfo" class="muted mono"></span>
     <span style="flex:1"></span>
+    <button id="pickdir">폴더 열기</button>
     <input type="file" id="picker" multiple webkitdirectory directory>
-    <button id="demo">예시 로드</button>
+    <button id="live" title="런이 도는 동안 새 턴을 따라갑니다">◉ 라이브 꺼짐</button>
   </div>
   <div class="row" style="margin-top:8px">
     <button id="prev">◀</button>
@@ -114,9 +115,11 @@
 </header>
 
 <div id="drop" class="drop">
-  런 디렉터리(<code>runs/&lt;run_id&gt;</code>)를 통째로 골라주세요 —
-  <code>state.jsonl · messages.jsonl · events.jsonl · metrics.jsonl · summary.json</code><br>
-  또는 주소에 <code>?run=phase1_knob48_seed1</code> 을 붙이면 상대 경로에서 읽습니다.
+  <b>폴더 열기</b> 로 런 디렉터리(<code>runs/&lt;run_id&gt;</code>)를 고르세요 —
+  <b>라이브</b> 를 켜면 런이 도는 동안 새 턴이 따라옵니다.<br>
+  파일 선택으로 고른 경우엔 스냅숏이라 라이브가 안 됩니다.
+  <code>python3 -m http.server</code> 로 띄우고
+  <code>?run=phase1_knob48_seed1</code> 을 붙여도 됩니다.
 </div>
 
 <main id="app" hidden>
@@ -169,24 +172,45 @@ function build(files){
   return d;
 }
 
-async function loadFromPath(run){
-  const names = ["state.jsonl","messages.jsonl","events.jsonl","metrics.jsonl",
-                 "summary.json","config_snapshot.yaml"];
+const NAMES = ["state.jsonl","messages.jsonl","events.jsonl","metrics.jsonl",
+               "summary.json","config_snapshot.yaml"];
+let source = null;            // 다시 읽을 수 있는 출처 (없으면 라이브 불가)
+
+async function readFetch(run){
   const files = {};
-  await Promise.all(names.map(async n => {
+  await Promise.all(NAMES.map(async n => {
     try {
-      const r = await fetch(`../runs/${run}/${n}`);
+      const r = await fetch(`../runs/${run}/${n}?t=${Date.now()}`, {cache:"no-store"});
       if (r.ok) files[n] = await r.text();
     } catch {}
   }));
+  return files;
+}
+
+async function readHandle(dir){
+  const files = {};
+  await Promise.all(NAMES.map(async n => {
+    try { files[n] = await (await (await dir.getFileHandle(n)).getFile()).text(); }
+    catch {}
+  }));
+  return files;
+}
+
+async function loadFromPath(run){
+  const files = await readFetch(run);
   if (!files["state.jsonl"]) { alert(`runs/${run} 를 못 읽었습니다`); return; }
+  source = { name: run, read: () => readFetch(run) };
   start(build(files), run);
 }
 
-function start(data, name){
-  D = data; turn = 1;
+function start(data, name, keepTurn = false){
+  const wasLast = D && turn >= D.turns;
+  D = data;
+  turn = keepTurn ? Math.min(turn, D.turns) : 1;
+  if (keepTurn && wasLast) turn = D.turns;      // 끝을 보고 있었으면 계속 따라간다
   $("#drop").hidden = true; $("#app").hidden = false;
-  $("#scrub").max = D.turns; $("#scrub").value = 1;
+  $("#live").disabled = !source;
+  $("#scrub").max = D.turns; $("#scrub").value = turn;
   const f = D.summary.final || {};
   const secs = D.summary.elapsed_s;
   $("#runinfo").textContent =
@@ -377,12 +401,50 @@ $("#picker").onchange = async e => {
   }));
   if (!files["state.jsonl"]) { alert("state.jsonl 이 없습니다 — 런 디렉터리를 골라주세요"); return; }
   const dir = ([...e.target.files][0].webkitRelativePath || "").split("/")[0];
+  source = null;                       // 스냅숏이라 다시 읽을 수 없다
   start(build(files), dir || "run");
 };
 $("#demo").onclick = () => loadFromPath("phase1_knob48_seed1");
 
+// ── 라이브 ────────────────────────────────────────────────────────────────
+// 런이 도는 동안 새 턴을 따라간다. 로그가 턴마다 append 되므로 다시 읽으면 그만이다.
+// **끝을 보고 있을 때만** 따라가고, 과거 턴을 보는 중이면 그 자리를 지킨다.
+let liveTimer = null;
+function setLive(on){
+  clearInterval(liveTimer); liveTimer = null;
+  $("#live").textContent = on ? "◉ 라이브 켜짐" : "◉ 라이브 꺼짐";
+  $("#live").style.color = on ? "var(--ok)" : "";
+  if (!on || !source) return;
+  liveTimer = setInterval(async () => {
+    try {
+      const files = await source.read();
+      if (!files["state.jsonl"]) return;
+      const d = build(files);
+      if (d.turns === D.turns && d.messages.length === D.messages.length) return;
+      start(d, source.name, true);
+    } catch { /* 파일이 쓰이는 중일 수 있다 — 다음 주기에 다시 */ }
+  }, 3000);
+}
+$("#live").onclick = () => setLive(!liveTimer);
+
+$("#pickdir").onclick = async () => {
+  if (!window.showDirectoryPicker){
+    alert("이 브라우저는 폴더 열기를 지원하지 않습니다. 아래 파일 선택을 쓰세요 "
+          + "(스냅숏이라 라이브는 안 됩니다).");
+    return;
+  }
+  const dir = await window.showDirectoryPicker();
+  const files = await readHandle(dir);
+  if (!files["state.jsonl"]) { alert("state.jsonl 이 없습니다 — 런 디렉터리를 골라주세요"); return; }
+  source = { name: dir.name, read: () => readHandle(dir) };
+  start(build(files), dir.name);
+};
+
 const q = new URLSearchParams(location.search).get("run");
-if (q) loadFromPath(q);
+if (q) loadFromPath(q).then(() => {
+  if (new URLSearchParams(location.search).get("live") !== "0") setLive(true);
+});
+setLive(false);
 </script>
 </body>
 </html>

@@ -135,6 +135,8 @@ class RunWriter:
                 "memory_len": lg.get("memory_len"),
                 # 한 사람이 한 턴을 사는 데 걸린 시간. llm_ms 가 elapsed 의 거의 전부여야
                 # 정상이고, 갈리면 우리 코드가 병목이라는 뜻이다.
+                "recovered_calls": lg.get("recovered_calls"),
+                "no_tool_content": lg.get("no_tool_content"),
                 "elapsed_ms": lg.get("elapsed_ms"), "llm_ms": lg.get("llm_ms"),
                 "ms_per_step": lg.get("ms_per_step"),
                 "actions": [a.get("type") for a in lg.get("actions", [])],
@@ -183,6 +185,10 @@ class RunWriter:
             "turn_wall_ms": max((lg.get("elapsed_ms") or 0 for lg in logs.values()), default=0),
             "agent_ms_sum": sum(lg.get("elapsed_ms") or 0 for lg in logs.values()),
             "pressured": sum(1 for lg in logs.values() if lg.get("pressured")),
+            # 도구 채널로 안 나온 호출을 몇 건 주웠나 / 끝내 못 주운 턴은 몇인가
+            "recovered_calls": sum(lg.get("recovered_calls") or 0 for lg in logs.values()),
+            "no_tool_call": sum(1 for lg in logs.values()
+                                if lg.get("ended_by") == "no_tool_call"),
             "memory_writes": sum(1 for lg in logs.values()
                                  for a in lg.get("actions", []) if a.get("type") == "memory_write"),
             "raw_calls_total": self.counts["raw"], "raw_errors": self.counts["errors"],
