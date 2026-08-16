@@ -440,7 +440,10 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         recipient = world.agents.get(sent["to"])
         reck = recipient.known_langs if recipient else set()
         to_uid = recipient.uid if recipient else None
-        p = messaging.process_message(sent, reck, cfg, translator, knob_ai)
+        sender = world.agents.get(sent["from"])
+        p = messaging.process_message(sent, reck, cfg, translator, knob_ai,
+                                      sender_known_langs=(sender.known_langs if sender
+                                                          else frozenset()))
         world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["to"],
                                   "to_uid": to_uid, "msg": p["inbox"]})
         gid = next(msg_ids)
@@ -603,7 +606,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
 
 def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
                 render_obs, system_prompt, parallel: bool = True,
-                on_turn_end=None) -> RunResult:
+                on_turn_end=None, sim_turns: int | None = None) -> RunResult:
     """LLM(또는 StubClient) 에이전트로 total_turns 턴을 돌린다.
 
     client_for(aid) : 에이전트별 클라이언트 (병렬이라 상태 있는 Stub 은 에이전트마다 별개여야).
@@ -614,11 +617,23 @@ def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
     msg_ids = itertools.count(1)      # 전역 메시지 id — understood 의 조인 키 (spec 6.1)
     world = init_world(cfg, counter, rng)
     result = RunResult(world=world)
-    for t in range(1, cfg.world.total_turns + 1):
+    # **운석 시점과 시뮬 길이는 다른 것이다.** `cfg.world.total_turns` 가 운석이 떨어지는
+    # 해이고 경제(창·임계)도 수명도 거기서 유도된다. `sim_turns` 는 **몇 턴까지 돌려볼
+    # 것인가** 다. 붙여 두면 40턴 테스트가 "40턴짜리 세계" 가 되어 남은 턴·임계·수명이
+    # 전부 달라지고, 짧은 테스트의 관측이 본실험과 다른 세계를 재게 된다.
+    last = min(sim_turns or cfg.world.total_turns, cfg.world.total_turns)
+    for t in range(1, last + 1):
         world.turn = t
         run_turn_agentic(world, cfg, rng, result, counter, client_for, translator, knob_ai,
                          render_obs, system_prompt, msg_ids,
                          is_last=(t == cfg.world.total_turns),
                          parallel=parallel, on_turn_end=on_turn_end)
-    result.final = final_survival(world, cfg, rng)
+    if last >= cfg.world.total_turns:
+        result.final = final_survival(world, cfg, rng)
+    else:
+        # 운석이 아직 안 떨어졌다. 생존 판정을 돌리면 "요격 실패" 로 기록되어
+        # 중간에 끊은 테스트가 멸망한 세계처럼 보인다.
+        result.final = {"outcome": "truncated", "simulated_turns": last,
+                        "impact_turn": cfg.world.total_turns,
+                        "interceptor_best": result.interceptor_best}
     return result

@@ -75,7 +75,8 @@ def check_model(model_id: str, key: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=str(ROOT / "configs" / "base.yaml"))
-    ap.add_argument("--turns", type=int, default=3)
+    ap.add_argument("--turns", type=int, default=3,
+                    help="**시뮬 길이**. 운석이 떨어지는 해(config 의 total_turns)와 다르다")
     ap.add_argument("--knob", type=float, default=None, help="comm_intl_ai 값 (기본: config 최고값)")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--agent-model", default=None)
@@ -98,10 +99,11 @@ def main() -> None:
     except Exception:
         pass
 
-    # --turns 를 config 에 실제로 반영한다 (base.yaml 은 total_turns=50)
+    # ⚠ --turns 는 **시뮬 길이**다. config 의 total_turns(=운석이 떨어지는 해)는
+    #   건드리지 않는다. 건드리면 40턴 테스트가 "40턴짜리 세계" 가 되어 남은 턴·임계·
+    #   수명이 전부 달라지고, 짧은 테스트가 본실험과 다른 세계를 재게 된다.
     import yaml
     raw = yaml.safe_load(open(args.config, encoding="utf-8"))
-    raw["world"]["total_turns"] = args.turns
     cfg = config.from_dict(raw)
     key = load_key()
     agent_model = args.agent_model or cfg.llm.agent_model
@@ -151,7 +153,8 @@ def main() -> None:
                           client_for=lambda aid: agent_client, translator=translator,
                           knob_ai=knob, render_obs=prompts.render_observation,
                           system_prompt=prompts.system_for, parallel=not args.sequential,
-                          on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)))
+                          on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)),
+                          sim_turns=args.turns)
     except BaseException as e:
         writer.close({"final": {"outcome": "aborted"}, "deaths": None,
                       "aborted": f"{type(e).__name__}: {e}"[:300],
@@ -167,7 +170,8 @@ def main() -> None:
     print(f"\n산출물        {writer.dir}")
 
     # ── 호출·비용 ──
-    print(f"\n소요 시간      {elapsed:.1f}s  ({elapsed / args.turns:.1f}s/턴)")
+    turns_done = len(res.alive_counts)
+    print(f"\n소요 시간      {elapsed:.1f}s  ({elapsed / max(1, turns_done):.1f}s/턴)")
     print(f"에이전트 호출  {agent_client.calls}회  "
           f"(in {agent_client.prompt_tokens} / out {agent_client.completion_tokens} 토큰)")
     print(f"번역 호출      {translator.calls}회  "

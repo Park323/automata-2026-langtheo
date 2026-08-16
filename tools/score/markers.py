@@ -118,7 +118,11 @@ def score_messages(messages: list[dict], lex: dict | None = None) -> dict:
 
     for m in messages:
         meta = m.get("meta") or {}
-        src, dst = meta.get("src_lang"), meta.get("dst_lang")
+        src = meta.get("src_lang")
+        # **도착한 글의 실제 언어**로 센다. 번역을 안 탄 경로(domestic·original)는
+        # 발신 언어 그대로인데 dst_lang 으로 세면 같은 글을 다른 언어 사전으로 훑어
+        # 표지가 통째로 "소실" 로 잡힌다.
+        dst = meta.get("delivered_lang") or meta.get("dst_lang")
         sent_t, deliv_t = meta.get("text_sent"), meta.get("text_delivered")
         if not src or not dst or sent_t is None:
             continue

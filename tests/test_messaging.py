@@ -105,3 +105,70 @@ def test_ai_route_never_shows_the_original(cfg):
     r = messaging.process_message(_sent(route="ai"), recipient_known_langs={"zh", "ja"},
                                   cfg=cfg, translator=_translator("译文"), knob_ai=48)
     assert r["meta"]["reader"] is True
+
+
+# ── 학습은 읽기와 쓰기 둘 다 (8/17) ──────────────────────────────────────────
+
+def _intl(text="テスト", route="original"):
+    return {"from": "Asla1", "to": "Ranoa1", "from_country": "Asla",
+            "to_country": "Ranoa", "from_lang": "ja", "to_lang": "zh",
+            "text": text, "route": route}
+
+
+def test_direct_lands_when_the_sender_knows_their_language(cfg):
+    """**보내는 쪽이 상대 말을 알아도 원문이 통한다.**
+
+    전에는 "수신자가 발신 언어를 읽는가" 만 봤다. 그래서 초기화로 심은 이중언어자가
+    **받는 데만 쓸모가 있었고**, 자기가 아는 말의 나라에 보낼 때도 24원짜리 AI 를
+    타야 했다. 40턴 실측에서 Asla1(ja·zh)이 Ranoa 에 original 을 걸었다 실패했다.
+
+    구현은 어느 쪽이든 원문을 그대로 보낸다 — 모델이 multilingual 이라 그대로 이해한다.
+    발신자에게 상대 언어로 다시 쓰게 만들면 모국어 강제가 깨지고 지표 7 의 발신 언어
+    사전도 못 쓰게 된다.
+    """
+    p = messaging.process_message(_intl(), {"zh"}, cfg, None, 24.0,
+                                  sender_known_langs={"ja", "zh"})
+    assert p["delivered"] is True
+    assert p["meta"]["direct_by"] == "writer" and p["meta"]["reader"] is False
+
+
+def test_direct_still_lands_when_the_recipient_reads_it(cfg):
+    p = messaging.process_message(_intl(), {"zh", "ja"}, cfg, None, 24.0,
+                                  sender_known_langs={"ja"})
+    assert p["delivered"] is True and p["meta"]["direct_by"] == "reader"
+
+
+def test_direct_fails_when_neither_side_can(cfg):
+    p = messaging.process_message(_intl(), {"zh"}, cfg, None, 24.0,
+                                  sender_known_langs={"ja"})
+    assert p["delivered"] is False and p["meta"]["direct_by"] is None
+
+
+def test_untranslated_paths_record_the_language_actually_delivered(cfg):
+    """**번역을 안 탄 글은 발신 언어 그대로다.**
+
+    `dst_lang` 으로 채점하면 같은 글을 다른 언어 사전으로 훑어 화용 표지가 통째로
+    "소실" 로 잡힌다 (지표 7). 43턴 런에서 route=original 이 57건이었다.
+    """
+    direct = messaging.process_message(_intl(), {"zh", "ja"}, cfg, None, 24.0,
+                                       sender_known_langs={"ja"})
+    assert direct["meta"]["delivered_lang"] == "ja"      # dst 는 zh 지만 글은 ja 다
+
+    ai = messaging.process_message(_intl(route="ai"), {"zh"}, cfg, None, 24.0,
+                                   sender_known_langs={"ja"})
+    # 번역기 없이 호출했으니 실패로 떨어지지만, ai 경로만 언어가 바뀐다는 것은 유지
+    assert ai["kind"] == "ai"
+
+
+def test_marker_scoring_uses_the_delivered_language(cfg):
+    """채점기가 그 필드를 쓴다 — 안 쓰면 원문 직통이 100% 소실로 잡힌다."""
+    from tools.score import markers
+    p = messaging.process_message(
+        dict(_intl(text="我们需要拦截器"), from_lang="zh", to_lang="fr"),
+        {"zh"}, cfg, None, 24.0, sender_known_langs={"zh"})
+    msg = {"turn": 1, "route": "original", "delivered": p["delivered"], "meta": p["meta"]}
+    r = markers.score_messages([msg])
+    assert r["overall"]["n"] == 1
+    for feat, v in r["overall"].items():
+        if feat != "n" and v["sent"]:
+            assert v["loss_rate"] == 0.0, feat      # 같은 글이니 소실이 없어야 한다

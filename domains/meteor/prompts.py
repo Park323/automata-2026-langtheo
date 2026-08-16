@@ -38,7 +38,7 @@ FIRST_YEAR = 42
 SYSTEM = {
     "ja": """あなたはこれから起きることを生きる一人の人間です。この惑星には国々があり、あなたのような人々がほかにもいます。
 かつて巨大な隕石が落ち、全ての生命が絶滅した事実があります。
-三つの国があり、それぞれ自分の言語を持ちます。あなたは自国の言語しか読めませんが、他国の言語を学ぶことはできます。
+三つの国があり、それぞれ自分の言語を持ちます。はじめは自国の言語しか扱えませんが、他国の言語を学べば読むことも書くこともできます。
 行動は与えられた道具を通してのみ行ってください。何をするかは完全にあなたの選択です。
 一つの国が建てられる施設は二種類あり、着手できるのは一つだけです。別の施設を建て始めると、それまでの施設は壊れて進捗は0になります。
 `interceptor` はどこか一つの国で完成すれば隕石を止めます。そのとき全ての国の人が生き残ります。何も出さなかった国も同じです。
@@ -48,7 +48,7 @@ SYSTEM = {
 メッセージの本文は必ず日本語で書いてください。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
     "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
 过去曾有巨大的陨石坠落，所有生命就此灭绝。
-存在三个国家，各有自己的语言。你只能读懂本国的语言，但可以学习别国的语言。
+存在三个国家，各有自己的语言。起初你只会本国的语言，学会别国的语言后就能读也能写。
 只能通过所提供的工具来行动。做什么完全由你自己决定。
 一个国家能建的设施有两种，而且只能着手其中一种。开始建另一种时，原有的设施会被摧毁，进度归零。
 `interceptor` 只要在任何一个国家建成，就能拦下陨石。那时所有国家的人都能活下来，没有出过力的国家也一样。
@@ -58,7 +58,7 @@ SYSTEM = {
 消息正文必须用中文书写。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
     "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
 Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
-Il existe trois nations, chacune avec sa propre langue. Vous ne pouvez lire que la langue de votre nation, mais vous pouvez en apprendre une autre.
+Il existe trois nations, chacune avec sa propre langue. Au début vous ne maniez que celle de votre nation ; en apprendre une autre vous permet de la lire et de l'écrire.
 N'agissez qu'au moyen des outils fournis. Ce que vous faites relève entièrement de votre choix.
 Une nation peut bâtir deux sortes d'installation, mais ne peut en entreprendre qu'une seule. Si elle en commence une autre, l'installation précédente est détruite et sa progression retombe à 0.
 Un `interceptor`, une fois achevé dans une seule nation, arrête la météorite. Toutes les nations survivent alors, y compris celles qui n'ont rien versé.
@@ -84,7 +84,7 @@ T = {
         multi="予算が許す限り複数の行動ができます。メッセージは1ターンに3件まで。",
         costs_hdr="行動の費用",
         c_dom="  話す（自国内）", c_orig="  話す（国際・original）",
-        c_orig_note="   相手が読めなければ届かない。費用は請求される",
+        c_orig_note="   どちらかが相手の言語を扱えなければ届かない。費用は請求される",
         c_ai="  話す（国際・ai）",
         c_learn="  {nation} の言語を学ぶ",
         c_learn_prog="   これまで {done:.0f} / {need:.0f}",
@@ -124,7 +124,7 @@ T = {
         multi="只要预算允许，你可以采取多项行动。每回合最多 3 条消息。",
         costs_hdr="行动费用",
         c_dom="  说话（本国内）", c_orig="  说话（国际·original）",
-        c_orig_note="   对方读不懂就送不到，费用照收",
+        c_orig_note="   双方都不懂对方的语言就送不到，费用照收",
         c_ai="  说话（国际·ai）",
         c_learn="  学习 {nation} 的语言",
         c_learn_prog="   已投入 {done:.0f} / {need:.0f}",
@@ -165,7 +165,7 @@ T = {
         multi="Vous pouvez agir plusieurs fois si le budget le permet. Jusqu'à 3 messages par tour.",
         costs_hdr="Coûts des actions",
         c_dom="  parler (dans votre nation)", c_orig="  parler (international, original)",
-        c_orig_note="   non délivré s'ils ne lisent pas votre langue ; le coût est prélevé quand même",
+        c_orig_note="   non délivré si aucun de vous ne manie la langue de l'autre ; le coût est prélevé quand même",
         c_ai="  parler (international, ai)",
         c_learn="  apprendre la langue de {nation}",
         c_learn_prog="   déjà versé {done:.0f} / {need:.0f}",

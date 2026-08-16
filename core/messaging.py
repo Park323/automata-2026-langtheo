@@ -43,9 +43,33 @@ def can_read(recipient_known_langs, from_lang: str) -> bool:
     return from_lang in recipient_known_langs
 
 
+def direct_works(sender_known_langs, recipient_known_langs,
+                 from_lang: str, to_lang: str) -> tuple[bool, str]:
+    """원문 직통이 통하는가, 그리고 **누구의 학습 덕인가**.
+
+    학습은 **읽기와 쓰기 둘 다**다 (8/17 개정). 그래서 길이 둘이다.
+
+        수신자가 발신 언어를 안다  →  받는 쪽이 원문을 읽는다      "reader"
+        발신자가 수신 언어를 안다  →  보내는 쪽이 그 말로 쓴다     "writer"
+
+    구현은 어느 쪽이든 **원문을 그대로 전달**한다. 모델이 multilingual 이라 그대로
+    이해한다 — 발신자에게 수신 언어로 다시 쓰게 만들면 프롬프트 언어 위생(모국어 강제)이
+    깨지고, 지표 7 의 발신 언어 사전도 못 쓰게 된다.
+
+    전에는 "reader" 만 통했다. 그래서 **초기화로 심은 이중언어자가 받는 데만 쓸모가
+    있었고**, 자기가 아는 말의 나라에 보낼 때도 24원짜리 AI 를 타야 했다.
+    """
+    if from_lang in recipient_known_langs:
+        return True, "reader"
+    if to_lang in sender_known_langs:
+        return True, "writer"
+    return False, ""
+
+
 # ── 전달 형태 만들기 (spec 5.1 · 5.2 · 5.4) ───────────────────────────────────
 
-def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai: float) -> dict:
+def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai: float,
+                    sender_known_langs=frozenset()) -> dict:
     """발신 메시지 하나를 처리해 전달 결과를 만든다.
 
     반환:
@@ -62,6 +86,8 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     text_sent, chars_cut = truncate(sent["text"], from_lang, cfg)
     kind = classify(sent["from_country"], sent["to_country"], sent.get("route"))
     reader = can_read(recipient_known_langs, from_lang)
+    direct, direct_by = direct_works(sender_known_langs, recipient_known_langs,
+                                     from_lang, to_lang)
 
     # spec 6.1 스키마 전체. text_delivered 가 없으면 소실률·생성률을 아예 못 낸다.
     meta = {
@@ -72,7 +98,13 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         "translate_instruction": sent.get("translate_instruction"),
         "len_written": len(sent["text"]), "len_limit": cfg.length.message_max_chars[from_lang],
         "truncated": chars_cut > 0, "chars_cut": chars_cut,
-        "reader": reader,                      # 수신자가 발신 언어를 읽는가 (원문 병기 여부)
+        "reader": reader,                      # 수신자가 발신 언어를 읽는가
+        "direct_ok": direct,                   # 원문 직통이 통하는가 (읽기 OR 쓰기)
+        "direct_by": direct_by or None,        # "reader" | "writer" — 누구의 학습 덕인가
+        # 도착한 글이 실제로 무슨 언어인가. **번역을 안 탄 경로는 발신 언어 그대로다.**
+        # 이걸 dst_lang 으로 채점하면 같은 글을 다른 언어 사전으로 세어 화용 표지가
+        # 통째로 "소실" 로 잡힌다 (지표 7).
+        "delivered_lang": from_lang,
         "translate_prompt": None, "logprob_mean": None,
     }
 
@@ -84,9 +116,9 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         return {"kind": kind, "delivered": True, "inbox": inbox,
                 "sender_notice": None, "meta": meta}
 
-    # 국제 원문 직통(original): 수신자가 못 읽으면 전달 실패, 비용은 이미 청구됨
+    # 국제 원문 직통(original): 아무도 그 언어를 다루지 못하면 전달 실패. 비용은 청구됨
     if kind == "original":
-        if reader:
+        if direct:
             meta["text_delivered"] = text_sent      # 원문 그대로 (지표 4d)
             inbox = {"from": sent["from"], "label": None, "text": text_sent,
                      "original": None, "reply_to": sent.get("reply_to")}
@@ -121,6 +153,7 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     meta["translate_prompt"] = tr["prompt"]
     meta["logprob_mean"] = tr["logprob_mean"]
     meta["text_delivered"] = tr["text"]             # 번역 경유 (지표 4a·6a·7)
+    meta["delivered_lang"] = to_lang               # 이 경로만 언어가 바뀐다
     inbox = {
         "from": sent["from"], "label": AI_LABEL, "text": tr["text"],
         # 원문 병기 없음. **ai 를 고른 순간 원문은 볼 수 없다** — 병기하면 학습자가
