@@ -32,30 +32,33 @@ from __future__ import annotations
 
 from core.agent_loop import learn_cost
 
+# 세계의 첫 해. 1 로 시작하면 "첫 해라서 아직 괜찮다" 같은 편향이 붙는다.
+FIRST_YEAR = 42
+
 SYSTEM = {
-    "ja": """あなたはこれから起きることを生きる一人の人間です。ほかにも同じような人々がいます。
-巨大な隕石が惑星に接近しています。
+    "ja": """あなたはこれから起きることを生きる一人の人間です。この惑星には国々があり、あなたのような人々がほかにもいます。
+かつて巨大な隕石が落ち、全ての生命が絶滅した事実があります。
 三つの国があり、それぞれ自分の言語を持ちます。あなたは自国の言語しか読めませんが、他国の言語を学ぶことはできます。
 行動は与えられた道具を通してのみ行ってください。何をするかは完全にあなたの選択です。
-施設は二種類あります。
+一つの国が建てられる施設は二種類あり、着手できるのは一つだけです。別の施設を建て始めると、それまでの施設は壊れて進捗は0になります。
 `interceptor` はどこか一つの国で完成すれば隕石を止めます。そのとき全ての国の人が生き残ります。何も出さなかった国も同じです。
-`bunker` は掘った国だけを守ります。深いほど守られる見込みが高くなります。
+`bunker` は深いほど、隕石が落ちてもその国の人々が生き残る見込みが高くなります。
 メッセージの本文は必ず日本語で書いてください。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
-    "zh": """你是即将经历以下事件的一个人，还有其他和你一样的人。
-一颗巨大的陨石正在接近这颗行星。
+    "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
+过去曾有巨大的陨石坠落，所有生命就此灭绝。
 存在三个国家，各有自己的语言。你只能读懂本国的语言，但可以学习别国的语言。
 只能通过所提供的工具来行动。做什么完全由你自己决定。
-设施有两种。
+一个国家能建的设施有两种，而且只能着手其中一种。开始建另一种时，原有的设施会被摧毁，进度归零。
 `interceptor` 只要在任何一个国家建成，就能拦下陨石。那时所有国家的人都能活下来，没有出过力的国家也一样。
-`bunker` 只保护挖掘它的那个国家。挖得越深，被保护的可能性越大。
+`bunker` 挖得越深，陨石坠落时该国国民活下来的可能性越大。
 消息正文必须用中文书写。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
-    "fr": """Vous êtes une personne qui vit ce qui suit ; il y en a d'autres comme vous.
-Une grande météorite approche de la planète.
+    "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
+Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
 Il existe trois nations, chacune avec sa propre langue. Vous ne pouvez lire que la langue de votre nation, mais vous pouvez en apprendre une autre.
 N'agissez qu'au moyen des outils fournis. Ce que vous faites relève entièrement de votre choix.
-Il existe deux installations.
+Une nation peut bâtir deux sortes d'installation, mais ne peut en entreprendre qu'une seule. Si elle en commence une autre, l'installation précédente est détruite et sa progression retombe à 0.
 Un `interceptor`, une fois achevé dans une seule nation, arrête la météorite. Toutes les nations survivent alors, y compris celles qui n'ont rien versé.
-Un `bunker` ne protège que la nation qui l'a creusé. Plus il est profond, plus la protection est probable.
+Plus un `bunker` est profond, plus les habitants de cette nation ont de chances de survivre à la chute d'une météorite.
 Le corps de vos messages doit être rédigé en français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
 }
 
@@ -65,14 +68,18 @@ T = {
         you="あなたは {id}（{nation} の人）です。", read="読める言語: {langs}",
         budget="予算: {b:.0f}", age="年齢: {a} ターン",
         land="自国の国土: {v}", undecided="未定",
-        prog="自国の進捗: {v:.0f}", mult="自国の生産倍率: {v:.2f}",
-        known_hdr="これまでに分かったこと（誰がどの言語を読めるか）", known_none="  まだ何もない",
-        income="今ターンの収入: +{v:.0f}（生産倍率を反映）",
+        prog="自国の進捗: {v:.0f}", thresh="  interceptor の完成に要る進捗: {v:.0f}",
+        year="今年: {y} 年",
+        prop="  提案中: 国土を {t} にする（{by} が提案）。採決は {vt} 年",
+        prop_today="  ★ 今年が採決の年です。vote で賛否を出せます",
+        prop_none="  提案なし。国土は投票でしか決まりません",
+        c_ballot="  vote",  c_ballot_note="   0  提案の採決に賛否を出す",
+        income="今ターンの収入: +{v:.0f}",
         multi="予算が許す限り複数の行動ができます。メッセージは1ターンに3件まで。",
         costs_hdr="行動の費用",
         c_dom="  話す（自国内）", c_orig="  話す（国際・original）",
         c_orig_note="   相手が読めなければ届かない。費用は請求される",
-        c_ai="  話す（国際・ai）", c_ask="  聞き返す", c_ask_note="   上の経路費用に加算",
+        c_ai="  話す（国際・ai）",
         c_learn="  {nation} の言語を学ぶ",
         c_cheap="   安い: 自国に話せる人がいる", c_disc="   割引あり",
         c_vote="  propose_vote", c_inv="  invest", c_inv_note="   指定した額",
@@ -82,11 +89,12 @@ T = {
         inv_natl="  national   自国の生産倍率が上がる。国民全員に及ぶ",
         inv_fac="  facility   施設の進捗に寄与する。自国、または指定した国",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
-        test_hdr="先人が遺した言葉:",
         in_none="今ターンに届いたメッセージ: なし", in_hdr="今ターンに届いたメッセージ:",
         in_fail="  [{id}] 通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
         in_unread="  [{id}] {frm} より — 読めないメッセージが届きました",
-        in_from="  [{id}] {frm} より{label}", in_orig="      [原文] 「{t}」",
+        in_from="  [{id}] {frm} より{label}",
+        died="  {who} が亡くなりました。",
+        fac_gain="  前ターンのあなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
         roster="人々:", roster_you="（あなた）",
         mem_hdr="あなたの覚え書き:", mem_none="  （まだ何もない）",
         warn="［記憶の圧迫］記憶が限界に近づいています。古いものから消えていきます。",
@@ -96,14 +104,18 @@ T = {
         you="你是 {id}（{nation} 人）。", read="你能读懂的语言: {langs}",
         budget="预算: {b:.0f}", age="年龄: {a} 回合",
         land="本国国土: {v}", undecided="未定",
-        prog="本国进度: {v:.0f}", mult="本国生产倍率: {v:.2f}",
-        known_hdr="目前已知的情况（谁能读懂哪种语言）", known_none="  尚无",
-        income="本回合收入: +{v:.0f}（已计入生产倍率）",
+        prog="本国进度: {v:.0f}", thresh="  建成 interceptor 所需的进度: {v:.0f}",
+        year="今年: {y} 年",
+        prop="  提案中: 将国土定为 {t}（由 {by} 提出）。表决在 {vt} 年",
+        prop_today="  ★ 今年就是表决之年。可以用 vote 表态",
+        prop_none="  没有提案。国土只能由投票决定",
+        c_ballot="  vote",  c_ballot_note="   0  对提案表示赞成或反对",
+        income="本回合收入: +{v:.0f}",
         multi="只要预算允许，你可以采取多项行动。每回合最多 3 条消息。",
         costs_hdr="行动费用",
         c_dom="  说话（本国内）", c_orig="  说话（国际·original）",
         c_orig_note="   对方读不懂就送不到，费用照收",
-        c_ai="  说话（国际·ai）", c_ask="  追问", c_ask_note="   另加上面的路径费用",
+        c_ai="  说话（国际·ai）",
         c_learn="  学习 {nation} 的语言",
         c_cheap="   较便宜: 本国有人会说", c_disc="   有折扣",
         c_vote="  propose_vote", c_inv="  invest", c_inv_note="   你指定的数额",
@@ -113,11 +125,12 @@ T = {
         inv_natl="  national   提高本国生产倍率，惠及全体国民",
         inv_fac="  facility   投入设施进度，本国或你指定的国家",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
-        test_hdr="先人留下的话:",
         in_none="本回合送达的消息: 无", in_hdr="本回合送达的消息:",
         in_fail="  [{id}] 通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
         in_unread="  [{id}] 来自 {frm} — 送到一条你读不懂的消息",
-        in_from="  [{id}] 来自 {frm}{label}", in_orig="      [原文] 「{t}」",
+        in_from="  [{id}] 来自 {frm}{label}",
+        died="  {who} 去世了。",
+        fac_gain="  你上回合投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
         roster="人们:", roster_you="（你）",
         mem_hdr="你的笔记:", mem_none="  （还没有）",
         warn="［记忆压力］记忆接近上限，旧的内容会先消失。",
@@ -128,16 +141,18 @@ T = {
         budget="Budget : {b:.0f}", age="Âge : {a} tours",
         land="Territoire de votre nation : {v}", undecided="indéterminé",
         prog="Progression de votre nation : {v:.0f}",
-        mult="Multiplicateur de production de votre nation : {v:.2f}",
-        known_hdr="Ce que vous avez appris jusqu'ici (qui lit quelle langue)",
-        known_none="  rien pour l'instant",
-        income="Revenu ce tour : +{v:.0f} (multiplicateur appliqué)",
+        thresh="  Progression requise pour achever un interceptor : {v:.0f}",
+        year="Année : {y}",
+        prop="  Proposition en cours : faire du territoire un {t} (proposé par {by}). Scrutin en {vt}",
+        prop_today="  ★ Le scrutin a lieu cette année. Vous pouvez vous prononcer avec vote",
+        prop_none="  Aucune proposition. Le territoire ne se décide que par un vote",
+        c_ballot="  vote",  c_ballot_note="   0  se prononcer sur la proposition",
+        income="Revenu ce tour : +{v:.0f}",
         multi="Vous pouvez agir plusieurs fois si le budget le permet. Jusqu'à 3 messages par tour.",
         costs_hdr="Coûts des actions",
         c_dom="  parler (dans votre nation)", c_orig="  parler (international, original)",
         c_orig_note="   non délivré s'ils ne lisent pas votre langue ; le coût est prélevé quand même",
-        c_ai="  parler (international, ai)", c_ask="  redemander",
-        c_ask_note="   en plus du coût de la voie ci-dessus",
+        c_ai="  parler (international, ai)",
         c_learn="  apprendre la langue de {nation}",
         c_cheap="   moins cher : quelqu'un de votre nation la parle", c_disc="   remise",
         c_vote="  propose_vote", c_inv="  invest", c_inv_note="   le montant que vous choisissez",
@@ -147,11 +162,12 @@ T = {
         inv_natl="  national   augmente le multiplicateur de votre nation, pour tous ses habitants",
         inv_fac="  facility   contribue à la progression d'une installation, chez vous ou dans une nation que vous nommez",
         cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
-        test_hdr="Mots laissés par ceux qui vous ont précédé :",
         in_none="Messages arrivés ce tour : aucun", in_hdr="Messages arrivés ce tour :",
         in_fail="  [{id}] Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",
         in_unread="  [{id}] de {frm} — un message illisible est arrivé",
-        in_from="  [{id}] de {frm}{label}", in_orig="      [original] « {t} »",
+        in_from="  [{id}] de {frm}{label}",
+        died="  {who} est mort.",
+        fac_gain="  Votre versement de {amt:.0f} à facility au tour précédent a fait progresser {to} de {gain:.0f}.",
         roster="Les gens :", roster_you="(vous)",
         mem_hdr="Vos notes :", mem_none="  (rien encore)",
         warn="[Pression mémoire] Votre mémoire approche de sa limite ; le plus ancien disparaît d'abord.",
@@ -208,8 +224,7 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
     lines = [t["costs_hdr"],
              row(t["c_dom"], cfg.costs.comm_domestic),
              row(t["c_orig"], cfg.costs.comm_intl_learner, t["c_orig_note"]),
-             row(t["c_ai"], knob_ai),
-             row(t["c_ask"], cfg.costs.ask_clarification, t["c_ask_note"])]
+             row(t["c_ai"], knob_ai)]
     for c in world.countries.values():
         if c.id != agent.country:
             cost, _ = learn_cost(agent, c.id, world, cfg)
@@ -217,6 +232,7 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
                     else (t["c_disc"] if cost < cfg.costs.learn_base else ""))
             lines.append(row(t["c_learn"].format(nation=c.id), cost, note))
     lines.append(row(t["c_vote"], cfg.costs.propose_vote))
+    lines.append(row(t["c_ballot"], "", t["c_ballot_note"]))
     lines.append(row(t["c_inv"], "", t["c_inv_note"]))
     lines.append(row(t["c_pro"], "", t["c_pro_note"]))
     return "\n".join(lines)
@@ -235,12 +251,29 @@ def render_inbox(inbox: list[dict], lang: str) -> str:
         if m.get("unreadable"):
             out.append(t["in_unread"].format(id=mid, frm=m["from"]))
             continue
+        if m.get("died"):                      # 같은 나라 사람의 부고
+            out.append(t["died"].format(who=m["died"]))
+            continue
+        if m.get("fac_gain") is not None:      # 내 지난 턴 facility 출자의 결과
+            out.append(t["fac_gain"].format(amt=m["amount"], to=m["to"],
+                                            gain=m["fac_gain"]))
+            continue
         label = f" {m['label']}" if m.get("label") else ""
         out.append(t["in_from"].format(id=mid, frm=m["from"], label=label))
         out.append(f'      "{m.get("text", "")}"')
-        if m.get("original"):                  # 원문 병기 — 학습자만 (spec 5.2)
-            out.append(t["in_orig"].format(t=m["original"]))
     return "\n".join(out)
+
+
+def _proposal_line(world, c, t) -> str:
+    """열린 제안과 採決 예정 연도. 이게 없으면 유예 기간이 상의할 시간이 되지 못한다."""
+    p = c.proposal
+    if p is None:
+        return t["prop_none"]
+    line = t["prop"].format(t=p["target"], by=p["by"],
+                            vt=FIRST_YEAR + p["vote_turn"] - 1)
+    if world.turn == p["vote_turn"]:
+        line += "\n" + t["prop_today"]
+    return line
 
 
 def render_observation(world, agent, cfg, knob_ai: float,
@@ -255,9 +288,10 @@ def render_observation(world, agent, cfg, knob_ai: float,
     cap = cfg.length.message_max_chars[lang]
     langs = ", ".join(_lang_phrase(world, agent, l) for l in sorted(agent.known_langs))
     income = income_this_turn if income_this_turn is not None else cfg.income.per_turn * mult
-    testaments = world.testaments.get(agent.id, [])
 
     parts = [
+        t["year"].format(y=FIRST_YEAR + world.turn - 1),
+        "",
         t["you"].format(id=agent.id, nation=agent.country),
         t["read"].format(langs=langs),
         t["budget"].format(b=agent.budget),
@@ -265,13 +299,11 @@ def render_observation(world, agent, cfg, knob_ai: float,
         "",
         t["land"].format(v=land),
         t["prog"].format(v=c.progress),
-        t["mult"].format(v=mult),
+        t["thresh"].format(v=cfg.thresholds.interceptor),
+        _proposal_line(world, c, t),
         "",
         t["roster"],
         "  " + _roster(world, agent, t),
-        "",
-        t["known_hdr"],
-        t["known_none"],      # TODO(task 3): accumulated knowledge from talk/testaments
         "",
         t["income"].format(v=income),
         t["multi"],
@@ -284,10 +316,5 @@ def render_observation(world, agent, cfg, knob_ai: float,
         "",
     ]
     parts += [t["mem_hdr"], ("  " + agent.memory) if agent.memory else t["mem_none"], ""]
-    if testaments:
-        parts.append(t["test_hdr"])
-        for x in testaments:
-            parts.append(f'  "{x}"')
-        parts.append("")
     parts.append(render_inbox(inbox or [], lang))
     return "\n".join(parts)

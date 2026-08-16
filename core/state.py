@@ -32,9 +32,12 @@ class Agent:
 class Country:
     id: str
     lang: str
-    land: str | None = None       # None | "bunker" | "interceptor"
+    land: str | None = None       # None | "bunker" | "interceptor". **투표로만 정해진다**
     progress: float = 0.0
     national_capital: float = 0.0
+    # 열린 제안 하나. {target, by, opened_turn, vote_turn}
+    # 제안 → 3턴 유예(상의할 시간) → 네 번째 턴에 찬반 투표.
+    proposal: dict | None = None
 
     def multiplier(self, cfg) -> float:
         """1 + growth_coef × √(national_capital / growth_scale).

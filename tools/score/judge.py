@@ -90,9 +90,10 @@ def link(messages: list[dict], events: list[dict]) -> list[dict]:
             "text_sent": meta.get("text_sent"),
             "text_delivered": meta.get("text_delivered"),
             # `reader` 는 "수신자가 발신 언어를 읽을 수 있는가" 다 — 전달 여부가 아니다.
-            # AI 경로에서 reader 면 번역문 **옆에 원문이 병기**되므로(spec 5.1) 판정자도
-            # 그 둘을 다 봐야 수신자가 본 것과 같아진다.
-            "saw_original": bool(meta.get("reader")) and m.get("route") == "ai",
+            # **원문 병기는 폐지됐다** (5.1 개정): ai 를 고른 순간 원문은 볼 수 없다.
+            # 그래서 판정자도 번역문만 본다. reader 는 남겨둔다 — "읽을 수 있었는데도
+            # ai 로 받았다" 를 사후에 가르는 데 쓴다.
+            "saw_original": False,
             "reasonings": [], "skip": None,
         }
         # 못 읽은 것은 route=original 에서 delivered=False 로 이미 표시된다 (지표 9 의 몫).
@@ -163,12 +164,7 @@ STAGE2_SYSTEM = (
 def stage1_prompt(rec: dict) -> str:
     who = rec["to"]
     lines = "\n".join(f"{i}. {t}" for i, t in enumerate(rec["reasonings"], 1))
-    body = rec["text_delivered"]
-    if rec.get("saw_original") and rec.get("text_sent"):
-        # 학습자는 번역문과 원문을 나란히 받는다. 번역문만 보여주면 판정자가
-        # 수신자보다 적게 본 상태로 판단하게 된다.
-        body = (f"{body}\n\n[original, in "
-                f"{LANG_NAME.get(rec['src_lang'], rec['src_lang'])}]\n{rec['text_sent']}")
+    body = rec["text_delivered"]      # 수신자가 본 것 전부. 원문 병기는 폐지됐다 (5.1)
     return (
         f"Agent {who} received this message. This is exactly what {who} saw "
         f"(in {LANG_NAME.get(rec['dst_lang'], rec['dst_lang'])}):\n\n"

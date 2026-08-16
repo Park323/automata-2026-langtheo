@@ -17,8 +17,11 @@ from core.agent_loop import Sink, run_agent_turn
 from core.policy import PROCREATE_AGE, dummy_policy
 from core.state import Agent, Country, World
 
-# 더미 세계에서 시설 최초 확정 시의 기본 용도. 과제 2 에서 에이전트가 정한다.
+# 더미 세계(과제 1)에서만 쓰는 기본 용도. 에이전트 세계에서는 **투표로만** 정해진다.
 DEFAULT_FACILITY_TYPE = "interceptor"
+
+# 제안 → 유예 → 투표. 제안한 턴 t 의 t+1·t+2·t+3 이 상의 기간이고 t+VOTE_DELAY 가 투표일.
+VOTE_DELAY = 4
 
 
 @dataclass
@@ -34,6 +37,9 @@ class RunResult:
     messages_log: list = field(default_factory=list)  # 처리된 발신 메시지 (과제2)
     votes_log: list = field(default_factory=list)     # propose_vote 기록 (과제2)
     learns_log: list = field(default_factory=list)    # 학습 1건 = x̂ 관측 1건 (spec 6.1)
+    land_changes: list = field(default_factory=list)  # 국토 전환 = 진척 파괴 (SYSTEM 규칙 5)
+    deaths_log: list = field(default_factory=list)    # 부고 — 같은 나라 사람에게 알린다
+    facility_gains: list = field(default_factory=list)  # 출자 → 진척 기여 (행위 후 공개)
     agent_logs: list = field(default_factory=list)    # 턴별 {aid: {reasoning,actions,received}}
 
     @property
@@ -121,6 +127,10 @@ def _death_birth(world: World, cfg, rng: random.Random, snapshot_ids, procreated
         if rng.random() < survival.hazard(a.age, a.lam, cfg.survival.k):
             result.deaths += 1
             result.death_ages.append(a.age)   # 마지막 생존 나이 = 죽는 턴의 age (spec 2.2)
+            # 부고는 **같은 나라 사람에게만.** 타국의 인구 구성은 메시지로만 알 수 있다
+            # (spec 4.1). 국내 구사자 할인이 사라진 이유를 알 수 있게 하는 정보이기도 하다.
+            result.deaths_log.append({"turn": world.turn, "who": aid,
+                                      "country": a.country, "by": "natural"})
             # 자연사는 계보와 무관한 '자연발생한 뒷세대' (spec 3.2). 개인에 속한 것은 전부
             # 소실(예산·언어·부모 할인 자격·쌓인 유언), 국가·세계는 유지(국토·진척·national_capital).
             child = _newborn(
@@ -146,6 +156,9 @@ def _procreate_child(world: World, aid: str, testament: str, cfg,
     world.testaments[aid] = carry
     child = _newborn(aid, a.country, a.native_lang, a.budget, a.known_langs,
                      world.turn, "procreate", cfg, counter)
+    # 유언은 별도 블록이 아니라 **아이의 기억 초기값**이다. 다른 모든 것과 같은
+    # 컨텍스트에서 관리되고, 아이가 memory_write 로 덮어쓰면 사라진다 — 그게 구전의 감쇠다.
+    child.memory = "\n".join(x for x in carry if x)
     world.agents[aid] = child
     result.deaths += 1
     result.death_ages.append(a.age)
@@ -327,11 +340,19 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                 if agent_id in world.agents:
                     world.agents[agent_id].budget += (amount / total) * (total - cap)
         c = world.countries[cid]
-        if c.land is None and effective > 0:
-            c.land = DEFAULT_FACILITY_TYPE        # 용도 미지정 → 기본 요격기 (과제3에서 투표)
         eff = cfg.facility.eff * c.multiplier(cfg)
-        n = int(effective * eff)
-        c.progress += sum(1 for _ in range(n) if rng.random() < cfg.world.success_prob)
+        # 출자자별로 따로 굴린다 — 각자 자기 출자가 얼마나 진척으로 바뀌었는지 알아야
+        # 하기 때문이다(아래 통지). 합쳐서 한 번 굴리는 것과 분포는 같다.
+        for amount, agent_id in sorted(entries, key=lambda x: x[1]):   # id 순 → 결정론
+            share = amount if total <= cap else amount * (cap / total)
+            n_i = int(share * eff)
+            gain = sum(1 for _ in range(n_i) if rng.random() < cfg.world.success_prob)
+            c.progress += gain
+            # 행위 **후에는** 공개한다. 확률적이라 한 건으로는 success_prob 을 못 읽고,
+            # 모르면 "얼마를 더 내야 하는가" 를 판단할 근거가 아예 없다.
+            result.facility_gains.append({"turn": world.turn, "agent": agent_id,
+                                          "to": cid, "amount": round(share, 2),
+                                          "gain": gain})
 
     # c. wellness (수명), d. national (자본)
     for aid, amount in sink.wellness:
@@ -364,8 +385,57 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                                       "delivery_failed_to": sent["to"]}})
 
     # f. 투표 기록 (정식 집계는 이후 과제)
-    for by, country, target in sink.votes:
-        result.votes_log.append({"turn": world.turn, "by": by, "country": country, "target": target})
+    # ★ 투표는 로그만 남고 아무 일도 하지 않았다. 국토는 첫 시설 투자로
+    #   DEFAULT_FACILITY_TYPE 이 되는 게 전부였고, 43턴 실측에서 세 나라가 모두
+    #   interceptor 였던 것은 **고른 게 아니라 기본값**이었다.
+    #
+    #   이제 국토는 **투표로만** 정해진다. 제안 → 3턴 유예(상의할 시간) → 네 번째 턴에 찬반.
+    #   유예가 있는 이유 — 그 사이에 설득하지 않으면 한 사람의 제안이 그대로 통과한다.
+    #   막는 것은 규칙이 아니라 사람들이어야 한다.
+    for by, country, target in sorted(sink.votes):
+        c = world.countries.get(country)
+        opened = {"target": target, "by": by, "opened_turn": world.turn,
+                  "vote_turn": world.turn + VOTE_DELAY}
+        result.votes_log.append({"turn": world.turn, "type": "propose",
+                                 "by": by, "country": country, "target": target,
+                                 "vote_turn": opened["vote_turn"]})
+        if c is not None and c.proposal is None and c.land != target:
+            c.proposal = opened
+
+    # 개표 — 찬성이 반대보다 많으면 통과. **1찬 0반도 통과한다.**
+    #   반대하려면 그 턴에 표를 내야 한다. 침묵은 동의로 센다.
+    ballots_by: dict[str, list] = defaultdict(list)
+    for by, country, approve in sorted(sink.ballots):
+        ballots_by[country].append((by, approve))
+        result.votes_log.append({"turn": world.turn, "type": "ballot",
+                                 "by": by, "country": country, "approve": approve})
+    for cid in sorted(world.countries):
+        c = world.countries[cid]
+        if c.proposal is None or c.proposal["vote_turn"] != world.turn:
+            continue
+        cast = ballots_by.get(cid, [])
+        yes = sum(1 for _, a in cast if a)
+        no = len(cast) - yes
+        passed = yes > no
+        rec = {"turn": world.turn, "country": cid, "target": c.proposal["target"],
+               "by": c.proposal["by"], "yes": yes, "no": no, "passed": passed,
+               "from": c.land, "progress_lost": 0.0}
+        if passed:
+            # 다른 시설을 착수하면 기존 시설은 파괴된다 — 진척 0 (SYSTEM 규칙 5)
+            rec["progress_lost"] = round(c.progress, 3)
+            c.land, c.progress = c.proposal["target"], 0.0
+        c.proposal = None                       # 통과하든 부결되든 제안은 닫힌다
+        result.land_changes.append(rec)
+
+    # f-2. 출자자에게 자기 몫의 진척 기여를 다음 턴에 알린다 (행위 후 공개)
+    for g in result.facility_gains:
+        if g["turn"] != world.turn or g["agent"] not in world.agents:
+            continue
+        world.inbox_queue.append({
+            "deliver_turn": world.turn + 1, "to": g["agent"],
+            "to_uid": world.agents[g["agent"]].uid,
+            "msg": {"msg_id": next(msg_ids), "fac_gain": g["gain"],
+                    "amount": g["amount"], "to": g["to"]}})
 
     # g. procreate (예산 환급까지 반영된 뒤라 자식 예산이 정확)
     procreated: set = set()
@@ -423,6 +493,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         merged.national += s.national
         merged.messages += s.messages
         merged.votes += s.votes
+        merged.ballots += s.ballots
         merged.learns += s.learns
         merged.procreations += s.procreations
     procreated = _settle_agentic(world, cfg, rng, merged, translator, knob_ai, counter,
@@ -431,6 +502,17 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
     # 7. 생사 판정 (마지막 턴 생략)
     if not is_last:
         _death_birth(world, cfg, rng, snapshot_ids, procreated, counter, result)
+        # 부고는 **같은 나라 사람에게만.** 그 자리에 태어난 신규(같은 id)에게는 보내지
+        # 않는다 — 자기 부고를 받게 된다. 타국의 인구 구성은 여전히 메시지로만 안다.
+        for d in result.deaths_log:
+            if d["turn"] != world.turn:
+                continue
+            for aid, a in sorted(world.agents.items()):
+                if a.country != d["country"] or aid == d["who"]:
+                    continue
+                world.inbox_queue.append({
+                    "deliver_turn": world.turn + 1, "to": aid, "to_uid": a.uid,
+                    "msg": {"msg_id": next(msg_ids), "died": d["who"]}})
 
     result.acted.append(snapshot_uids)
     result.alive_counts.append(sum(1 for a in world.agents.values() if a.alive))

@@ -69,15 +69,22 @@ def test_memory_costs_ap_not_budget(cfg, world):
     assert a.ap == pytest.approx(1.0 - cfg.ap.memory_write)
 
 
-def test_memory_dies_with_agent(cfg, world):
-    """개인에 속한 것은 전부 소실 — procreate 로도 안 넘어간다 (spec 3.2·4.5)."""
+def test_only_the_testament_survives_death(cfg, world):
+    """개인에 속한 것은 전부 소실. **유언 한 문장만** 아이의 기억으로 넘어간다.
+
+    유언을 별도 블록이 아니라 `memory` 초기값으로 두는 이유 — 다른 모든 것과 같은
+    컨텍스트에서 관리되고, 아이가 `memory_write` 로 덮어쓰면 사라집니다.
+    **그 덮어쓰기가 곧 구전의 감쇠**이고, 무엇을 남길 가치가 있다고 봤는지가 관측됩니다.
+    """
     a = world.agents["Asla1"]
-    a.memory = "남기고 싶은 것"
+    a.memory = "내가 평생 알아낸 것"
     a.convo.append({"role": "user", "content": "옛 기억"})
     loop._procreate_child(world, "Asla1", "유언만 넘어간다", cfg,
                           itertools.count(9000), loop.RunResult(world=world))
     child = world.agents["Asla1"]
-    assert child.memory == "" and child.convo == []
+    assert child.convo == []                       # 대화 이력은 소실
+    assert "내가 평생 알아낸 것" not in child.memory  # 부모의 메모도 소실
+    assert child.memory == "유언만 넘어간다"          # 유언만 기억으로
     assert world.testaments["Asla1"][0] == "유언만 넘어간다"
 
 

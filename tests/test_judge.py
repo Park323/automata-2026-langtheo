@@ -65,17 +65,19 @@ def test_ai_route_is_judgeable_even_though_reader_is_false():
     assert r["skip"] is None and r["saw_original"] is False
 
 
-def test_learner_sees_original_alongside_translation():
-    """학습자는 번역문 옆에 원문을 함께 받는다 (spec 5.1).
+def test_judge_never_sees_the_original_on_the_ai_path():
+    """**원문 병기는 폐지됐다** (5.1 개정) — 발신 언어를 아는 수신자에게도.
 
-    판정자에게 번역문만 주면 수신자보다 **적게 본 상태**로 판단하게 된다.
+    수신자가 번역문만 봤으므로 판정자도 번역문만 봐야 합니다. 원문을 같이 주면
+    판정자가 수신자보다 **많이 본 상태**로 판단해 4a 가 낮게 나옵니다.
     """
     ms = [msg(1, 1, "Ranoa1", "Miris1", "ai", "我们需要拦截器",
               "Nous avons besoin", reader=True)]
     ev = [turn_event(2, "Miris1", "j'ai voté")]
     (r,) = judge.link(ms, ev)
-    assert r["saw_original"] is True
-    assert "我们需要拦截器" in judge.stage1_prompt(r)
+    assert r["saw_original"] is False
+    p = judge.stage1_prompt(r)
+    assert "Nous avons besoin" in p and "我们需要拦截器" not in p
 
 
 def test_link_skips_dead_or_last_turn():

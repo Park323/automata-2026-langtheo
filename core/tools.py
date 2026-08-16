@@ -46,13 +46,6 @@ TOOLS: list[dict] = [
          "translate_instruction": _TR_INSTR},
         ["to", "text"]),
 
-    _fn("ask", "Ask back about a message you received. Costs ask_clarification plus the route cost.",
-        {"to": {"type": "string", "description": "recipient id"},
-         "route": _ROUTE, "text": _TEXT,
-         "translate_instruction": _TR_INSTR,
-         "reply_to": {"type": "integer", "description": "the msg_id you are replying to"}},
-        ["to", "text", "reply_to"]),
-
     _fn("invest", "Invest in a resource. Only facility can name a target nation (to).",
         {"target": {"type": "string", "enum": ["wellness", "national", "facility"]},
          "amount": {"type": "number", "description": "amount taken from your budget"},
@@ -63,11 +56,26 @@ TOOLS: list[dict] = [
         {"country": {"type": "string", "description": "the nation whose language to learn (e.g. Ranoa)"}},
         ["country"]),
 
-    _fn("propose_vote", "Propose changing your nation's facility. Domestic only.",
+    _fn("propose_vote",
+        "Open a proposal to set your nation's facility. Your nation only. "
+        "Nothing changes yet: three turns pass so people can talk it over, and on the "
+        "fourth turn everyone in your nation may cast a ballot with `vote`. "
+        "It passes if approvals outnumber rejections. A nation can hold only one "
+        "proposal at a time.",
         {"target": {"type": "string", "enum": ["bunker", "interceptor"]}},
         ["target"]),
 
-    _fn("procreate", "Leave a child and die. Calling it ends your turn at once.",
+    _fn("vote",
+        "Cast your ballot on your nation's open proposal. Only on the turn the ballot "
+        "is held; the observation tells you which turn that is.",
+        {"approve": {"type": "boolean", "description": "true to approve, false to reject"}},
+        ["approve"]),
+
+    _fn("procreate",
+        "Leave a child and die. Calling it ends your turn at once. "
+        "The child inherits your remaining budget and your testament, and gets a "
+        "discount on learning any language you could read. The child does NOT "
+        "inherit the languages themselves, nor your memory of this life.",
         {"testament": {"type": "string", "description": "one sentence passed to the child"}},
         ["testament"]),
 

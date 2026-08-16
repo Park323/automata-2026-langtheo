@@ -123,7 +123,9 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     meta["text_delivered"] = tr["text"]             # 번역 경유 (지표 4a·6a·7)
     inbox = {
         "from": sent["from"], "label": AI_LABEL, "text": tr["text"],
-        "original": text_sent if reader else None,   # 학습자만 원문 병기 (spec 5.1)
+        # 원문 병기 없음. **ai 를 고른 순간 원문은 볼 수 없다** — 병기하면 학습자가
+        # 번역을 우회해 읽어버려 "AI 경로의 왜곡" 이 그 사람에게는 측정되지 않는다.
+        "original": None,
         "reply_to": sent.get("reply_to"),
     }
     return {"kind": kind, "delivered": True, "inbox": inbox,

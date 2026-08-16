@@ -84,18 +84,24 @@ def test_original_success_when_can_read(cfg):
     assert m["inbox"]["label"] is None                   # 원문 직통엔 라벨 없음
 
 
-# ── 원문 병기 (spec 5.1) ──────────────────────────────────────────────────────
+# ── 원문 병기 폐지 (spec 5.1 개정) ────────────────────────────────────────────
 
-def test_ai_label_and_original_juxtaposition(cfg):
-    """7. ai 경로 + 수신자가 발신 언어를 알면 번역문 + 원문 둘 다."""
-    reader = messaging.process_message(_sent(route="ai"),
-                                       recipient_known_langs={"zh", "ja"},
-                                       cfg=cfg, translator=_translator("译文"), knob_ai=48)
-    assert reader["inbox"]["label"] == messaging.AI_LABEL
-    assert reader["inbox"]["text"] == "译文"
-    assert reader["inbox"]["original"] == "본문"          # 학습자 → 원문 병기
+def test_ai_route_never_shows_the_original(cfg):
+    """**ai 를 고른 순간 원문은 볼 수 없다** — 발신 언어를 아는 수신자에게도.
 
-    non_reader = messaging.process_message(_sent(route="ai"),
-                                           recipient_known_langs={"zh"},   # ja 모름
-                                           cfg=cfg, translator=_translator("译文"), knob_ai=48)
-    assert non_reader["inbox"]["original"] is None        # 못 읽으면 원문 없음
+    병기하면 학습자가 번역을 우회해 원문을 읽어버려, **그 사람에게는 AI 경로의 왜곡이
+    아예 발생하지 않습니다.** 그러면 4a 의 표본이 학습자만큼 조용히 희석되고,
+    노브를 내려 학습자가 늘수록 4a 가 낮아지는 가짜 효과가 생깁니다.
+
+    원문을 읽고 싶으면 `route="original"` 을 골라야 합니다 — 그게 도박입니다.
+    """
+    for known in ({"zh", "ja"}, {"zh"}):          # 발신 언어를 알든 모르든
+        r = messaging.process_message(_sent(route="ai"), recipient_known_langs=known,
+                                      cfg=cfg, translator=_translator("译文"), knob_ai=48)
+        assert r["inbox"]["label"] == messaging.AI_LABEL
+        assert r["inbox"]["text"] == "译文"
+        assert r["inbox"]["original"] is None
+    # meta.reader 는 남는다 — 채점기가 "읽을 수 있었는데도 ai 를 받았다" 를 구분해야 한다
+    r = messaging.process_message(_sent(route="ai"), recipient_known_langs={"zh", "ja"},
+                                  cfg=cfg, translator=_translator("译文"), knob_ai=48)
+    assert r["meta"]["reader"] is True

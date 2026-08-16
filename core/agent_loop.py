@@ -32,7 +32,8 @@ class Sink:
     wellness: list = field(default_factory=list)      # (agent_id, amount)
     national: list = field(default_factory=list)      # (country, amount, agent_id)
     messages: list = field(default_factory=list)      # 발신 dict (5장, 'from' 에 agent_id)
-    votes: list = field(default_factory=list)         # (agent_id, country, target)
+    votes: list = field(default_factory=list)         # 제안 (agent_id, country, target)
+    ballots: list = field(default_factory=list)       # 찬반 (agent_id, country, approve)
     learns: list = field(default_factory=list)        # (agent_id, lang) — 다음 턴부터 유효
     procreations: list = field(default_factory=list)  # (agent_id, testament)
 
@@ -104,6 +105,10 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             if to not in world.countries:
                 return {"ok": False,
                         "error": f"unknown nation: {to} — facility invest takes a nation id (e.g. Ranoa)"}, None
+            # 투표로 정해지기 전에는 지을 것이 없다. 예산 차감 **전에** 막는다.
+            if world.countries[to].land is None:
+                return {"ok": False, "error":
+                        f"{to} has not decided its facility yet; nothing to build there"}, None
         if agent.budget < amount:
             return {"ok": False, "error": f"not enough budget; need {amount:.0f}, have {agent.budget:.0f}"}, None
         agent.budget -= amount            # invest 는 AP 0
@@ -153,7 +158,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                 "effect": "you can read it from next turn",
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
-    if name in ("speak", "ask"):
+    if name == "speak":
         to = args.get("to")
         if to not in world.agents:
             return {"ok": False, "error": f"unknown recipient: {to}"}, None
@@ -162,20 +167,16 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         recipient = world.agents[to]
         kind = messaging.classify(agent.country, recipient.country, args.get("route"))
         c = messaging.cost(kind, cfg, knob_ai)
-        if name == "ask":
-            if args.get("reply_to") is None:
-                return {"ok": False, "error": "ask needs reply_to (a message id)"}, None
-            c += cfg.costs.ask_clarification
-        ap_cost = cfg.ap.ask if name == "ask" else cfg.ap.speak
+        ap_cost = cfg.ap.speak
         if agent.ap < ap_cost:
-            return {"ok": False, "error": f"not enough AP; {name} needs {ap_cost}"}, None
+            return {"ok": False, "error": f"not enough AP; speak needs {ap_cost}"}, None
         if agent.budget < c:
             return {"ok": False, "error": f"not enough budget; need {c:.0f}, have {agent.budget:.0f}"}, None
         agent.budget -= c
         agent.ap -= ap_cost
         ti = args.get("translate_instruction")
         sink.messages.append({
-            "kind": name, "from": agent.id, "from_country": agent.country,
+            "kind": "speak", "from": agent.id, "from_country": agent.country,
             "from_lang": agent.native_lang, "to": to, "to_country": recipient.country,
             "to_lang": recipient.native_lang, "route": args.get("route"),
             # LLM 이 문자열 아닌 값을 줄 수 있어 강제 문자열화 (truncate·translate 크래시 방지)
@@ -191,6 +192,13 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         target = args.get("target")
         if target not in ("bunker", "interceptor"):
             return {"ok": False, "error": "target must be bunker or interceptor"}, None
+        c = world.countries[agent.country]
+        if c.proposal is not None:
+            return {"ok": False, "error":
+                    f"your nation already has an open proposal ({c.proposal['target']}); "
+                    f"the ballot is on turn {c.proposal['vote_turn']}"}, None
+        if c.land == target:
+            return {"ok": False, "error": f"your nation is already building {target}"}, None
         if agent.ap < cfg.ap.propose_vote:
             return {"ok": False, "error": f"not enough AP; propose_vote needs {cfg.ap.propose_vote}"}, None
         if agent.budget < cfg.costs.propose_vote:
@@ -199,7 +207,24 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         agent.ap -= cfg.ap.propose_vote
         sink.votes.append((agent.id, agent.country, target))
         return {"ok": True, "proposed": target, "charged": cfg.costs.propose_vote,
+                "effect": "nothing changes yet; the ballot is held after three turns",
                 "ap_left": round(agent.ap, 1)}, None
+
+    if name == "vote":
+        c = world.countries[agent.country]
+        if c.proposal is None:
+            return {"ok": False, "error": "your nation has no open proposal"}, None
+        if world.turn != c.proposal["vote_turn"]:
+            return {"ok": False, "error":
+                    f"the ballot is on turn {c.proposal['vote_turn']}, not now"}, None
+        if "approve" not in args:
+            return {"ok": False, "error": "vote needs approve (true or false)"}, None
+        if agent.ap < cfg.ap.propose_vote:
+            return {"ok": False, "error": f"not enough AP; vote needs {cfg.ap.propose_vote}"}, None
+        agent.ap -= cfg.ap.propose_vote          # 표는 무료다. 돈을 물리면 참여가 재산이 된다
+        sink.ballots.append((agent.id, agent.country, bool(args["approve"])))
+        return {"ok": True, "voted": bool(args["approve"]),
+                "on": c.proposal["target"], "ap_left": round(agent.ap, 1)}, None
 
     if name == "procreate":
         if agent.ap < cfg.ap.procreate:

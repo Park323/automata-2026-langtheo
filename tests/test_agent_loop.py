@@ -66,6 +66,7 @@ def test_ap_cap_fourth_speak_fails(cfg, world):
 # ── #3 예산 고갈 ─────────────────────────────────────────────────────────────
 
 def test_budget_never_negative(cfg, world):
+    world.countries["Asla"].land = "interceptor"   # 투표 전에는 애초에 투자가 막힌다
     script = [assistant_msg(tool_call("invest", "1", target="facility", amount=999999)),
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=100)
@@ -79,6 +80,7 @@ def test_budget_never_negative(cfg, world):
 
 def test_invest_facility_invalid_country(cfg, world):
     """LLM 이 국가 대신 에이전트 id(B2)를 주면 ok:False, 예산 미차감, sink 미반영."""
+    world.countries["Ranoa"].land = "interceptor"
     script = [assistant_msg(tool_call("invest", "1", target="facility", amount=50, to="Ranoa2")),
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
@@ -90,6 +92,7 @@ def test_invest_facility_invalid_country(cfg, world):
 
 def test_invest_amount_not_number(cfg, world):
     """amount 가 숫자 아닌 문자열이어도 크래시하지 않고 ok:False."""
+    world.countries["Asla"].land = "interceptor"
     script = [assistant_msg(tool_call("invest", "1", target="facility", amount="많이")),
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
