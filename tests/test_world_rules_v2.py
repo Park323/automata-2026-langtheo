@@ -469,11 +469,17 @@ def test_invest_names_a_nation_and_says_the_default(cfg, world):
     assert "your own or another" in d["description"]
     assert "Defaults to your own nation" in d["parameters"]["properties"]["to"]["description"]
 
-    marks = {"ja": "省くと自国", "zh": "不写则本国", "fr": "sans `to`, la vôtre"}
+    # 기본값만이 아니라 **타국도 된다는 것**을 관측에 적어야 한다. 도구 설명(영어)에만
+    # 있고 관측(모국어)에는 없었는데, 매 턴 읽는 것은 관측이다 — 실측에서 `to` 를 84번
+    # 쓰면서 **전부 자국**을 넣었다.
+    marks = {"ja": ("省くと自国", "他国でもよい"),
+             "zh": ("不写则本国", "本国或别国都可以"),
+             "fr": ("sans `to`, la vôtre", "la vôtre ou une autre")}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
         obs = prompts.render_observation(world, a, cfg, 48.0)
-        assert marks[a.native_lang] in obs, a.native_lang
+        for m in marks[a.native_lang]:
+            assert m in obs, f"{a.native_lang}: {m}"
 
 
 def test_the_rule_does_not_tell_them_what_to_do(cfg, world):
