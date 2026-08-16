@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass, field
 
 from core import messaging
-from core.tools import TOOLS, TOOL_NAMES
+from core.tools import TOOLS, TOOL_NAMES, TOOLS_NO_REASONING, tools_for
 
 
 
@@ -363,6 +363,7 @@ def tool_schema_tokens(tools) -> int:
 
 
 _TOOL_TOKENS = tool_schema_tokens(TOOLS)
+_TOOL_TOKENS_NR = tool_schema_tokens(TOOLS_NO_REASONING)
 
 
 def _turn_blocks(convo: list[dict]) -> list[tuple[int, int]]:
@@ -429,6 +430,11 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     actions: list[dict] = []
     reasonings: list[dict] = []   # spec 4.2 — 행동마다의 근거. 지표 4 를 여기서 역추적한다
     api_reasoning = ""      # API 의 message.reasoning — 추론 모델의 사고 과정. 다른 것이다
+    # 사고형 모델이면 도구마다 reasoning 을 또 받지 않는다 (spec 12.1).
+    # 그 대신 **모델 자신의 사고를 reasonings 스트림에 넣는다** — 안 그러면
+    # 지표 4(2단계 판정)가 읽을 근거가 통째로 사라진다.
+    tool_list = tools_for(cfg)
+    tool_tokens = _TOOL_TOKENS if tool_list is TOOLS else _TOOL_TOKENS_NR
     error = None
     evicted = 0
     ended_by = "exhausted"  # ended | exhausted | error | repeat_guard | runaway
@@ -450,12 +456,12 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             break
         steps += 1
         # 한계를 넘으면 오래된 턴 블록부터 버린다. system 은 convo 밖이라 안전하다.
-        agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, _TOOL_TOKENS)
+        agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, tool_tokens)
         evicted += dropped
         messages = [{"role": "system", "content": system_prompt}, *agent.convo]
         t_call = time.time()
         try:
-            resp = client.chat(messages, tools=TOOLS)
+            resp = client.chat(messages, tools=tool_list)
         except Exception as e:                          # 이 에이전트만 턴 종료
             llm_ms += (time.time() - t_call) * 1000
             error = f"{type(e).__name__}: {str(e)[:200]}"
@@ -464,12 +470,24 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
         # 압박 판정은 실측 토큰으로 한다. 없으면(Stub) 추정치.
         usage = resp.get("usage") or {}
         agent.last_prompt_tokens = int(usage.get("prompt_tokens")
-                                       or estimate_tokens(messages, _TOOL_TOKENS))
-        msg = resp["choices"][0]["message"]
+                                       or estimate_tokens(messages, tool_tokens))
+        # 응답 모양이 예상과 달라도 **이 에이전트만** 턴을 접는다. 인덱싱하다 터지면
+        # 스레드 풀을 타고 올라가 런 전체가 죽는다 (실측에서 실제로 죽었다).
+        try:
+            msg = resp["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError) as e:
+            error = f"malformed response: {type(e).__name__} {str(resp)[:150]}"
+            break
         # ⚠ message.reasoning 은 추론 모델의 사고 과정이고 spec 의 reasoning 과 다르다.
         #    섞지 않는다 (spec 9장). 원본은 raw_calls.jsonl 에 그대로 남는다.
-        if msg.get("reasoning"):
-            api_reasoning = str(msg["reasoning"])
+        think = str(msg.get("reasoning") or "").strip()
+        if think:
+            api_reasoning = think          # 마지막 스텝의 사고 (하위 호환)
+            if tool_list is not TOOLS:
+                # 도구 인자가 없으니 이것이 유일한 근거다. **스텝 단위**라 어느 근거가
+                # 어느 행동인지는 확정되지 않는다 (spec 12.1 이 경고한 그 지점).
+                reasonings.append({"tool": None, "ok": True, "step": steps,
+                                   "source": "thinking", "reasoning": think})
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
             # 도구 채널이 아니라 content 로 샌 호출을 줍는다 (전송 장애)
@@ -519,7 +537,12 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             else:
                 result, control = execute_tool(name, args, world, agent, cfg, sink, knob_ai)
             why = str(args.get("reasoning", ""))
-            reasonings.append({"tool": name, "ok": bool(result.get("ok")), "reasoning": why})
+            if tool_list is TOOLS:
+                reasonings.append({"tool": name, "ok": bool(result.get("ok")),
+                                   "source": "tool", "reasoning": why})
+            else:
+                reasonings.append({"tool": name, "ok": bool(result.get("ok")),
+                                   "source": "tool", "reasoning": ""})
             if name != "end_turn" and result.get("ok"):
                 actions.append({"type": name, **args})
             agent.convo.append({"role": "tool", "tool_call_id": tc["id"],

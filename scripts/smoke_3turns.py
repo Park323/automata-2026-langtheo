@@ -84,6 +84,9 @@ def main() -> None:
                     help="에이전트 모델 출력 1M당 $ (비용 추정용, 선택)")
     ap.add_argument("--check", action="store_true", help="모델 검증만 하고 종료")
     ap.add_argument("--sequential", action="store_true")
+    ap.add_argument("--reasoning-effort", default=None,
+                    choices=["low", "medium", "high"],
+                    help="사고 강도 (config 의 reasoning.max_tokens 를 대신함)")
     ap.add_argument("--run-id", default=None,
                     help="산출물 디렉터리 이름 (기본: smoke_{turns}t_seed{seed}_{시각})")
     args = ap.parse_args()
@@ -104,6 +107,9 @@ def main() -> None:
     agent_model = args.agent_model or cfg.llm.agent_model
     translate_model = args.translate_model or cfg.llm.translate_model
     knob = args.knob if args.knob is not None else max(cfg.knob.comm_intl_ai)
+    if args.reasoning_effort:                      # 실측 비교용 상단 우선
+        raw["llm"]["reasoning"] = {"effort": args.reasoning_effort}
+        cfg = config.from_dict(raw)
 
     print("=" * 64)
     print(f"모델 검증  (agent={agent_model}, translate={translate_model})")
@@ -115,7 +121,9 @@ def main() -> None:
 
     agent_client = CountingClient(
         OpenRouterClient(agent_model, api_key=key, temperature=cfg.llm.temperature,
-                         max_tokens=cfg.llm.max_tokens), "agent")
+                         max_tokens=cfg.llm.max_tokens,
+                         reasoning=cfg.llm.reasoning,
+                         provider=cfg.llm.provider), "agent")
     translator = CountingClient(
         OpenRouterClient(translate_model, api_key=key, temperature=0.2,
                          max_tokens=cfg.llm.max_tokens), "translate")

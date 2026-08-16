@@ -47,14 +47,17 @@ _REASONING = {"type": "string",
               "description": "one sentence on why you did what you did this turn"}
 
 
-TOOLS: list[dict] = [
-    _fn("speak", "Send a message to one recipient. It arrives next turn.",
+def _build(reasoning_arg: bool) -> list[dict]:
+  def fn(name, desc, props, req, reasoning=True):
+      return _fn(name, desc, props, req, reasoning and reasoning_arg)
+  return [
+    fn("speak", "Send a message to one recipient. It arrives next turn.",
         {"to": {"type": "string", "description": "recipient id (e.g. Ranoa2)"},
          "route": _ROUTE, "text": _TEXT,
          "translate_instruction": _TR_INSTR},
         ["to", "text"]),
 
-    _fn("invest",
+    fn("invest",
         "Invest in a resource. Only facility can name a target nation (to). "
         "Money you put into a facility goes into whatever that nation is currently "
         "building — which may not be what you think it is. Only that nation knows.",
@@ -63,11 +66,11 @@ TOOLS: list[dict] = [
          "to": {"type": "string", "description": "facility only: target nation id (defaults to your own)"}},
         ["target", "amount"]),
 
-    _fn("learn", "Learn another nation's language. Give a nation id, not a language code.",
+    fn("learn", "Learn another nation's language. Give a nation id, not a language code.",
         {"country": {"type": "string", "description": "the nation whose language to learn (e.g. Ranoa)"}},
         ["country"]),
 
-    _fn("propose_vote",
+    fn("propose_vote",
         "Open a proposal to set your nation's facility. Your nation only. "
         "Nothing changes yet: three turns pass so people can talk it over, and on the "
         "fourth turn the ballot is held. **Only people of your own nation may vote on "
@@ -76,14 +79,14 @@ TOOLS: list[dict] = [
         {"target": {"type": "string", "enum": ["bunker", "interceptor"]}},
         ["target"]),
 
-    _fn("vote",
+    fn("vote",
         "Cast your ballot on **your own nation's** open proposal — you cannot vote on "
         "another nation's. Only on the turn the ballot is held; the observation tells "
         "you which turn that is.",
         {"approve": {"type": "boolean", "description": "true to approve, false to reject"}},
         ["approve"]),
 
-    _fn("procreate",
+    fn("procreate",
         "Leave a child and die. Calling it ends your turn at once. "
         "The child inherits your remaining budget and your testament, and gets a "
         "discount on learning any language you could read. The child does NOT "
@@ -91,14 +94,23 @@ TOOLS: list[dict] = [
         {"testament": {"type": "string", "description": "one sentence passed to the child"}},
         ["testament"]),
 
-    _fn("memory_write",
+    fn("memory_write",
         "Overwrite your notes. They stay with you next turn; nobody else sees them.",
         {"text": {"type": "string", "description": "your notes, replacing whatever was there"}},
         ["text"]),
 
     # 유일하게 reasoning 이 없는 도구 — 행동이 아니라 행동을 그만두는 신호다.
-    _fn("end_turn", "You have nothing more to do this turn. Ends the loop.", {}, [],
+    fn("end_turn", "You have nothing more to do this turn. Ends the loop.", {}, [],
         reasoning=False),
 ]
 
+
+# 두 벌을 미리 만들어 둔다. 사고형 모델에서는 도구마다 reasoning 을 또 받지 않는다
+# (spec 12.1) — 모델이 이미 사고를 하고 있고, 그건 api_reasoning 으로 따로 남는다.
+TOOLS = _build(True)
+TOOLS_NO_REASONING = _build(False)
 TOOL_NAMES = {t["function"]["name"] for t in TOOLS}
+
+
+def tools_for(cfg) -> list[dict]:
+    return TOOLS if getattr(cfg.llm, "tool_reasoning", True) else TOOLS_NO_REASONING

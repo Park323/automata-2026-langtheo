@@ -19,6 +19,13 @@ from domains.meteor import prompts
 
 
 @pytest.fixture
+def cfg_tool(cfg):
+    """도구마다 reasoning 을 받는 모드 (비사고형 모델용). base.yaml 은 지금 끈 상태다."""
+    import dataclasses
+    return dataclasses.replace(cfg, llm=dataclasses.replace(cfg.llm, tool_reasoning=True))
+
+
+@pytest.fixture
 def cfg():
     return config.load("configs/base.yaml")
 
@@ -56,33 +63,33 @@ def test_report_understanding_is_gone():
     assert "report_understanding" not in tools.TOOL_NAMES
 
 
-def test_reasoning_recorded_per_action(cfg):
+def test_reasoning_recorded_per_action(cfg_tool):
     """행동마다 하나씩. 실패한 호출의 근거도 남는다 (왜 그걸 시도했는지)."""
     scripts = {"Asla1": [
         assistant_msg(tool_call("speak", "1", to="Asla2", text="x", reasoning="같은 나라라 싸다")),
         assistant_msg(tool_call("speak", "2", to="NOBODY", text="x", reasoning="타국에 알리려 했다")),
         assistant_msg(tool_call("end_turn", "3", reasoning="예산이 없다")),
     ]}
-    res = _run(cfg, scripts)
+    res = _run(cfg_tool, scripts)
     rs = res.agent_logs[0]["Asla1"]["reasonings"]
     assert [r["tool"] for r in rs] == ["speak", "speak", "end_turn"]
     assert [r["ok"] for r in rs] == [True, False, True]
     assert rs[1]["reasoning"] == "타국에 알리려 했다"      # 실패해도 근거는 남는다
 
 
-def test_missing_flag_only_when_all_blank(cfg):
+def test_missing_flag_only_when_all_blank(cfg_tool):
     """하나라도 근거가 있으면 누락이 아니다."""
     scripts = {"Asla1": [assistant_msg(tool_call("end_turn", "1", reasoning="이래서"))]}
-    assert _run(cfg, scripts).agent_logs[0]["Asla1"]["reasoning_missing"] is False
+    assert _run(cfg_tool, scripts).agent_logs[0]["Asla1"]["reasoning_missing"] is False
     scripts = {"Asla1": [assistant_msg(tool_call("end_turn", "1", reasoning=""))]}
-    assert _run(cfg, scripts).agent_logs[0]["Asla1"]["reasoning_missing"] is True
+    assert _run(cfg_tool, scripts).agent_logs[0]["Asla1"]["reasoning_missing"] is True
 
 
-def test_api_reasoning_is_separate(cfg):
+def test_api_reasoning_is_separate(cfg_tool):
     """API 의 message.reasoning(추론 모델의 사고 과정)과 섞이지 않는다."""
     msg = assistant_msg(tool_call("end_turn", "e", reasoning="스펙쪽"))
     msg["reasoning"] = "모델의 사고 과정"
-    log = _run(cfg, {"Asla1": [msg]}).agent_logs[0]["Asla1"]
+    log = _run(cfg_tool, {"Asla1": [msg]}).agent_logs[0]["Asla1"]
     assert log["reasonings"][0]["reasoning"] == "스펙쪽"
     assert log["api_reasoning"] == "모델의 사고 과정"
 
@@ -232,3 +239,48 @@ def test_max_tokens_is_sent(monkeypatch):
     seen.clear()
     _llm.OpenRouterClient("m", api_key="k").chat([{"role": "user", "content": "x"}])
     assert "max_tokens" not in seen["body"]          # 안 주면 안 보낸다
+
+
+# ── 사고형 모델 모드 (tool_reasoning: false) ─────────────────────────────────
+
+def test_thinking_replaces_the_tool_reasoning_argument(cfg):
+    """사고형 모델에서는 도구마다 reasoning 을 또 받지 않는다 (spec 12.1).
+
+    **그냥 끄면 지표 4 가 죽는다** — 2단계 판정의 ①이 읽을 근거가 통째로 사라진다.
+    그래서 모델 자신의 사고를 `reasonings` 스트림에 넣어 이어준다.
+    """
+    assert cfg.llm.tool_reasoning is False          # base.yaml 이 사고형 모델을 쓴다
+    msg = assistant_msg(tool_call("speak", "1", to="Asla2", text="x"))
+    msg["reasoning"] = "같은 나라라 싸니 먼저 말을 걸어본다"
+    log = _run(cfg, {"Asla1": [msg]}).agent_logs[0]["Asla1"]
+    rs = log["reasonings"]
+    assert rs[0]["source"] == "thinking"
+    assert rs[0]["reasoning"] == "같은 나라라 싸니 먼저 말을 걸어본다"
+    assert rs[0]["tool"] is None and rs[0]["step"] == 1
+    assert log["reasoning_missing"] is False        # 판정이 읽을 것이 있다
+
+
+def test_tool_schema_drops_reasoning_in_thinking_mode(cfg):
+    """스키마에서 빠져야 모델이 그 자리를 안 채운다 — 안 그러면 사고를 두 번 시킨다."""
+    from core import tools as _t
+    picked = _t.tools_for(cfg)
+    assert picked is _t.TOOLS_NO_REASONING
+    for t in picked:
+        assert "reasoning" not in t["function"]["parameters"]["properties"]
+
+
+def test_judge_can_still_read_the_stream(cfg):
+    """판정 1단계는 `reasonings[*].reasoning` 을 읽는다. 모드가 바뀌어도 그대로여야 한다."""
+    from tools.score import judge
+    msg = assistant_msg(tool_call("speak", "1", to="Asla2", text="x"))
+    msg["reasoning"] = "Ranoa1 이 보낸 요격기 얘기에 답한다"
+    log = _run(cfg, {"Asla1": [msg]}).agent_logs[0]["Asla1"]
+    ev = [{"turn": 2, "type": "agent_turn", "agent": "Asla1",
+           "reasonings": log["reasonings"]}]
+    ms = [{"turn": 1, "msg_id": 1, "from": "Ranoa1", "to": "Asla1", "route": "ai",
+           "delivered": True,
+           "meta": {"src_lang": "zh", "dst_lang": "ja", "text_sent": "A",
+                    "text_delivered": "B", "reader": False}}]
+    (r,) = judge.link(ms, ev)
+    assert r["skip"] is None
+    assert "요격기" in r["reasonings"][0]

@@ -128,3 +128,45 @@ def test_domestic_path_never_touches_the_translator(cfg):
     m = dict(_intl("Bonjour"), to_country="Ranoa", to_lang="zh", to="Ranoa2")
     p = messaging.process_message(m, set(), cfg, _BrokenTranslator(), 24.0)
     assert p["kind"] == "domestic" and p["delivered"] is True
+
+
+# ── HTTP 200 인데 error 페이로드 ──────────────────────────────────────────────
+
+def test_error_payload_with_status_200_is_a_failure(monkeypatch):
+    """프로바이더가 **200 에 error 를 실어 보낸다.**
+
+    gemma :free 에서 22콜 중 5건이 `{"error":{"code":504,…}}` 였고, choices 를 그대로
+    인덱싱하다 KeyError 로 **런 전체가 죽었다.** 예외로 바꿔야 재시도·백오프를 탄다.
+    """
+    import io
+    import json as _json
+
+    def _err(req, timeout=None):
+        return io.StringIO(_json.dumps(
+            {"error": {"message": "Provider timed out after 11686ms", "code": 504}}))
+
+    seen = []
+    c = llm.OpenRouterClient("m", api_key="k", retries=1, recorder=seen.append)
+    monkeypatch.setattr(llm.urllib.request, "urlopen", _err)
+    with pytest.raises(Exception) as ei:
+        c.chat([{"role": "user", "content": "x"}])
+    assert "504" in str(ei.value)
+    assert seen and seen[0]["response"]["error"]["code"] == 504   # 원본은 raw 에 남는다
+
+
+def test_malformed_response_kills_only_that_agent(cfg):
+    """모양이 다른 응답에 인덱싱하다 터지면 스레드 풀을 타고 런 전체가 죽는다."""
+    import itertools
+    from core import loop
+    from core.agent_loop import Sink, run_agent_turn
+    from domains.meteor import prompts
+
+    class _Weird:
+        def chat(self, *a, **k):
+            return {"unexpected": True}
+
+    w = loop.init_world(cfg, itertools.count(1))
+    a = w.agents["Asla1"]; a.ap, a.budget = 1.0, 500.0
+    lg = run_agent_turn(w, a, cfg, _Weird(), Sink(), 48.0,
+                        prompts.system_for(a), prompts.render_observation(w, a, cfg, 48.0))
+    assert lg["ended_by"] == "error" and "malformed response" in lg["error"]
