@@ -26,11 +26,20 @@ def st(turn, agent, country, known, budget_start, age=0, parent=(), alive=True):
             "born_turn": 0, "uid": 1}
 
 
-def learn_ev(turn, agent, country, lang, charged, age=0):
+def pay_ev(turn, agent, country, lang, charged, required=BASE, age=0):
+    """납부 1건. `charged` 는 **이번에 낸 액**이고 눈금은 `required` 에서 읽는다."""
     return {"turn": turn, "type": "learn", "agent": agent, "country": country,
-            "target": "Ranoa", "lang": lang, "charged": charged,
-            "rung": charged / BASE, "discount_domestic": False,
+            "target": "Ranoa", "lang": lang, "charged": charged, "required": required,
+            "progress_before": 0.0, "rung": required / BASE, "discount_domestic": False,
             "discount_parent": False, "age": age, "budget_after": 0.0, "lam": 8.26}
+
+
+def acq_ev(turn, agent, country, lang, total, required=BASE, age=0):
+    """습득 1건. `charged` 는 **총 지불액**이다."""
+    return {"turn": turn, "type": "learn", "kind": "acquired", "agent": agent,
+            "country": country, "target": "Ranoa", "lang": lang, "charged": total,
+            "required": required, "rung": required / BASE, "age": age,
+            "discount_domestic": False, "discount_parent": False, "budget_after": 0.0}
 
 
 def write(tmp_path, state, events=()):
@@ -44,27 +53,44 @@ def write(tmp_path, state, events=()):
 
 # ── 분모 ────────────────────────────────────────────────────────────────────────
 
-def test_unaffordable_rung_is_not_an_opportunity(tmp_path):
-    """감당할 수 없었으면 '안 배운 것' 이 아니다. 분모에 넣으면 x̂ 가 낮게 나온다."""
-    d = write(tmp_path, [st(1, "A1", "Asla", ["ja"], budget_start=50)])
-    obs, _ = xhat.observations(d)
-    assert obs and obs[0]["cost"] == 300 and obs[0]["learned"] is False
+def test_no_budget_is_not_an_opportunity(tmp_path):
+    """낼 돈이 없었으면 '안 낸 것' 이 아니다. 분모에 넣으면 납부율이 낮게 나온다.
+
+    **분할 납부라 기준이 바뀌었다** — 전액이 아니라 한 푼이라도 있으면 시작할 수 있다.
+    """
+    d = write(tmp_path, [st(1, "A1", "Asla", ["ja"], budget_start=0)])
+    obs, _, _ = xhat.observations(d)
+    assert obs and obs[0]["put_in"] is False
     assert xhat.take_rates(obs) == {}          # 기회가 0건
 
 
-def test_affordable_and_declined_counts(tmp_path):
-    d = write(tmp_path, [st(1, "A1", "Asla", ["ja"], budget_start=500)])
+def test_having_money_and_not_paying_counts(tmp_path):
+    """전액에 못 미쳐도 기회다 — 50원으로도 시작할 수 있다."""
+    d = write(tmp_path, [st(1, "A1", "Asla", ["ja"], budget_start=50)])
     r = xhat.take_rates(xhat.observations(d)[0])
-    assert r[(1.0, "all")] == {"n": 1, "learned": 0, "rate": 0.0}
+    assert r[(1.0, "all")] == {"n": 1, "put_in": 0, "paid": 0.0, "rate": 0.0}
 
 
-def test_learned_rung_comes_from_the_log_not_a_guess(tmp_path):
-    """실제 지불액이 곧 눈금이다. 할인 판정을 재현하다 어긋나면 x̂ 가 통째로 틀린다."""
+def test_rung_comes_from_required_not_from_the_instalment(tmp_path):
+    """**눈금은 필요액에서 읽는다.** 낸 액으로 읽으면 200원 납부가 L/3 처럼 잡힌다 —
+    눈금은 셋뿐이다 (L · L/2 · L/4)."""
     d = write(tmp_path,
-              [st(1, "A1", "Asla", ["ja", "zh"], budget_start=400, age=3)],
-              [learn_ev(1, "A1", "Asla", "zh", charged=150, age=3)])
+              [st(1, "A1", "Asla", ["ja"], budget_start=400, age=3)],
+              [pay_ev(1, "A1", "Asla", "zh", charged=200, required=150, age=3)])
     (o,) = xhat.observations(d)[0]
-    assert o["learned"] is True and o["rung"] == 0.5 and o["age"] == 3
+    assert o["put_in"] is True and o["rung"] == 0.5 and o["paid"] == 200 and o["age"] == 3
+
+
+def test_acquisitions_are_counted_separately(tmp_path):
+    """납부율은 '시작했는가', 습득은 '끝냈는가'. 분할 납부에서는 둘이 갈린다."""
+    d = write(tmp_path,
+              [st(1, "A1", "Asla", ["ja"], budget_start=400),
+               st(2, "A1", "Asla", ["ja", "zh"], budget_start=400)],
+              [pay_ev(1, "A1", "Asla", "zh", charged=150, required=150),
+               acq_ev(2, "A1", "Asla", "zh", total=150, required=150)])
+    obs, diag, acq = xhat.observations(d)
+    assert diag["learns"] == 1 and diag["acquired"] == 1
+    assert xhat.acquisitions(acq, BASE) == {(0.5, "all"): 1}
 
 
 def test_trilingual_agent_has_no_opportunity(tmp_path):
@@ -78,7 +104,7 @@ def test_missing_budget_start_is_reported_not_silently_dropped(tmp_path):
     row = st(1, "A1", "Asla", ["ja"], budget_start=500)
     del row["budget_start"]
     d = write(tmp_path, [row])
-    obs, diag = xhat.observations(d)
+    obs, diag, _ = xhat.observations(d)
     assert obs == [] and diag["no_budget_start"] == 1
 
 
@@ -106,7 +132,7 @@ def test_same_turn_learner_is_not_a_discount_source(tmp_path):
         st(1, "A2", "Asla", ["ja"], budget_start=500),
         st(2, "A1", "Asla", ["ja", "zh"], budget_start=500),   # 이번 턴에 배움
         st(2, "A2", "Asla", ["ja"], budget_start=500),
-    ], [learn_ev(2, "A1", "Asla", "zh", charged=300)])
+    ], [pay_ev(2, "A1", "Asla", "zh", charged=300)])
     o = [x for x in xhat.observations(d)[0] if x["turn"] == 2 and x["agent"] == "A2"]
     assert o[0]["rung"] == 1.0
 
@@ -164,7 +190,7 @@ def test_age_bands_split_the_estimate(tmp_path):
     d = write(tmp_path, [
         st(1, "A1", "Asla", ["ja", "zh"], budget_start=500, age=1),
         st(1, "A2", "Asla", ["ja"], budget_start=500, age=8),
-    ], [learn_ev(1, "A1", "Asla", "zh", charged=300, age=1)])
+    ], [pay_ev(1, "A1", "Asla", "zh", charged=300, age=1)])
     est = xhat.estimate([d], by_age=True)
     assert est["brackets"]["0-2"]["lower"] == 1.0        # 젊은 쪽은 켜짐
     assert est["brackets"]["6+"]["lower"] is None        # 늙은 쪽은 꺼짐

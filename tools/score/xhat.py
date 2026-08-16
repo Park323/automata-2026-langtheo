@@ -9,16 +9,23 @@
 만들어 줍니다 — 국내 구사자 유무 × 부모 구사 여부. 그래서 조건을 하나도 늘리지 않고
 `x` 를 `<L/4 / L/4~L/2 / L/2~L / ≥L` 네 구간으로 좁힙니다.
 
-### 무엇을 세는가
+### 무엇을 세는가 — **분할 납부라 둘로 나뉩니다** (8/17)
 
-눈금마다 **감당 가능했는데 배웠는가**를 셉니다.
+학습은 한 번에 다 내는 것이 아니라 낸 만큼 쌓입니다. 그래서 턴 단위의 결정은
+*"배웠는가"* 가 아니라 **"냈는가"** 이고, 습득은 여러 턴에 걸쳐 일어납니다.
 
-    기회(눈금 r)   그 턴의 결정 시점 예산이 r 이상이었던 (사람, 턴)
-    채택률(r)      그중 실제로 배운 비율
+    납부율(눈금 r)  그 턴에 낼 돈이 있었던 (사람, 턴) 중 **한 푼이라도 낸** 비율
+    습득(눈금 r)    누적이 그 눈금에 닿아 실제로 읽게 된 건수
 
-`AP = 1.0` 이고 `ap.learn = 1.0` 이라 학습은 한 턴을 통째로 씁니다. 턴 시작에는 AP 가
-항상 가득이므로 기회를 가르는 것은 예산뿐이고, 관측되는 `x` 는 **AP 기회비용을 포함한
-순 암묵효용**입니다.
+전액 기준으로 분모를 잡으면 거의 비어 버립니다 — 턴 시작 예산이 대개 100~200원인데
+눈금은 150~600 입니다. **한 푼이라도 낼 수 있으면 시작할 수 있고, `x` 가 0 이면 한 푼도
+안 냅니다.** 그것이 드러난 선호입니다.
+
+**눈금은 `required`(그때의 필요액)에서 읽습니다.** 낸 액으로 읽으면 200원 납부가
+`L/3` 처럼 잡힙니다 — 눈금은 셋뿐입니다.
+
+`ap.learn` 은 0.3 입니다. 분할 납부라 한 턴을 통째로 쓰지 않으므로, 관측되는 `x` 에
+섞이는 AP 기회비용도 그만큼 줄었습니다.
 
 ### 나이로 층화합니다 — 이게 최대 노이즈원입니다
 
@@ -70,11 +77,12 @@ def _snap_rung(charged: float, base: float) -> float:
 
 # ── 관측 만들기 ─────────────────────────────────────────────────────────────────
 
-def observations(run_dir: Path) -> tuple[list[dict], dict]:
-    """(관측 목록, 진단). 관측 1건 = (사람, 턴) 하나의 학습 결정.
+def observations(run_dir: Path) -> tuple[list[dict], dict, list[dict]]:
+    """(관측 목록, 진단, 습득 목록). 관측 1건 = (사람, 턴) 하나의 학습 결정.
 
-    각 관측은 그 사람이 그 턴에 **감당할 수 있었던 가장 싼 눈금**과, 실제로 배웠는지를
-    담는다. 배운 경우 눈금은 실제 지불액에서 온다 (추정이 아니라 로그).
+    각 관측은 그 사람이 그 턴에 마주한 **가장 싼 눈금**과, 그 턴에 **한 푼이라도
+    냈는지**를 담는다. 분할 납부라 "배웠다/안 배웠다" 가 아니라 **"냈다/안 냈다"** 가
+    턴 단위의 결정이다. 습득은 여러 턴에 걸쳐 일어나므로 따로 모은다.
 
     ⚠ 반사실(배우지 않은 경우)의 눈금은 상태에서 **다시 계산**한다. 그 순간 국내에
       구사자가 있었는지가 관건인데, `state.jsonl` 이 턴 끝 상태라 그 턴에 배운 사람이
@@ -98,13 +106,27 @@ def observations(run_dir: Path) -> tuple[list[dict], dict]:
                 langs[c["id"]] = c.get("lang")
     if not base:
         diag["error"] = "config_snapshot 에 learn_base 가 없습니다"
-        return [], diag
+        return [], diag, []
 
-    learned: dict[tuple[int, str], dict] = {}
+    # **분할 납부다** (8/17). 한 턴의 `learn` 은 납부 1건이고, 습득은 누적이 그 순간의
+    # 필요액에 닿았을 때 따로 기록된다 (`kind: "acquired"`).
+    #
+    #   type=learn, kind 없음   → 납부.   charged = 이번에 낸 액, required = 그때의 필요액
+    #   type=learn, kind=acquired → 습득. charged = 총 지불액, required = 완료 시 필요액
+    #
+    # 눈금은 **required** 에서 읽는다. charged 로 읽으면 200원을 낸 것이 L/3 눈금처럼
+    # 잡힌다 — 눈금은 셋뿐이다 (L · L/2 · L/4).
+    paid: dict[tuple[int, str], list] = defaultdict(list)
+    acquired: list[dict] = []
     for e in events:
-        if e.get("type") == "learn":
-            learned[(e["turn"], e["agent"])] = e
+        if e.get("type") != "learn":
+            continue
+        if e.get("kind") == "acquired":
+            acquired.append(e)
+        else:
+            paid[(e["turn"], e["agent"])].append(e)
             diag["learns"] += 1
+    diag["acquired"] = len(acquired)
 
     by_turn: dict[int, list[dict]] = defaultdict(list)
     for r in state:
@@ -125,22 +147,25 @@ def observations(run_dir: Path) -> tuple[list[dict], dict]:
                     speakers[(r["country"], lg)].add(r["agent"])
 
         for r in by_turn[turn]:
-            if not r.get("alive") and (turn, r["agent"]) not in learned:
+            evs = paid.get((turn, r["agent"]), [])
+            if not r.get("alive") and not evs:
                 continue
             bs = r.get("budget_start")
             if bs is None:
                 diag["no_budget_start"] += 1
                 continue
-            ev = learned.get((turn, r["agent"]))
             known = set(r.get("known_langs") or [])
             parent = set(r.get("parent_langs") or [])
-            if ev:                                   # 배웠다 — 눈금은 로그에서
-                rung = _snap_rung(ev["charged"], base)
-                out.append({"turn": turn, "agent": r["agent"], "country": r["country"],
-                            "age": ev.get("age", r.get("age", 0)), "rung": rung,
-                            "cost": ev["charged"], "budget_start": bs, "learned": True})
+            if evs:                                   # 이번 턴에 냈다 — 눈금은 로그에서
+                for ev in evs:
+                    out.append({
+                        "turn": turn, "agent": r["agent"], "country": r["country"],
+                        "age": ev.get("age", r.get("age", 0)),
+                        "rung": _snap_rung(ev.get("required", base), base),
+                        "cost": ev.get("required", base), "paid": ev["charged"],
+                        "budget_start": bs, "put_in": True})
                 continue
-            # 안 배웠다 — 그가 고를 수 있었던 **가장 싼** 눈금을 다시 계산한다
+            # 안 냈다 — 그가 고를 수 있었던 **가장 싼** 눈금을 다시 계산한다
             best = None
             for cid, lg in country_lang.items():
                 if not lg or lg in known:
@@ -153,29 +178,53 @@ def observations(run_dir: Path) -> tuple[list[dict], dict]:
                 continue
             out.append({"turn": turn, "agent": r["agent"], "country": r["country"],
                         "age": r.get("age", 0), "rung": best, "cost": base * best,
-                        "budget_start": bs, "learned": False})
+                        "paid": 0.0, "budget_start": bs, "put_in": False})
     diag["opportunities"] = len(out)
     diag["learn_base"] = base
-    return out, diag
+    return out, diag, acquired
 
 
 # ── 추정 ────────────────────────────────────────────────────────────────────────
 
 def take_rates(obs: list[dict], by_age: bool = False) -> dict:
-    """눈금별 채택률. 분모는 **그 눈금을 감당할 수 있었던** (사람, 턴)."""
-    cells: dict = defaultdict(lambda: {"n": 0, "learned": 0})
+    """눈금별 **납부율**. 분모는 그 턴에 낼 돈이 있었던 (사람, 턴).
+
+    **분할 납부라 기준이 바뀌었다.** 전에는 "전액을 감당할 수 있었는데 배웠는가" 였다.
+    이제 한 푼이라도 낼 수 있으면 시작할 수 있으므로, 턴 단위의 결정은 **"냈는가"** 다.
+    x 가 0 이면 한 푼도 안 낸다 — 그 자체가 드러난 선호다.
+
+    `budget_start > 0` 을 기회로 본다. 전액 기준으로 두면 분모가 거의 비어 버린다
+    (실측에서 턴 시작 예산이 대개 100~200원인데 눈금은 150~600 이다).
+    """
+    cells: dict = defaultdict(lambda: {"n": 0, "put_in": 0, "paid": 0.0})
     for o in obs:
-        if o["budget_start"] < o["cost"]:            # 감당 불가 — 기회가 아니다
+        if o["budget_start"] <= 0:                   # 낼 돈이 없다 — 기회가 아니다
             continue
         keys = [(o["rung"], "all")]
         if by_age:
             keys.append((o["rung"], BAND_NAME[band_of(o["age"])]))
         for k in keys:
             cells[k]["n"] += 1
-            cells[k]["learned"] += o["learned"]
-    return {k: {"n": v["n"], "rate": round(v["learned"] / v["n"], 4) if v["n"] else None,
-                "learned": v["learned"]}
+            cells[k]["put_in"] += bool(o["put_in"])
+            cells[k]["paid"] += o.get("paid", 0.0)
+    return {k: {"n": v["n"], "rate": round(v["put_in"] / v["n"], 4) if v["n"] else None,
+                "put_in": v["put_in"], "paid": round(v["paid"], 1)}
             for k, v in cells.items()}
+
+
+def acquisitions(acq: list[dict], base: float, by_age: bool = False) -> dict:
+    """습득한 눈금별 건수. **가장 비싼 습득 눈금이 `x` 의 하한**이다.
+
+    납부율(위)은 *"시작했는가"* 를 재고, 이것은 *"끝냈는가"* 를 잰다. 분할 납부에서는
+    둘이 갈릴 수 있다 — 반쯤 내다 죽거나, 값이 싸져 예상보다 일찍 끝나거나.
+    """
+    cells: dict = defaultdict(int)
+    for a in acq:
+        rung = _snap_rung(a.get("required", base), base)
+        cells[(rung, "all")] += 1
+        if by_age:
+            cells[(rung, BAND_NAME[band_of(a.get("age", 0))])] += 1
+    return dict(cells)
 
 
 def bracket(rates: dict, band: str = "all", threshold: float = 0.5) -> dict:
@@ -221,16 +270,22 @@ def _label(lo: float | None, hi: float | None) -> str:
 def estimate(run_dirs: list[Path], by_age: bool = True) -> dict:
     """여러 런을 합쳐 하나의 `x̂` 를 낸다. 같은 노브의 런들을 함께 넣으세요."""
     obs: list[dict] = []
+    acq: list[dict] = []
     diags = []
+    base = None
     for d in run_dirs:
-        o, diag = observations(d)
+        o, diag, a = observations(d)
         obs += o
+        acq += a
+        base = diag.get("learn_base") or base
         diags.append({"run": Path(d).name, **diag})
     rates = take_rates(obs, by_age=by_age)
+    ac = acquisitions(acq, base or 1.0, by_age=by_age)
     bands = ["all"] + ([BAND_NAME[b] for b in AGE_BANDS] if by_age else [])
     return {"rates": {f"{RUNG_NAME[r]}|{b}": v for (r, b), v in sorted(rates.items())},
+            "acq": {f"{RUNG_NAME[r]}|{b}": v for (r, b), v in sorted(ac.items())},
             "brackets": {b: bracket(rates, b) for b in bands},
-            "n_obs": len(obs), "diag": diags}
+            "n_obs": len(obs), "n_acq": len(acq), "diag": diags}
 
 
 def delta_x(by_knob: dict[float, dict]) -> dict:
@@ -255,12 +310,13 @@ def delta_x(by_knob: dict[float, dict]) -> dict:
 # ── 출력 ────────────────────────────────────────────────────────────────────────
 
 def format_estimate(est: dict, knob=None) -> str:
-    L = [f"x̂ 추정   노브 {knob}   관측 {est['n_obs']}건", "─" * 58]
-    L.append(f"{'눈금':<6}{'층':<8}{'기회':>6}{'학습':>6}{'채택률':>9}")
+    L = [f"x̂ 추정   노브 {knob}   관측 {est['n_obs']}건 · 습득 {est['n_acq']}건", "─" * 72]
+    L.append(f"{'눈금':<6}{'층':<8}{'기회':>6}{'납부':>6}{'납부율':>9}{'총액':>10}{'습득':>7}")
     for key, v in est["rates"].items():
         rung, band = key.split("|")
         rate = "—" if v["rate"] is None else f"{v['rate']:.0%}"
-        L.append(f"{rung:<6}{band:<8}{v['n']:>6}{v['learned']:>6}{rate:>9}")
+        L.append(f"{rung:<6}{band:<8}{v['n']:>6}{v['put_in']:>6}{rate:>9}"
+                 f"{v['paid']:>10.0f}{est.get('acq', {}).get(f'{rung}|{band}', 0):>7}")
     L.append("")
     for band, b in est["brackets"].items():
         if not b["n"]:
