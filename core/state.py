@@ -31,6 +31,8 @@ class Agent:
     # 관측에 그대로 보인다 (별도 관측 없이 투명). 완료 판정은 **그 순간의** 학습가로
     # 하므로, 국내 구사자가 생기면 필요액이 절반이 되어 즉시 완료될 수 있다 (3.4).
     lang_progress: dict = field(default_factory=dict)
+    # 이번 턴에 national·facility 로 낸 액. 매 턴 리셋. 기술력이 정한 상한에 걸린다.
+    invested_turn: dict = field(default_factory=dict)
 
 
 @dataclass

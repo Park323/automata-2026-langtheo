@@ -91,6 +91,9 @@ class Facility:
     cap_per_turn: float
     transition_requires_vote: bool
     transition_forfeits_progress: bool
+    # 한 사람이 **한 턴에** national·facility 각각에 낼 수 있는 상한. 국가 기술력이 넓힌다.
+    # 1회당으로 두면 invest 가 AP 를 안 쓰므로 두 번 불러 우회한다.
+    invest_cap_base: float = 150.0
 
 
 @dataclass(frozen=True)
@@ -114,6 +117,9 @@ class World:
 class Inheritance:
     testament_max_chars: int
     testament_carry: int
+    # 반쯤 배운 언어를 아이가 얼마나 물려받는가. 1.0 이면 능력이 사실상 상속돼
+    # "능력은 상속되지 않는다"(3.3)가 무너진다. 감쇠가 곧 구전 감쇠의 정량판이다.
+    lang_progress_carry: float = 0.5
 
 
 @dataclass(frozen=True)

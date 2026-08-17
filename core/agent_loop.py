@@ -45,6 +45,21 @@ class Sink:
 
 # ── 학습 비용 (spec 3.4) ──────────────────────────────────────────────────────
 
+def invest_cap(agent, world, cfg) -> float:
+    """한 사람이 **한 턴에** national·facility 각각에 낼 수 있는 상한.
+
+        상한 = invest_cap_base × 자국 생산배수
+
+    **국가 기술력이 돈을 일로 바꾸는 속도를 정한다.** 둘을 동시에 만든다 —
+    돈만 쌓아두고 마지막에 쏟아붓는 길이 막히고(★A), 늙어서 다 못 쓸 돈이 생겨
+    `procreate` 가 처음으로 이득이 된다. 그전에는 예산이 내 손에 있는 편이 언제나
+    나아서 죽을 이유가 없었다 (실측: 21명 전원 자연사, procreate 0건).
+
+    `wellness` 는 제한하지 않는다 — 사적 재화이고, 막으면 수명이 예산에 안 반응한다.
+    """
+    return cfg.facility.invest_cap_base * world.countries[agent.country].multiplier(cfg)
+
+
 def risk_sigma(country, cfg) -> float:
     """관측의 **상대 표준편차**. 국가 자본(기술력)이 좁힌다.
 
@@ -216,8 +231,22 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             if to not in world.countries:
                 return {"ok": False,
                         "error": f"unknown nation: {to} — facility invest takes a nation id (e.g. Ranoa)"}, None
+        # **상한을 먼저 자르고 예산을 본다.** 순서를 바꾸면 상한이 잘라줬을 금액을
+        # 그대로 들고 "예산 부족" 으로 거절한다 — 9,999 를 내려다 150 만 냈어야 할 것이
+        # 통째로 실패한다.
+        if target in ("national", "facility"):
+            cap = invest_cap(agent, world, cfg)
+            used = agent.invested_turn.get(target, 0.0)
+            room = max(0.0, cap - used)
+            if room <= 0:
+                return {"ok": False, "error":
+                        f"this turn's {target} limit is used up ({cap:.0f}); "
+                        f"your nation's technical level sets it"}, None
+            amount = min(amount, room)    # 넘치게 내면 상한까지만 받는다
         if agent.budget < amount:
             return {"ok": False, "error": f"not enough budget; need {amount:.0f}, have {agent.budget:.0f}"}, None
+        if target in ("national", "facility"):
+            agent.invested_turn[target] = agent.invested_turn.get(target, 0.0) + amount
         agent.budget -= amount            # invest 는 AP 0
         if target == "facility":
             sink.facility.append((to, amount, agent.id))
@@ -226,7 +255,9 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             # 그보다 싸다), "타국 사정은 소통해야만 안다" 는 전제가 통째로 무너진다.
             # 정해지지 않았으면 돈은 나가고 아무 일도 일어나지 않는다 — route=original 과
             # 같은 도박이다 (spec 4.1 은닉 목록: 타국의 진척·예산·국토·언어 능력).
-            return {"ok": True, "accepted": f"{to} facility investment accepted", "charged": amount,
+            return {"ok": True, "accepted": f"{to} facility investment accepted",
+                    "charged": amount, "turn_limit": round(cap, 1),
+                    "left_this_turn": round(cap - agent.invested_turn["facility"], 1),
                     "budget_left": round(agent.budget, 1)}, None
         if target == "wellness":
             sink.wellness.append((agent.id, amount))
@@ -234,6 +265,8 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                     "budget_left": round(agent.budget, 1)}, None    # λ 변화 비공개
         sink.national.append((agent.country, amount, agent.id))
         return {"ok": True, "accepted": "national investment accepted", "charged": amount,
+                "turn_limit": round(cap, 1),
+                "left_this_turn": round(cap - agent.invested_turn["national"], 1),
                 "budget_left": round(agent.budget, 1)}, None
 
     if name == "learn":

@@ -30,6 +30,7 @@ them verbatim in tool calls, so they are never translated. Prose around them is.
 """
 from __future__ import annotations
 
+from core import agent_loop
 from core.agent_loop import learn_cost
 
 # 세계의 첫 해. 1 로 시작하면 "첫 해라서 아직 괜찮다" 같은 편향이 붙는다.
@@ -95,7 +96,7 @@ T = {
         c_obs_note="   隕石までの残りターンと interceptor に要る進捗を測る。国家投資が精度を上げる",
         c_inv="  invest", c_inv_note="   指定した額",
         c_pro="  procreate", c_pro_note="   0  子を残してあなたは死ぬ",
-        inv_hdr="invest の効果",
+        inv_hdr="invest の効果", inv_cap="  national と facility はそれぞれ 1ターンに {v:.0f} まで。\n                          自国の技術力が上げる",
         inv_well="  wellness   あなたの寿命が延びる（どれだけかは分からない）",
         inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n                          observe_risk の精度も良くなる。国民全員に及ぶ",
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n                          （省くと自国）",
@@ -137,7 +138,7 @@ T = {
         c_obs_note="   测量陨石撞击前还剩几回合，以及 interceptor 需要多少进度。国家投资会提高精度",
         c_inv="  invest", c_inv_note="   你指定的数额",
         c_pro="  procreate", c_pro_note="   0  留下孩子，你随即死去",
-        inv_hdr="invest 的效果",
+        inv_hdr="invest 的效果", inv_cap="  national 与 facility 每回合各限 {v:.0f}。本国技术水平会提高它",
         inv_well="  wellness   延长你的寿命（延长多少你无法得知）",
         inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n                          observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
@@ -180,7 +181,7 @@ T = {
         c_obs_note="   mesure les tours restants et la progression qu'exige un interceptor ; l'investissement national affine",
         c_inv="  invest", c_inv_note="   le montant que vous choisissez",
         c_pro="  procreate", c_pro_note="   0  vous laissez un enfant et vous mourez",
-        inv_hdr="effets d'invest",
+        inv_hdr="effets d'invest", inv_cap="  national et facility : {v:.0f} par tour chacun ;\n                          le niveau technique de votre nation le relève",
         inv_well="  wellness   prolonge votre vie (d'une durée que vous ne pouvez pas connaître)",
         inv_natl="  national   élève le niveau technique de votre nation : le revenu, le rendement\n"
                           "             de ce qu'on verse à une installation et la précision d'observe_risk\n"
@@ -360,6 +361,7 @@ def render_observation(world, agent, cfg, knob_ai: float,
         render_costs(world, agent, cfg, knob_ai),
         "",
         t["inv_hdr"], t["inv_well"], t["inv_natl"], t["inv_fac"],
+        t["inv_cap"].format(v=agent_loop.invest_cap(agent, world, cfg)),
         "",
         t["cap"].format(cap=cap),
         t["rtt"],

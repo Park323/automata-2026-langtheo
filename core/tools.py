@@ -65,7 +65,9 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["to", "text"]),
 
     fn("invest",
-        "Invest in a resource. `national` raises your nation's technical level, which "
+        "Invest in a resource. `national` and `facility` are each capped per turn, and "
+        "your nation's technical level is what raises that cap — you cannot hoard and "
+        "pour it all in at the end. `national` raises your nation's technical level, which "
         "lifts income, how much progress a facility gets out of what is put into it, and "
         "the precision of observe_risk — for everyone in that nation. "
         "For facility you may name any nation with `to` — your "
@@ -119,9 +121,10 @@ def _build(reasoning_arg: bool) -> list[dict]:
 
     fn("procreate",
         "Leave a child and die. Calling it ends your turn at once. "
-        "The child inherits your remaining budget and your testament, and gets a "
-        "discount on learning any language you could read. The child does NOT "
-        "inherit the languages themselves, nor your memory of this life.",
+        "The child inherits your remaining budget and your testament, half of whatever "
+        "you had put toward learning a language, and a discount on learning any language "
+        "you could read. The child does NOT inherit the languages themselves, nor your "
+        "memory of this life.",
         {"testament": {"type": "string", "description": "one sentence passed to the child"}},
         ["testament"]),
 

@@ -202,6 +202,11 @@ def _procreate_child(world: World, aid: str, testament: str, cfg,
                      a.budget, a.known_langs, world.turn, "procreate", cfg, counter)
     # 유언은 별도 블록이 아니라 **아이의 기억 초기값**이다. 다른 모든 것과 같은
     # 컨텍스트에서 관리되고, 아이가 memory_write 로 덮어쓰면 사라진다 — 그게 구전의 감쇠다.
+    # **반쯤 배운 언어를 물려준다** — 절반만. 1.0 이면 능력이 사실상 상속돼
+    # "능력은 상속되지 않는다"(3.3)가 무너지고, 0 이면 물려줄 것이 예산뿐이다.
+    # 이 감쇠가 곧 구전 감쇠의 정량판이다.
+    keep = cfg.inheritance.lang_progress_carry
+    child.lang_progress = {k: v * keep for k, v in a.lang_progress.items() if v * keep > 0}
     child.memory = "\n".join(x for x in carry if x)
     _replace(world, aid, child, carry)
     result.deaths += 1
@@ -544,6 +549,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         #   시점의** 예산이 필요하다. 턴 끝 예산으로 대신하면 다른 데 써버린 사람이
         #   기회 자체가 없었던 것으로 집계돼 분모가 조용히 줄어든다.
         a.budget_start = a.budget
+        a.invested_turn = {}          # 턴당 투자 상한은 매 턴 새로 열린다
 
     # 2. 관측 스냅샷 (도착 메시지·프롬프트를 스레드 시작 전에 고정)
     snapshot_ids = sorted(world.agents.keys())

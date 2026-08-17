@@ -163,9 +163,10 @@ def test_investing_never_reveals_whether_a_nation_decided(cfg, world):
                                          "to": to, "reasoning": "r"},
                               world, a, cfg, Sink(), 48.0)
         outs.append(res)
-    # 나라 이름과 잔액 말고는 한 글자도 달라선 안 된다 — 다르면 그것이 곧 조회다
-    shape = [{k: (v if k not in ("accepted", "budget_left") else None)
-              for k, v in o.items()} for o in outs]
+    # 나라 이름·잔액·상한 잔여 말고는 한 글자도 달라선 안 된다 — 다르면 그것이 곧 조회다.
+    # (잔액과 상한 잔여는 두 번 연달아 내서 줄어든 것이지 나라 차이가 아니다)
+    seq = ("accepted", "budget_left", "left_this_turn")
+    shape = [{k: (v if k not in seq else None) for k, v in o.items()} for o in outs]
     assert shape[0] == shape[1]
     assert outs[0]["accepted"].replace("Ranoa", "") == outs[1]["accepted"].replace("Miris", "")
     assert all(o["ok"] for o in outs)
@@ -785,3 +786,88 @@ def test_the_guarantee_line_leaks_nothing_about_others(cfg, world):
         if other.country != a.country:
             other.known_langs.add("zh")
     assert prompts.render_observation(world, a, cfg, 48.0) == before
+
+
+# ── 턴당 투자 상한 · 학습 진척 상속 (8/17) ───────────────────────────────────
+
+def test_investment_is_capped_per_turn_by_technical_level(cfg, world):
+    """**국가 기술력이 돈을 일로 바꾸는 속도를 정한다.**
+
+    상한이 없으면 돈만 쌓아두고 마지막에 쏟아부을 수 있고(★A 위반), 늙어서 못 쓸 돈이
+    안 생겨 `procreate` 가 영영 손해다 — 실측에서 21명 전원 자연사, procreate 0건이었다.
+    """
+    from core.agent_loop import Sink, execute_tool, invest_cap
+    world.countries["Asla"].land = "interceptor"
+    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
+    cap = invest_cap(a, world, cfg)
+    assert cap == cfg.facility.invest_cap_base          # 자본 0 → 배수 1.0
+
+    sink = Sink()
+    r, _ = execute_tool("invest", {"target": "facility", "amount": 9999, "reasoning": "r"},
+                        world, a, cfg, sink, 48.0)
+    assert r["charged"] == cap and r["left_this_turn"] == 0    # 상한까지만 받는다
+    r2, _ = execute_tool("invest", {"target": "facility", "amount": 10, "reasoning": "r"},
+                         world, a, cfg, sink, 48.0)
+    assert not r2["ok"] and "limit is used up" in r2["error"]
+    assert a.budget == 10_000.0 - cap
+
+
+def test_national_and_facility_have_separate_caps(cfg, world):
+    """둘은 다른 일이다. 하나를 채웠다고 다른 하나가 막히면 안 된다."""
+    from core.agent_loop import Sink, execute_tool, invest_cap
+    world.countries["Asla"].land = "interceptor"
+    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
+    cap = invest_cap(a, world, cfg)
+    sink = Sink()
+    execute_tool("invest", {"target": "national", "amount": 9999, "reasoning": "r"},
+                 world, a, cfg, sink, 48.0)
+    r, _ = execute_tool("invest", {"target": "facility", "amount": 9999, "reasoning": "r"},
+                        world, a, cfg, sink, 48.0)
+    assert r["ok"] and r["charged"] == cap
+
+
+def test_wellness_is_not_capped(cfg, world):
+    """사적 재화다. 막으면 수명이 예산에 안 반응한다."""
+    from core.agent_loop import Sink, execute_tool
+    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
+    r, _ = execute_tool("invest", {"target": "wellness", "amount": 5000, "reasoning": "r"},
+                        world, a, cfg, Sink(), 48.0)
+    assert r["ok"] and r["charged"] == 5000
+
+
+def test_higher_technical_level_widens_the_cap(cfg, world):
+    from core.agent_loop import invest_cap
+    a = world.agents["Asla1"]
+    lo = invest_cap(a, world, cfg)
+    world.countries["Asla"].national_capital = 27_000.0
+    assert invest_cap(a, world, cfg) > lo * 1.5
+
+
+def test_half_learned_language_passes_to_the_child_with_decay(cfg, world):
+    """**반쯤 배운 언어를 물려준다 — 절반만.**
+
+    1.0 이면 능력이 사실상 상속돼 "능력은 상속되지 않는다"(3.3)가 무너지고,
+    0 이면 물려줄 것이 예산뿐이다. 이 감쇠가 곧 구전 감쇠의 정량판이다.
+    """
+    a = world.agents["Asla1"]
+    a.lang_progress = {"fr": 400.0, "zh": 1.0}
+    loop._procreate_child(world, "Asla1", "유언", cfg, itertools.count(900),
+                          loop.RunResult(world=world))
+    child = world.agents["Asla4"]
+    keep = cfg.inheritance.lang_progress_carry
+    assert child.lang_progress["fr"] == 400.0 * keep
+    assert child.parent_langs == a.known_langs          # 할인 자격은 그대로
+    assert "fr" not in child.known_langs                # 능력 자체는 안 넘어간다
+
+
+def test_natural_death_passes_nothing(cfg, world):
+    """자연사는 계보와 무관한 뒷세대다 (3.2). 진척도 안 넘어간다."""
+    import random
+    a = world.agents["Asla1"]
+    a.lang_progress = {"fr": 400.0}
+    a.age = 40
+    r = loop.RunResult(world=world)
+    loop._death_birth(world, cfg, random.Random(1), ["Asla1"], set(),
+                      itertools.count(700), r)
+    child = next(x for x in world.agents.values() if x.country == "Asla" and x.age == 0)
+    assert child.lang_progress == {} and child.parent_langs == set()

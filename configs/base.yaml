@@ -79,7 +79,11 @@ facility:
   # 전제로 나온 값이므로, eff 를 바꾸면 thresholds 를 반드시 함께 재계산해야 한다.
   # (안 그러면 assert 가 걸린다 — 그게 안전장치다.)
   eff: 1.0                        # 투자 1당 진척 시행 횟수(기준값). A-4 목표에서 역산
-  cap_per_turn: 500               # 턴당 시설 투자 상한 (A-1 기본값)
+  cap_per_turn: 500               # 턴당 **국가 단위** 시설 투자 상한 (A-1 기본값)
+  # 한 사람이 한 턴에 national·facility 각각에 낼 수 있는 상한 = base × 생산배수.
+  # **국가 기술력이 돈을 일로 바꾸는 속도를 정한다.** 돈만 쌓아두고 마지막에 쏟아붓는
+  # 길을 막고(★A), 늙어서 다 못 쓸 돈이 생겨 procreate 가 처음으로 이득이 된다.
+  invest_cap_base: 150
   transition_requires_vote: true
   transition_forfeits_progress: true
 
@@ -101,6 +105,10 @@ world:
 inheritance:
   testament_max_chars: 120        # A-1 기본값
   testament_carry: 3
+  # 반쯤 배운 언어를 아이가 절반만 물려받는다. 1.0 이면 능력이 사실상 상속돼
+  # "능력은 상속되지 않는다"(3.3)가 무너지고, 0 이면 물려줄 것이 예산뿐이다.
+  # 이 감쇠가 곧 구전 감쇠의 정량판이다.
+  lang_progress_carry: 0.5
 
 length:
   message_max_chars:
