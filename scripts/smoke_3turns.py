@@ -89,6 +89,9 @@ def main() -> None:
     ap.add_argument("--reasoning-effort", default=None,
                     choices=["low", "medium", "high"],
                     help="사고 강도 (config 의 reasoning.max_tokens 를 대신함)")
+    ap.add_argument("--deterministic", action="store_true",
+                    help="temperature 0 + 샘플링 시드 고정. **버그 재현용** — "
+                         "본실험은 0.7 로 두어야 행동의 분산이 데이터가 된다")
     ap.add_argument("--resume", action="store_true",
                     help="같은 run-id 의 checkpoint.json 에서 이어한다")
     ap.add_argument("--run-id", default=None,
@@ -124,14 +127,27 @@ def main() -> None:
     if args.check:
         return
 
+    # ⚠ **temperature 0.7 에 시드만 걸면 절반만 잡힌다.** 같은 프롬프트 4회 실측:
+    #     temp 0.7 · seed 없음  고유 4/4      temp 0.7 · seed 42  고유 2/4
+    #     temp 0.0 · seed 없음  고유 2/4      temp 0.0 · seed 42  고유 1/4  ← 고정
+    #   온도를 0 으로 내려야 시드가 일한다. 그런데 그러면 **에이전트 행동의 분산이
+    #   사라져** 시드를 12개 돌려도 "초기 나이·사망 주사위만 다른 12개" 가 된다.
+    #   본실험의 신뢰구간은 그 분산에서 나오므로 기본은 0.7 이다.
+    det = args.deterministic
     agent_client = CountingClient(
-        OpenRouterClient(agent_model, api_key=key, temperature=cfg.llm.temperature,
+        OpenRouterClient(agent_model, api_key=key,
+                         temperature=0.0 if det else cfg.llm.temperature,
                          max_tokens=cfg.llm.max_tokens,
                          reasoning=cfg.llm.reasoning,
-                         provider=cfg.llm.provider), "agent")
+                         provider=cfg.llm.provider,
+                         seed=args.seed if det else None), "agent")
     translator = CountingClient(
-        OpenRouterClient(translate_model, api_key=key, temperature=0.2,
-                         max_tokens=cfg.llm.max_tokens), "translate")
+        OpenRouterClient(translate_model, api_key=key,
+                         temperature=0.0 if det else 0.2,
+                         max_tokens=cfg.llm.max_tokens,
+                         seed=args.seed if det else None), "translate")
+    if det:
+        print("  [결정론] temperature 0 · seed 고정 — 버그 재현용입니다")
 
     print("\n" + "=" * 64)
     print(f"3턴 스모크 실행  (turns={args.turns}, knob={knob}, seed={args.seed})")

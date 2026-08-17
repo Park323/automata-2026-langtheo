@@ -170,3 +170,33 @@ def test_malformed_response_kills_only_that_agent(cfg):
     lg = run_agent_turn(w, a, cfg, _Weird(), Sink(), 48.0,
                         prompts.system_for(a), prompts.render_observation(w, a, cfg, 48.0))
     assert lg["ended_by"] == "error" and "malformed response" in lg["error"]
+
+
+# ── 재현 (8/17) ──────────────────────────────────────────────────────────────
+
+def test_seed_and_temperature_reach_the_request(monkeypatch):
+    """**temperature 0.7 에 시드만 걸면 절반만 잡힌다.** 같은 프롬프트 4회 실측:
+
+        temp 0.7 · seed 없음  고유 4/4      temp 0.7 · seed 42  고유 2/4
+        temp 0.0 · seed 없음  고유 2/4      temp 0.0 · seed 42  고유 1/4  ← 고정
+
+    온도를 0 으로 내려야 시드가 일한다. 둘 다 요청에 실려야 그 조합이 가능하다.
+    """
+    import io
+    import json as _json
+
+    seen = {}
+
+    def _fake(req, timeout=None):
+        seen.update(_json.loads(req.data.decode()))
+        return io.StringIO(_json.dumps({"choices": [{"message": {"content": "ok"}}]}))
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", _fake)
+    llm.OpenRouterClient("m", api_key="k", temperature=0.0, seed=42).chat(
+        [{"role": "user", "content": "x"}])
+    assert seen["temperature"] == 0.0 and seen["seed"] == 42
+
+    seen.clear()
+    llm.OpenRouterClient("m", api_key="k", temperature=0.7).chat(
+        [{"role": "user", "content": "x"}])
+    assert "seed" not in seen          # 안 주면 안 보낸다
