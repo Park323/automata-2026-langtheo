@@ -51,7 +51,8 @@ class TurnCfg:
 class AP:
     speak: float
     ask: float
-    learn: float
+    learn_full: float              # **정가 전액을 내는 데 드는 AP** (4.4)
+                                   # 실제 소모 = learn_full × (금액 ÷ learn_base)
     propose_vote: float
     memory_write: float
     procreate: float

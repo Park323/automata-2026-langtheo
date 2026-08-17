@@ -290,7 +290,10 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
             cost, _ = learn_cost(agent, c.id, world, cfg)
             note = (t["c_cheap"] if cost == cfg.costs.learn_base * 0.5
                     else (t["c_disc"] if cost < cfg.costs.learn_base else ""))
-            lines.append(row(t["c_learn"].format(nation=c.id), cost, cfg.ap.learn, note))
+            # AP 도 금액에 비례한다. 이 눈금을 **끝까지** 내는 데 드는 AP 를 적는다 —
+            # 할인이 돈과 시간을 동시에 깎는다는 것이 여기서 보인다.
+            lines.append(row(t["c_learn"].format(nation=c.id), cost,
+                             cfg.ap.learn_full * cost / cfg.costs.learn_base, note))
             # 얼마나 냈고 얼마가 남았는지. **별도 관측 없이** 그대로 보인다.
             done = agent.lang_progress.get(c.lang, 0.0)
             if done > 0:

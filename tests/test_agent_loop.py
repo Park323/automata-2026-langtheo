@@ -201,13 +201,46 @@ def test_learn_rejects_a_language_already_read(cfg, world):
 
 
 def test_learn_uses_less_than_a_whole_turn(cfg, world):
-    """분할 납부라 한 턴을 통째로 쓸 이유가 없다 (전에는 ap.learn = 1.0)."""
-    assert cfg.ap.learn < cfg.turn.action_points
+    """**한 번의 납부는 한 턴을 통째로 쓰지 않는다.** 전액을 낼 때만 1.0 이 든다."""
+    assert (cfg.ap.learn_full * (100 / cfg.costs.learn_base)) < cfg.turn.action_points
     script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=100)),
               assistant_msg(tool_call("speak", "2", to="Asla3", text="x")),
               assistant_msg(tool_call("end_turn", "3"))]
     agent, sink, client, log = _run(world, cfg, "Asla2", script, budget=10000)
     assert len(sink.learns) == 1 and len(sink.messages) == 1   # 같은 턴에 둘 다
+
+
+def test_learn_action_points_scale_with_the_amount(cfg, world):
+    """**분할이 손해면 안 된다.** 정액 0.3 이었을 때 600 을 여섯 번에 나눠 내면 AP 1.8,
+    한 번에 내면 0.3 이었다 — 분할을 넣어놓고 분할에 벌을 주고 있었다.
+
+    비례로 두면 나눠 내든 몰아 내든 합계가 같고, 정가 전액이 딱 한 턴이 된다.
+    """
+    from core.agent_loop import Sink, execute_tool
+    base = cfg.costs.learn_base
+    lump = world.agents["Asla2"]; lump.ap, lump.budget = 1.0, 10_000.0
+    r, _ = execute_tool("learn", {"country": "Miris", "amount": base, "reasoning": "r"},
+                        world, lump, cfg, Sink(), 48.0)
+    assert r["ok"] and r["ap_spent"] == cfg.ap.learn_full     # 정가 전액 = 한 턴
+
+    split = world.agents["Asla3"]; split.ap, split.budget = 1.0, 10_000.0
+    sink = Sink()
+    for _ in range(6):
+        execute_tool("learn", {"country": "Miris", "amount": base / 6, "reasoning": "r"},
+                     world, split, cfg, sink, 48.0)
+    assert abs(split.ap - lump.ap) < 1e-9        # 합계가 같다
+    assert abs(split.budget - lump.budget) < 1e-9
+
+
+def test_learn_is_clamped_by_action_points_not_rejected(cfg, world):
+    """AP 가 모자라면 닿는 데까지만 받는다 — invest 와 같다. 통째로 거절하면 남은
+    0.4 AP 로는 영영 배울 수 없게 된다."""
+    from core.agent_loop import Sink, execute_tool
+    a = world.agents["Asla2"]; a.ap, a.budget = 0.4, 10_000.0
+    r, _ = execute_tool("learn", {"country": "Miris", "amount": cfg.costs.learn_base,
+                                  "reasoning": "r"}, world, a, cfg, Sink(), 48.0)
+    assert r["ok"] and abs(r["charged"] - cfg.costs.learn_base * 0.4) < 1e-6
+    assert abs(a.ap) < 1e-9
 
 
 # ── #11 정보 은닉 (가장 중요) ────────────────────────────────────────────────

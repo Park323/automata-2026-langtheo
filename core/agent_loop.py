@@ -297,19 +297,27 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": "amount must be a number"}, None
         if amount <= 0:
             return {"ok": False, "error": "amount must be positive"}, None
-        if agent.ap < cfg.ap.learn:
-            return {"ok": False, "error": f"not enough AP; learn needs {cfg.ap.learn}"}, None
-        if agent.budget < amount:
-            return {"ok": False,
-                    "error": f"not enough budget; need {amount:.0f}, have {agent.budget:.0f}"}, None
         need, reason = learn_cost(agent, country_id, world, cfg)
         done_before = agent.lang_progress.get(lang, 0.0)
         # 넘치게 내면 필요한 만큼만 받는다 — 남는 돈이 조용히 사라지면 안 된다
         amount = min(amount, max(0.0, need - done_before))
         if amount <= 0:
             return {"ok": False, "error": f"{country_id}'s language is already paid for"}, None
+        # **AP 도 금액에 비례한다.** 정액이면 분할이 손해다 — 600 을 여섯 번에 나눠 내면
+        # AP 1.8, 한 번에 내면 0.3. 분할을 넣어놓고 분할에 벌을 주게 된다.
+        # 비례로 두면 나눠 내든 몰아 내든 합계가 같고, 정가 전액이 딱 한 턴이 된다.
+        per_ap = cfg.costs.learn_base / cfg.ap.learn_full
+        affordable = agent.ap * per_ap
+        if affordable <= 0:
+            return {"ok": False, "error":
+                    f"no action points left; {per_ap:.0f} of learning costs 1.0 AP"}, None
+        amount = round(min(amount, affordable), 6)   # AP 가 닿는 데까지만 (invest 와 같다)
+        if agent.budget < amount:
+            return {"ok": False,
+                    "error": f"not enough budget; need {amount:.0f}, have {agent.budget:.0f}"}, None
+        ap_used = min(agent.ap, amount / per_ap)
         agent.budget -= amount
-        agent.ap -= cfg.ap.learn
+        agent.ap -= ap_used
         # known_langs 는 다른 에이전트가 읽으므로(국내 구사자 판정) 즉시 바꾸지 않는다.
         # sink 에 넣어 정산 때(정렬 순) 반영한다 — 병렬 레이스·재현성 방지.
         domestic, parent = learn_discounts(agent, country_id, world)
@@ -324,6 +332,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         })
         done = done_before + amount
         return {"ok": True, "toward": country_id, "charged": amount,
+                "ap_spent": round(ap_used, 3),
                 "progress": round(done, 1), "required_now": need, "discount": reason,
                 "remaining": round(max(0.0, need - done), 1),
                 "effect": ("you can read it from next turn" if done >= need
