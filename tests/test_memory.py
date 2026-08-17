@@ -137,15 +137,18 @@ def test_repeat_guard_stops_loop(cfg, world):
     assert len(log["reasonings"]) == cfg.llm.repeat_guard
 
 
-def test_exhausted_when_nothing_affordable(cfg, world):
-    """남은 예산·AP 로 실행 가능한 도구가 없으면 종료 (임의 상한 없이)."""
+def test_free_actions_keep_can_act_true(cfg, world):
+    """**종료 조건 ② 는 자유 행동이 생기면서 사실상 죽었다** (8/17).
+
+    `memory_write` 와 `procreate` 가 돈도 AP 도 안 쓰므로, 자원이 완전히 바닥나도
+    고를 것이 남아 있다. 여기서 거짓으로 False 를 돌려주면 **합법적인 행동을 잘라내게**
+    된다 — 빈털터리가 유언을 남기고 죽는 것이 이 세계에서 가장 흔한 결말이다.
+    정상 종료는 `end_turn` 이고, 폭주는 `RUNAWAY_CAP`(64) 이 막는다.
+    """
     a = world.agents["Asla1"]
     a.budget, a.ap = 0.0, 0.0
-    assert can_act(a, cfg, 48.0) is False
-    _, cl, log = _turn(world, cfg, "Asla1", [])
-    # AP 는 _turn 이 리셋하므로 직접 다시 0 으로 두고 확인
-    a.budget, a.ap = 0.0, 0.0
-    assert can_act(a, cfg, 48.0) is False
+    assert cfg.ap.memory_write == 0.0 and cfg.ap.procreate == 0.0
+    assert can_act(a, cfg, 48.0) is True
 
 
 def test_no_max_steps_constant():

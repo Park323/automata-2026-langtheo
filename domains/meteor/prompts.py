@@ -80,10 +80,13 @@ T = {
         prop="  提案中: 国土を {t} にする（{by} が提案）。採決は {vt} 年",
         prop_today="  ★ 今年が採決の年です。vote で賛否を出せます",
         prop_none="  提案なし。国土は投票でしか決まりません",
-        c_ballot="  vote",  c_ballot_note="   0  提案の採決に賛否を出す",
+        c_ballot="  vote",  c_ballot_note="提案の採決に賛否を出す",
+        c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
         income="今ターンの収入: +{v:.0f}",
         multi="予算が許す限り複数の行動ができます。メッセージは1ターンに3件まで。",
-        costs_hdr="行動の費用",
+        costs_hdr="行動の費用", col_money="お金", col_ap="行動力",
+        ap_hdr="行動力は毎ターン 1.0 に戻り、繰り越せません。何を諦めるかがここで決まります。",
+        ap_prop="額÷{v:.0f}",
         c_dom="  話す（自国内）", c_orig="  話す（国際・original）",
         c_orig_note="   費用は届かなくても請求される",
         c_orig_sure="    {nation} へ — あなたがこの国の言語を扱えるので**必ず届く**",
@@ -94,9 +97,9 @@ T = {
         c_cheap="   安い: 自国に話せる人がいる", c_disc="   割引あり",
         c_vote="  propose_vote", c_obs="  observe_risk",
         c_obs_note="   隕石までの残りターンと interceptor に要る進捗を測る。国家投資が精度を上げる",
-        c_inv="  invest", c_inv_note="   指定した額",
-        c_pro="  procreate", c_pro_note="   0  子を残してあなたは死ぬ",
-        inv_hdr="invest の効果", inv_cap="  national と facility はそれぞれ 1ターンに {v:.0f} まで。\n                          自国の技術力が上げる",
+        c_inv="  invest", c_inv_note="指定した額。wellness は 0.1 定額",
+        c_pro="  procreate", c_pro_note="子を残してあなたは死ぬ",
+        inv_hdr="invest の効果", inv_cap="  national と facility には行動力がかかる — {v:.0f} ごとに 1.0。\n                          自国の技術力がその率を上げる。wellness は無料",
         inv_well="  wellness   あなたの寿命が延びる（どれだけかは分からない）",
         inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n                          observe_risk の精度も良くなる。国民全員に及ぶ",
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n                          （省くと自国）",
@@ -122,10 +125,13 @@ T = {
         prop="  提案中: 将国土定为 {t}（由 {by} 提出）。表决在 {vt} 年",
         prop_today="  ★ 今年就是表决之年。可以用 vote 表态",
         prop_none="  没有提案。国土只能由投票决定",
-        c_ballot="  vote",  c_ballot_note="   0  对提案表示赞成或反对",
+        c_ballot="  vote",  c_ballot_note="对提案表示赞成或反对",
+        c_mem="  memory_write", c_mem_note="改写你的笔记",
         income="本回合收入: +{v:.0f}",
         multi="只要预算允许，你可以采取多项行动。每回合最多 3 条消息。",
-        costs_hdr="行动费用",
+        costs_hdr="行动费用", col_money="钱", col_ap="行动力",
+        ap_hdr="行动力每回合恢复为 1.0，不能结转。放弃什么，在这里决定。",
+        ap_prop="额÷{v:.0f}",
         c_dom="  说话（本国内）", c_orig="  说话（国际·original）",
         c_orig_note="   送不到也照收费用",
         c_orig_sure="    发往 {nation} — 你会这个国家的语言，**一定送到**",
@@ -136,9 +142,9 @@ T = {
         c_cheap="   较便宜: 本国有人会说", c_disc="   有折扣",
         c_vote="  propose_vote", c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几回合，以及 interceptor 需要多少进度。国家投资会提高精度",
-        c_inv="  invest", c_inv_note="   你指定的数额",
-        c_pro="  procreate", c_pro_note="   0  留下孩子，你随即死去",
-        inv_hdr="invest 的效果", inv_cap="  national 与 facility 每回合各限 {v:.0f}。本国技术水平会提高它",
+        c_inv="  invest", c_inv_note="你指定的数额。wellness 为 0.1 定额",
+        c_pro="  procreate", c_pro_note="留下孩子，你随即死去",
+        inv_hdr="invest 的效果", inv_cap="  national 与 facility 消耗行动力 — 每 {v:.0f} 花 1.0。本国技术水平提高该比率。\n             wellness 不消耗",
         inv_well="  wellness   延长你的寿命（延长多少你无法得知）",
         inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n                          observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
@@ -165,10 +171,13 @@ T = {
         prop="  Proposition en cours : faire du territoire un {t} (proposé par {by}). Scrutin en {vt}",
         prop_today="  ★ Le scrutin a lieu cette année. Vous pouvez vous prononcer avec vote",
         prop_none="  Aucune proposition. Le territoire ne se décide que par un vote",
-        c_ballot="  vote",  c_ballot_note="   0  se prononcer sur la proposition",
+        c_ballot="  vote",  c_ballot_note="se prononcer sur la proposition",
+        c_mem="  memory_write", c_mem_note="réécrire vos notes",
         income="Revenu ce tour : +{v:.0f}",
         multi="Vous pouvez agir plusieurs fois si le budget le permet. Jusqu'à 3 messages par tour.",
-        costs_hdr="Coûts des actions",
+        costs_hdr="Coûts des actions", col_money="argent", col_ap="action",
+        ap_hdr="L'action revient à 1.0 chaque tour et ne se reporte pas. Ce que vous renoncez se décide ici.",
+        ap_prop="mnt÷{v:.0f}",
         c_dom="  parler (dans votre nation)", c_orig="  parler (international, original)",
         c_orig_note="   le coût est prélevé même s'il n'arrive pas",
         c_orig_sure="    vers {nation} — vous maniez sa langue, **il arrive à coup sûr**",
@@ -179,9 +188,9 @@ T = {
         c_cheap="   moins cher : quelqu'un de votre nation la parle", c_disc="   remise",
         c_vote="  propose_vote", c_obs="  observe_risk",
         c_obs_note="   mesure les tours restants et la progression qu'exige un interceptor ; l'investissement national affine",
-        c_inv="  invest", c_inv_note="   le montant que vous choisissez",
-        c_pro="  procreate", c_pro_note="   0  vous laissez un enfant et vous mourez",
-        inv_hdr="effets d'invest", inv_cap="  national et facility : {v:.0f} par tour chacun ;\n                          le niveau technique de votre nation le relève",
+        c_inv="  invest", c_inv_note="le montant choisi ; wellness : 0.1 fixe",
+        c_pro="  procreate", c_pro_note="vous laissez un enfant et vous mourez",
+        inv_hdr="effets d'invest", inv_cap="  national et facility coûtent de l'action : 1.0 par tranche de {v:.0f} ;\n             le niveau technique de votre nation relève ce taux. wellness est gratuit",
         inv_well="  wellness   prolonge votre vie (d'une durée que vous ne pouvez pas connaître)",
         inv_natl="  national   élève le niveau technique de votre nation : le revenu, le rendement\n"
                           "             de ce qu'on verse à une installation et la précision d'observe_risk\n"
@@ -249,14 +258,23 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
     t = T[agent.native_lang]
     w = 37          # 항목명 폭. 라벨 길이가 언어마다 달라 값 정렬을 맞춘다
                     # (fr 의 "parler (international, original)" 이 34 를 꽉 채워 값이 붙었다)
+    m = 7           # 금액 폭
 
-    def row(label: str, val, note: str = "") -> str:
+    def row(label: str, val, ap="", note: str = "") -> str:
+        """**돈과 행동력을 나란히 적는다.**
+
+        오래도록 돈만 적고 있었다. 행동력은 코드에서 매 호출 깎이는데 관측 어디에도
+        없어서, 에이전트가 **보이지 않는 벽**에 부딪히고 있었다 — 제안 한 번이 한 턴의
+        절반을 넘게 먹는다는 사실을 알 방법이 없었다.
+        """
         v = f"{val:g}" if val != "" else ""
-        return f"{label:<{w}}{v}{note}"
+        a = f"{ap:g}" if isinstance(ap, (int, float)) else str(ap)
+        return f"{label:<{w}}{v:>{m}}   {a:<9}{note}"
 
     lines = [t["costs_hdr"],
-             row(t["c_dom"], cfg.costs.comm_domestic),
-             row(t["c_orig"], cfg.costs.comm_intl_learner, t["c_orig_note"])]
+             f"{'':<{w}}{t['col_money']:>{m}}   {t['col_ap']}",
+             row(t["c_dom"], cfg.costs.comm_domestic, cfg.ap.speak),
+             row(t["c_orig"], cfg.costs.comm_intl_learner, cfg.ap.speak, t["c_orig_note"])]
     # **나라별로 보장 여부를 적는다.** 규칙만 적었을 때 에이전트가 연결하지 못했다 —
     # 20턴 실측에서 자기가 아는 말의 나라에 24원짜리 ai 를 6번 썼다 (5원이면 확실했다).
     # 자기 언어 능력에서 나오는 사실이라 타국 사정을 흘리지 않는다.
@@ -266,22 +284,26 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
         key = "c_orig_sure" if c.lang in agent.known_langs else "c_orig_risk"
         lines.append(t[key].format(nation=c.id))
     lines += [
-             row(t["c_ai"], knob_ai)]
+             row(t["c_ai"], knob_ai, cfg.ap.speak)]
     for c in world.countries.values():
         if c.id != agent.country:
             cost, _ = learn_cost(agent, c.id, world, cfg)
             note = (t["c_cheap"] if cost == cfg.costs.learn_base * 0.5
                     else (t["c_disc"] if cost < cfg.costs.learn_base else ""))
-            lines.append(row(t["c_learn"].format(nation=c.id), cost, note))
+            lines.append(row(t["c_learn"].format(nation=c.id), cost, cfg.ap.learn, note))
             # 얼마나 냈고 얼마가 남았는지. **별도 관측 없이** 그대로 보인다.
             done = agent.lang_progress.get(c.lang, 0.0)
             if done > 0:
                 lines.append(t["c_learn_prog"].format(done=done, need=cost))
-    lines.append(row(t["c_vote"], cfg.costs.propose_vote))
-    lines.append(row(t["c_obs"], cfg.costs.observe_risk, t["c_obs_note"]))
-    lines.append(row(t["c_ballot"], "", t["c_ballot_note"]))
-    lines.append(row(t["c_inv"], "", t["c_inv_note"]))
-    lines.append(row(t["c_pro"], "", t["c_pro_note"]))
+    lines.append(row(t["c_vote"], cfg.costs.propose_vote, cfg.ap.propose_vote))
+    lines.append(row(t["c_obs"], cfg.costs.observe_risk, cfg.ap.observe_risk, t["c_obs_note"]))
+    lines.append(row(t["c_ballot"], 0, cfg.ap.vote, t["c_ballot_note"]))
+    lines.append(row(t["c_inv"], "",
+                     t["ap_prop"].format(v=agent_loop.invest_per_ap(agent, world, cfg)),
+                     t["c_inv_note"]))
+    lines.append(row(t["c_mem"], 0, cfg.ap.memory_write, t["c_mem_note"]))
+    lines.append(row(t["c_pro"], 0, cfg.ap.procreate, t["c_pro_note"]))
+    lines.append(t["ap_hdr"])
     return "\n".join(lines)
 
 
@@ -361,7 +383,7 @@ def render_observation(world, agent, cfg, knob_ai: float,
         render_costs(world, agent, cfg, knob_ai),
         "",
         t["inv_hdr"], t["inv_well"], t["inv_natl"], t["inv_fac"],
-        t["inv_cap"].format(v=agent_loop.invest_cap(agent, world, cfg)),
+        t["inv_cap"].format(v=agent_loop.invest_per_ap(agent, world, cfg)),
         "",
         t["cap"].format(cap=cap),
         t["rtt"],

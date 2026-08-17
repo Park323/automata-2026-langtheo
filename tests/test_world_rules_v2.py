@@ -163,9 +163,9 @@ def test_investing_never_reveals_whether_a_nation_decided(cfg, world):
                                          "to": to, "reasoning": "r"},
                               world, a, cfg, Sink(), 48.0)
         outs.append(res)
-    # 나라 이름·잔액·상한 잔여 말고는 한 글자도 달라선 안 된다 — 다르면 그것이 곧 조회다.
-    # (잔액과 상한 잔여는 두 번 연달아 내서 줄어든 것이지 나라 차이가 아니다)
-    seq = ("accepted", "budget_left", "left_this_turn")
+    # 나라 이름·잔액·AP 말고는 한 글자도 달라선 안 된다 — 다르면 그것이 곧 조회다.
+    # (잔액과 AP 는 두 번 연달아 내서 줄어든 것이지 나라 차이가 아니다)
+    seq = ("accepted", "budget_left", "ap_left")
     shape = [{k: (v if k not in seq else None) for k, v in o.items()} for o in outs]
     assert shape[0] == shape[1]
     assert outs[0]["accepted"].replace("Ranoa", "") == outs[1]["accepted"].replace("Miris", "")
@@ -351,10 +351,16 @@ def test_threshold_is_no_longer_free(cfg, world):
     이제 둘 다 기술력에 따라 흐릿하고, 알아낸 값은 **개인의 것**이라 남에게 알리려면
     말해야 한다 — 국제로 보내면 번역을 타고, 그게 지표 6a 가 재는 경로다.
     """
+    from dataclasses import replace
+
     from domains.meteor import prompts
-    obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
-    for hidden in (str(int(cfg.thresholds.interceptor)), "0.3", "success_prob",
-                   str(int(cfg.thresholds.bunker_scale))):
+    # **success_prob 를 0.3 에서 떼어놓고 잽니다.** AP 가 관측에 나오면서 0.3 이 정당하게
+    # 찍히고(speak·learn), 맨 숫자 검사가 오탐을 냈습니다. 0.37 로 두면 그 숫자가 보이는
+    # 경우는 누출뿐입니다 — 그물은 넓게 두되 우연한 일치만 없앱니다.
+    probe = replace(cfg, world=replace(cfg.world, success_prob=0.37))
+    obs = prompts.render_observation(world, world.agents["Asla1"], probe, 48.0)
+    for hidden in (str(int(probe.thresholds.interceptor)), "0.37", "success_prob",
+                   str(int(probe.thresholds.bunker_scale))):
         assert hidden not in obs, hidden
     assert "observe_risk" in obs          # 살 수 있다는 것은 안다
 
@@ -788,59 +794,89 @@ def test_the_guarantee_line_leaks_nothing_about_others(cfg, world):
     assert prompts.render_observation(world, a, cfg, 48.0) == before
 
 
-# ── 턴당 투자 상한 · 학습 진척 상속 (8/17) ───────────────────────────────────
+# ── 투자의 AP 비용 · 학습 진척 상속 (8/17) ───────────────────────────────────
 
-def test_investment_is_capped_per_turn_by_technical_level(cfg, world):
-    """**국가 기술력이 돈을 일로 바꾸는 속도를 정한다.**
+def test_investment_costs_action_points_in_proportion(cfg, world):
+    """**AP 가 곧 상한이다.** invest 는 AP 를 안 쓰고 있었다 — 돈만 들고 아무것도
+    포기하지 않았고, 실측에서 invest 211건으로 speak 176건보다 많았다.
 
-    상한이 없으면 돈만 쌓아두고 마지막에 쏟아부을 수 있고(★A 위반), 늙어서 못 쓸 돈이
-    안 생겨 `procreate` 가 영영 손해다 — 실측에서 21명 전원 자연사, procreate 0건이었다.
+    AP 에 물리면 천장이 저절로 생기고(턴당 1.0), 말하기·배우기와 **경쟁**한다.
+    그리고 늙어서 다 못 쓸 돈이 생겨 `procreate` 가 처음으로 이득이 된다 —
+    실측에서 21명 전원 자연사, procreate 0건이었다.
     """
-    from core.agent_loop import Sink, execute_tool, invest_cap
+    from core.agent_loop import Sink, execute_tool, invest_per_ap
     world.countries["Asla"].land = "interceptor"
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
-    cap = invest_cap(a, world, cfg)
-    assert cap == cfg.facility.invest_cap_base          # 자본 0 → 배수 1.0
+    per_ap = invest_per_ap(a, world, cfg)
+    assert per_ap == cfg.facility.invest_per_ap            # 자본 0 → 배수 1.0
 
+    r, _ = execute_tool("invest", {"target": "facility", "amount": per_ap / 2,
+                                   "reasoning": "r"}, world, a, cfg, Sink(), 48.0)
+    assert r["ok"] and r["ap_spent"] == 0.5 and a.ap == 0.5
+
+
+def test_action_points_clamp_an_oversized_investment(cfg, world):
+    """넘치게 내면 AP 가 닿는 데까지만 받는다 — 통째로 거절하지 않는다."""
+    from core.agent_loop import Sink, execute_tool, invest_per_ap
+    world.countries["Asla"].land = "interceptor"
+    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
+    per_ap = invest_per_ap(a, world, cfg)
     sink = Sink()
     r, _ = execute_tool("invest", {"target": "facility", "amount": 9999, "reasoning": "r"},
                         world, a, cfg, sink, 48.0)
-    assert r["charged"] == cap and r["left_this_turn"] == 0    # 상한까지만 받는다
+    assert r["charged"] == per_ap and a.ap == 0.0 and a.budget == 10_000.0 - per_ap
     r2, _ = execute_tool("invest", {"target": "facility", "amount": 10, "reasoning": "r"},
                          world, a, cfg, sink, 48.0)
-    assert not r2["ok"] and "limit is used up" in r2["error"]
-    assert a.budget == 10_000.0 - cap
+    assert not r2["ok"] and "no action points left" in r2["error"]
 
 
-def test_national_and_facility_have_separate_caps(cfg, world):
-    """둘은 다른 일이다. 하나를 채웠다고 다른 하나가 막히면 안 된다."""
-    from core.agent_loop import Sink, execute_tool, invest_cap
+def test_the_action_point_clamp_runs_before_the_budget_check(cfg, world):
+    """순서를 바꾸면 AP 가 잘라줬을 금액을 그대로 들고 "예산 부족" 으로 거절한다 —
+    9,999 를 내려다 300 만 냈어야 할 것이 통째로 실패한다."""
+    from core.agent_loop import Sink, execute_tool, invest_per_ap
+    world.countries["Asla"].land = "interceptor"
+    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, invest_per_ap(a, world, cfg)
+    r, _ = execute_tool("invest", {"target": "facility", "amount": 9999, "reasoning": "r"},
+                        world, a, cfg, Sink(), 48.0)
+    assert r["ok"] and a.budget == 0.0
+
+
+def test_national_and_facility_draw_from_the_same_action_points(cfg, world):
+    """**둘은 같은 주의력을 나눠 쓴다.** 따로 세면 한 턴에 두 배를 부을 수 있어
+    AP 를 상한으로 쓰는 뜻이 사라진다."""
+    from core.agent_loop import Sink, execute_tool, invest_per_ap
     world.countries["Asla"].land = "interceptor"
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
-    cap = invest_cap(a, world, cfg)
+    per_ap = invest_per_ap(a, world, cfg)
     sink = Sink()
     execute_tool("invest", {"target": "national", "amount": 9999, "reasoning": "r"},
                  world, a, cfg, sink, 48.0)
-    r, _ = execute_tool("invest", {"target": "facility", "amount": 9999, "reasoning": "r"},
+    assert a.ap == 0.0
+    r, _ = execute_tool("invest", {"target": "facility", "amount": 10, "reasoning": "r"},
                         world, a, cfg, sink, 48.0)
-    assert r["ok"] and r["charged"] == cap
+    assert not r["ok"] and a.budget == 10_000.0 - per_ap
 
 
-def test_wellness_is_not_capped(cfg, world):
-    """사적 재화다. 막으면 수명이 예산에 안 반응한다."""
+def test_wellness_is_not_metered_by_amount(cfg, world):
+    """**사적 재화라 금액에 비례해 묶지 않는다.** 비례로 묶으면 수명이 예산에 반응하지
+    않게 되고, 지표 11(수명 함정)이 관측하려는 것이 바로 그 반응이다.
+
+    다만 공짜도 아니다 — 하는 일이므로 정액 AP 를 문다.
+    """
     from core.agent_loop import Sink, execute_tool
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
     r, _ = execute_tool("invest", {"target": "wellness", "amount": 5000, "reasoning": "r"},
                         world, a, cfg, Sink(), 48.0)
     assert r["ok"] and r["charged"] == 5000
+    assert a.ap == 1.0 - cfg.ap.invest_wellness      # 금액과 무관한 정액
 
 
-def test_higher_technical_level_widens_the_cap(cfg, world):
-    from core.agent_loop import invest_cap
+def test_higher_technical_level_buys_more_per_action_point(cfg, world):
+    from core.agent_loop import invest_per_ap
     a = world.agents["Asla1"]
-    lo = invest_cap(a, world, cfg)
+    lo = invest_per_ap(a, world, cfg)
     world.countries["Asla"].national_capital = 27_000.0
-    assert invest_cap(a, world, cfg) > lo * 1.5
+    assert invest_per_ap(a, world, cfg) > lo * 1.5
 
 
 def test_half_learned_language_passes_to_the_child_with_decay(cfg, world):

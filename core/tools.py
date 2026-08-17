@@ -65,9 +65,12 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["to", "text"]),
 
     fn("invest",
-        "Invest in a resource. `national` and `facility` are each capped per turn, and "
-        "your nation's technical level is what raises that cap — you cannot hoard and "
-        "pour it all in at the end. `national` raises your nation's technical level, which "
+        "Invest in a resource. `national` and `facility` cost action points in proportion "
+        "to the amount, and your nation's technical level is what raises how much one point "
+        "buys — you cannot hoard and pour it all in at the end, and investing competes with "
+        "speaking, learning and observing. `wellness` costs a small flat amount of action "
+        "instead, whatever the sum. "
+        "`national` raises your nation's technical level, which "
         "lifts income, how much progress a facility gets out of what is put into it, and "
         "the precision of observe_risk — for everyone in that nation. "
         "For facility you may name any nation with `to` — your "
@@ -99,8 +102,9 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "progress an interceptor needs. Both readings are imprecise; your nation's "
         "accumulated national investment is what sharpens them, and the result tells "
         "you the typical size of its error — a single reading can be much further off "
-        "than that. Each reading is a fresh measurement and costs "
-        "money. What you learn is yours alone — nobody else sees it.",
+        "than that. Each reading is a fresh measurement and costs both money and a "
+        "large share of your action points — measuring the world takes most of a turn. "
+        "What you learn is yours alone — nobody else sees it.",
         {}, []),
 
     fn("propose_vote",
@@ -108,14 +112,17 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "Nothing changes yet: three turns pass so people can talk it over, and on the "
         "fourth turn the ballot is held. **Only people of your own nation may vote on "
         "it** — a foreigner cannot, no matter what they say. It passes if approvals "
-        "outnumber rejections. A nation can hold only one proposal at a time.",
+        "outnumber rejections. A nation can hold only one proposal at a time. "
+        "It costs no money — poverty must never decide what a nation builds — but it "
+        "takes more than half of your action points for the turn.",
         {"target": {"type": "string", "enum": ["bunker", "interceptor"]}},
         ["target"]),
 
     fn("vote",
         "Cast your ballot on **your own nation's** open proposal — you cannot vote on "
         "another nation's. Only on the turn the ballot is held; the observation tells "
-        "you which turn that is.",
+        "you which turn that is. It costs no money and almost no action points, so "
+        "voting never takes away your chance to speak on the day it matters most.",
         {"approve": {"type": "boolean", "description": "true to approve, false to reject"}},
         ["approve"]),
 

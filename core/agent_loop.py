@@ -45,19 +45,23 @@ class Sink:
 
 # ── 학습 비용 (spec 3.4) ──────────────────────────────────────────────────────
 
-def invest_cap(agent, world, cfg) -> float:
-    """한 사람이 **한 턴에** national·facility 각각에 낼 수 있는 상한.
+def invest_per_ap(agent, world, cfg) -> float:
+    """**AP 1.0 어치의 투자량.** 국가 기술력이 넓힌다.
 
-        상한 = invest_cap_base × 자국 생산배수
+        AP 1.0 당 = invest_per_ap × 자국 생산배수
+        소모 AP   = 금액 ÷ 그 값          (턴당 AP 가 1.0 이라 그것이 곧 천장)
 
-    **국가 기술력이 돈을 일로 바꾸는 속도를 정한다.** 둘을 동시에 만든다 —
-    돈만 쌓아두고 마지막에 쏟아붓는 길이 막히고(★A), 늙어서 다 못 쓸 돈이 생겨
-    `procreate` 가 처음으로 이득이 된다. 그전에는 예산이 내 손에 있는 편이 언제나
-    나아서 죽을 이유가 없었다 (실측: 21명 전원 자연사, procreate 0건).
+    `invest` 는 AP 를 안 쓰고 있었다 — 돈만 들고 **아무것도 포기하지 않았다.**
+    실측에서 invest 211건으로 speak 176건보다 많았다. AP 에 연동하면 상한이 저절로
+    생기고 **말하기·배우기·관측과 경쟁하게 된다.**
 
-    `wellness` 는 제한하지 않는다 — 사적 재화이고, 막으면 수명이 예산에 안 반응한다.
+    그리고 돈을 일로 바꾸는 **속도**가 정해지므로, 몰아붓기가 막히고(★A) 늙어서 다 못
+    쓸 돈이 생겨 `procreate` 가 처음으로 이득이 된다. 그전에는 예산이 내 손에 있는 편이
+    언제나 나아서 죽을 이유가 없었다 (실측: 21명 전원 자연사, procreate 0건).
+
+    `wellness` 는 걸지 않는다 — 사적 재화이고, 막으면 수명이 예산에 안 반응한다.
     """
-    return cfg.facility.invest_cap_base * world.countries[agent.country].multiplier(cfg)
+    return cfg.facility.invest_per_ap * world.countries[agent.country].multiplier(cfg)
 
 
 def risk_sigma(country, cfg) -> float:
@@ -231,23 +235,31 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             if to not in world.countries:
                 return {"ok": False,
                         "error": f"unknown nation: {to} — facility invest takes a nation id (e.g. Ranoa)"}, None
-        # **상한을 먼저 자르고 예산을 본다.** 순서를 바꾸면 상한이 잘라줬을 금액을
-        # 그대로 들고 "예산 부족" 으로 거절한다 — 9,999 를 내려다 150 만 냈어야 할 것이
+        # **남은 AP 로 자르고 나서 예산을 본다.** 순서를 바꾸면 AP 가 잘라줬을 금액을
+        # 그대로 들고 "예산 부족" 으로 거절한다 — 9,999 를 내려다 300 만 냈어야 할 것이
         # 통째로 실패한다.
-        if target in ("national", "facility"):
-            cap = invest_cap(agent, world, cfg)
-            used = agent.invested_turn.get(target, 0.0)
-            room = max(0.0, cap - used)
-            if room <= 0:
+        per_ap = None
+        if target == "wellness":
+            # 사적 재화라 금액에 비례해 묶지 않는다 (묶으면 수명이 예산에 반응하지
+            # 않게 되고, 지표 11 이 관측하려는 것이 바로 그 반응이다). 다만 공짜도 아니다.
+            ap_used = cfg.ap.invest_wellness
+            if agent.ap < ap_used:
+                return {"ok": False,
+                        "error": f"not enough AP; invest(wellness) needs {ap_used}"}, None
+        else:
+            per_ap = invest_per_ap(agent, world, cfg)
+            affordable = agent.ap * per_ap
+            if affordable <= 0:
                 return {"ok": False, "error":
-                        f"this turn's {target} limit is used up ({cap:.0f}); "
-                        f"your nation's technical level sets it"}, None
-            amount = min(amount, room)    # 넘치게 내면 상한까지만 받는다
+                        f"no action points left; {per_ap:.0f} of investment costs 1.0 AP "
+                        f"and your nation's technical level sets that rate"}, None
+            # round — 0.667 AP × 300 이 200.00000000000003 로 나와 그대로 청구된다.
+            amount = round(min(amount, affordable), 6)   # 넘치게 내면 AP 가 닿는 데까지만
+            ap_used = min(agent.ap, amount / per_ap)     # 부동소수로 AP 가 음수가 되지 않게
         if agent.budget < amount:
             return {"ok": False, "error": f"not enough budget; need {amount:.0f}, have {agent.budget:.0f}"}, None
-        if target in ("national", "facility"):
-            agent.invested_turn[target] = agent.invested_turn.get(target, 0.0) + amount
-        agent.budget -= amount            # invest 는 AP 0
+        agent.budget -= amount
+        agent.ap -= ap_used
         if target == "facility":
             sink.facility.append((to, amount, agent.id))
             # 접수와 과금만 답한다. **그 나라가 시설을 정했는지는 알려주지 않는다** —
@@ -256,18 +268,19 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             # 정해지지 않았으면 돈은 나가고 아무 일도 일어나지 않는다 — route=original 과
             # 같은 도박이다 (spec 4.1 은닉 목록: 타국의 진척·예산·국토·언어 능력).
             return {"ok": True, "accepted": f"{to} facility investment accepted",
-                    "charged": amount, "turn_limit": round(cap, 1),
-                    "left_this_turn": round(cap - agent.invested_turn["facility"], 1),
-                    "budget_left": round(agent.budget, 1)}, None
+                    "charged": amount, "ap_spent": round(ap_used, 3),
+                    "per_ap": round(per_ap, 1),
+                    "budget_left": round(agent.budget, 1),
+                    "ap_left": round(agent.ap, 3)}, None
         if target == "wellness":
             sink.wellness.append((agent.id, amount))
             return {"ok": True, "accepted": "wellness investment accepted", "charged": amount,
                     "budget_left": round(agent.budget, 1)}, None    # λ 변화 비공개
         sink.national.append((agent.country, amount, agent.id))
         return {"ok": True, "accepted": "national investment accepted", "charged": amount,
-                "turn_limit": round(cap, 1),
-                "left_this_turn": round(cap - agent.invested_turn["national"], 1),
-                "budget_left": round(agent.budget, 1)}, None
+                "ap_spent": round(ap_used, 3), "per_ap": round(per_ap, 1),
+                "budget_left": round(agent.budget, 1),
+                "ap_left": round(agent.ap, 3)}, None
 
     if name == "learn":
         country_id = args.get("country")
@@ -398,7 +411,9 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": f"your nation is already building {target}"}, None
         if agent.ap < cfg.ap.propose_vote:
             return {"ok": False, "error": f"not enough AP; propose_vote needs {cfg.ap.propose_vote}"}, None
-        if agent.budget < cfg.costs.propose_vote:
+        # **돈은 안 받는다.** 가난이 제안을 막으면 국토가 돈으로 정해진다. 무게는 AP 로만
+        # 준다 — 국가의 용도를 여는 행위라 한 턴의 절반이 넘는다.
+        if cfg.costs.propose_vote and agent.budget < cfg.costs.propose_vote:
             return {"ok": False, "error": f"not enough budget; need {cfg.costs.propose_vote}"}, None
         agent.budget -= cfg.costs.propose_vote
         agent.ap -= cfg.ap.propose_vote
@@ -416,9 +431,11 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                     f"the ballot is on turn {c.proposal['vote_turn']}, not now"}, None
         if "approve" not in args:
             return {"ok": False, "error": "vote needs approve (true or false)"}, None
-        if agent.ap < cfg.ap.propose_vote:
-            return {"ok": False, "error": f"not enough AP; vote needs {cfg.ap.propose_vote}"}, None
-        agent.ap -= cfg.ap.propose_vote          # 표는 무료다. 돈을 물리면 참여가 재산이 된다
+        # **표는 돈도 AP 도 거의 안 받는다.** 돈을 물리면 참여가 재산이 되고, AP 를 크게
+        # 물리면 採決 당일 — 설득이 가장 필요한 날 — 말할 기회가 줄어든다.
+        if agent.ap < cfg.ap.vote:
+            return {"ok": False, "error": f"not enough AP; vote needs {cfg.ap.vote}"}, None
+        agent.ap -= cfg.ap.vote
         sink.ballots.append((agent.id, agent.country, bool(args["approve"])))
         return {"ok": True, "voted": bool(args["approve"]),
                 "on": c.proposal["target"], "ap_left": round(agent.ap, 1)}, None
@@ -506,14 +523,23 @@ def under_pressure(agent, cfg) -> bool:
 def can_act(agent, cfg, knob_ai: float) -> bool:
     """남은 예산·AP 로 실행 가능한 도구가 하나라도 있나 (종료 조건 ②, spec 4.5).
 
-    end_turn 은 세지 않는다 — 그건 종료이지 행동이 아니다.
+    `end_turn` 은 세지 않는다 — 그건 종료이지 행동이 아니다.
+
+    > **자유 행동이 생기면서 이 조건은 사실상 죽었습니다** (8/17). `memory_write` 와
+    > `procreate` 가 돈도 AP 도 안 쓰므로 자원이 바닥나도 고를 것이 남습니다. 정상
+    > 종료는 `end_turn` 이고, 폭주는 `RUNAWAY_CAP`(64) 이 막습니다. 그래도 **정직하게
+    > 계산합니다** — 여기서 거짓으로 False 를 돌려주면 합법적인 행동을 잘라내게 됩니다.
     """
-    cheapest_budget = min(cfg.costs.comm_domestic, cfg.costs.propose_vote)
-    if agent.budget >= cheapest_budget and agent.ap >= min(cfg.ap.speak, cfg.ap.propose_vote):
+    free_ap = min(cfg.ap.memory_write, cfg.ap.procreate)
+    if agent.ap >= free_ap and free_ap <= 0:          # 공짜 행동이 하나라도 있으면 참
         return True
-    if agent.budget > 0:                      # invest 는 AP 0
+    if agent.budget >= cfg.costs.comm_domestic and agent.ap >= cfg.ap.speak:
         return True
-    return agent.ap >= cfg.ap.memory_write    # 기억은 예산을 안 쓴다
+    if agent.ap >= cfg.ap.propose_vote and agent.budget >= cfg.costs.propose_vote:
+        return True
+    if agent.budget > 0 and agent.ap >= cfg.ap.invest_wellness:
+        return True
+    return agent.ap >= min(cfg.ap.memory_write, cfg.ap.vote)
 
 
 # ── 에이전트 한 턴 ────────────────────────────────────────────────────────────

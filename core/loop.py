@@ -254,7 +254,9 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
                 # 남은 시설 투자 상한(국가 단위)
                 room = cfg.facility.cap_per_turn - facility_invest[act["to"]]
                 amount = max(0.0, min(amount, a.budget, room))
-                if a.ap < cfg.ap.invest or amount <= 0:
+                # 더미 경로는 AP 비례 과금을 흉내내지 않는다 — 과제 1 의 배관 검증용이다.
+                # 실제 규칙은 agent_loop.execute_tool 에 있다 (4.4).
+                if amount <= 0:
                     continue
                 a.budget -= amount
                 facility_invest[act["to"]] += amount
@@ -549,7 +551,6 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         #   시점의** 예산이 필요하다. 턴 끝 예산으로 대신하면 다른 데 써버린 사람이
         #   기회 자체가 없었던 것으로 집계돼 분모가 조용히 줄어든다.
         a.budget_start = a.budget
-        a.invested_turn = {}          # 턴당 투자 상한은 매 턴 새로 열린다
 
     # 2. 관측 스냅샷 (도착 메시지·프롬프트를 스레드 시작 전에 고정)
     snapshot_ids = sorted(world.agents.keys())

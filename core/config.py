@@ -53,10 +53,11 @@ class AP:
     ask: float
     learn: float
     propose_vote: float
-    invest: float
     memory_write: float
     procreate: float
     observe_risk: float = 0.3
+    vote: float = 0.05             # 採決과 제안은 무게가 다르다 (4.4)
+    invest_wellness: float = 0.1   # national·facility 는 금액 비례라 여기 없다
 
 
 @dataclass(frozen=True)
@@ -91,9 +92,9 @@ class Facility:
     cap_per_turn: float
     transition_requires_vote: bool
     transition_forfeits_progress: bool
-    # 한 사람이 **한 턴에** national·facility 각각에 낼 수 있는 상한. 국가 기술력이 넓힌다.
-    # 1회당으로 두면 invest 가 AP 를 안 쓰므로 두 번 불러 우회한다.
-    invest_cap_base: float = 150.0
+    # **AP 1.0 어치의 투자량.** 국가 기술력이 넓힌다. 상한은 AP 가 저절로 만든다 —
+    # 턴당 AP 가 1.0 이므로 전부 투자에 쓰면 이만큼이 천장이다.
+    invest_per_ap: float = 300.0
 
 
 @dataclass(frozen=True)

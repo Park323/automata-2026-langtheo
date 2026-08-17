@@ -201,13 +201,20 @@ def test_no_tool_call_is_not_reported_as_exhausted(cfg, world):
 
 
 def test_exhausted_still_means_exhausted(cfg, world):
-    """진짜 자원 고갈은 그대로 `exhausted` 여야 한다."""
+    """진짜 자원 고갈은 그대로 `exhausted` 여야 한다.
+
+    자유 행동(`memory_write`·`procreate`)이 생겨 `can_act` 만으로는 더 이상 고갈을
+    못 만든다. 그것들까지 막아야 진짜 바닥이다 — 그때도 라벨이 `no_tool_call` 로
+    새지 않는지가 이 테스트가 지키는 것이다.
+    """
     from core.agent_loop import Sink, run_agent_turn
+    from dataclasses import replace
     a = world.agents["Asla1"]
     a.ap, a.budget = 0.0, 0.0
-    lg = run_agent_turn(world, a, cfg, StubClient([]), Sink(), 48.0,
+    broke = replace(cfg, ap=replace(cfg.ap, memory_write=0.1, procreate=1.0))
+    lg = run_agent_turn(world, a, broke, StubClient([]), Sink(), 48.0,
                         prompts.system_for(a),
-                        prompts.render_observation(world, a, cfg, 48.0))
+                        prompts.render_observation(world, a, broke, 48.0))
     assert lg["ended_by"] == "exhausted" and lg["steps"] == 0
 
 
