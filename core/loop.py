@@ -8,6 +8,7 @@ from __future__ import annotations
 import itertools
 import json
 import random
+from pathlib import Path
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -610,28 +611,44 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
 
 def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
                 render_obs, system_prompt, parallel: bool = True,
-                on_turn_end=None, sim_turns: int | None = None) -> RunResult:
+                on_turn_end=None, sim_turns: int | None = None,
+                resume_from: "Path | None" = None,
+                checkpoint_to: "Path | None" = None) -> RunResult:
     """LLM(또는 StubClient) 에이전트로 total_turns 턴을 돌린다.
 
     client_for(aid) : 에이전트별 클라이언트 (병렬이라 상태 있는 Stub 은 에이전트마다 별개여야).
                       실제 API 는 stateless OpenRouterClient 를 공유해도 안전.
     translator      : 번역 전용 클라이언트 (정산은 단일 스레드라 공유 가능).
     """
-    counter = itertools.count(1)
-    msg_ids = itertools.count(1)      # 전역 메시지 id — understood 의 조인 키 (spec 6.1)
-    world = init_world(cfg, counter, rng)
+    from core import checkpoint
+    done = 0
+    if resume_from and Path(resume_from).exists():
+        # **세계 전부**를 되살린다 — 난수 상태와 카운터까지. 하나라도 빠지면
+        # 이어붙인 뒤가 원래 런과 다른 세계가 된다.
+        world, rng, counter, msg_ids, done = checkpoint.load(resume_from)
+    else:
+        counter = itertools.count(1)
+        msg_ids = itertools.count(1)  # 전역 메시지 id — 로그 조인 키 (spec 6.1)
+        world = init_world(cfg, counter, rng)
     result = RunResult(world=world)
     # **운석 시점과 시뮬 길이는 다른 것이다.** `cfg.world.total_turns` 가 운석이 떨어지는
     # 해이고 경제(창·임계)도 수명도 거기서 유도된다. `sim_turns` 는 **몇 턴까지 돌려볼
     # 것인가** 다. 붙여 두면 40턴 테스트가 "40턴짜리 세계" 가 되어 남은 턴·임계·수명이
     # 전부 달라지고, 짧은 테스트의 관측이 본실험과 다른 세계를 재게 된다.
     last = min(sim_turns or cfg.world.total_turns, cfg.world.total_turns)
-    for t in range(1, last + 1):
+    for t in range(done + 1, last + 1):
         world.turn = t
         run_turn_agentic(world, cfg, rng, result, counter, client_for, translator, knob_ai,
                          render_obs, system_prompt, msg_ids,
                          is_last=(t == cfg.world.total_turns),
                          parallel=parallel, on_turn_end=on_turn_end)
+        if checkpoint_to is not None:
+            # 매 턴 적는다. 한 턴이 12~40초인데 체크포인트는 밀리초라 값이 싸다.
+            # `itertools.count` 는 현재 값을 못 읽으므로 하나 꺼내 보고 **그 값부터
+            # 다시 시작**한다 — 꺼낸 것을 버리면 턴마다 id 가 하나씩 새어 나간다.
+            nu, nm = next(counter), next(msg_ids)
+            counter, msg_ids = itertools.count(nu), itertools.count(nm)
+            checkpoint.save(checkpoint_to, world, rng, nu, nm)
     if last >= cfg.world.total_turns:
         result.final = final_survival(world, cfg, rng)
     else:

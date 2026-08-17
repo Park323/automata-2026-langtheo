@@ -40,7 +40,7 @@ class RunWriter:
 
     def __init__(self, run_id: str, cfg_raw: dict | None = None, root: Path | None = None,
                  overwrite: bool = False, knob_ai: float | None = None,
-                 seed: int | None = None):
+                 seed: int | None = None, append: bool = False):
         self.run_id = run_id
         self.dir = (root or ROOT / "runs") / run_id
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -51,8 +51,10 @@ class RunWriter:
             raise FileExistsError(
                 f"{self.dir} 에 이미 로그가 있습니다. run_id 를 바꾸거나 overwrite=True. "
                 f"({', '.join(p.name for p in existing)})")
-        for f in existing:
-            f.unlink()
+        # 이어할 때는 **지우지 않는다.** 앞 구간의 로그가 곧 그 런의 절반이다.
+        if not append:
+            for f in existing:
+                f.unlink()
         self._lock = threading.Lock()
         self._files: dict[str, object] = {}
         self.counts = {"raw": 0, "errors": 0, "retries": 0}

@@ -89,6 +89,8 @@ def main() -> None:
     ap.add_argument("--reasoning-effort", default=None,
                     choices=["low", "medium", "high"],
                     help="사고 강도 (config 의 reasoning.max_tokens 를 대신함)")
+    ap.add_argument("--resume", action="store_true",
+                    help="같은 run-id 의 checkpoint.json 에서 이어한다")
     ap.add_argument("--run-id", default=None,
                     help="산출물 디렉터리 이름 (기본: smoke_{turns}t_seed{seed}_{시각})")
     args = ap.parse_args()
@@ -137,7 +139,13 @@ def main() -> None:
     t0 = time.time()
     stamp = time.strftime("%m%d_%H%M%S")
     run_id = args.run_id or f"smoke_{args.turns}t_seed{args.seed}_{stamp}"
-    writer = run_io.RunWriter(run_id, cfg_raw=raw, knob_ai=knob, seed=args.seed)
+    ckpt = run_io.ROOT / "runs" / run_id / "checkpoint.json"
+    resuming = args.resume and ckpt.exists()
+    writer = run_io.RunWriter(run_id, cfg_raw=raw, knob_ai=knob, seed=args.seed,
+                              overwrite=resuming, append=resuming)
+    if resuming:
+        import json as _j
+        print(f"  이어하기 — {_j.loads(ckpt.read_text())['turn']}턴까지 완료된 상태에서 재개")
     agent_client.inner.recorder = writer.recorder(kind="agent")
     translator.inner.recorder = writer.recorder(kind="translate")
 
@@ -155,7 +163,9 @@ def main() -> None:
                           knob_ai=knob, render_obs=prompts.render_observation,
                           system_prompt=prompts.system_for, parallel=not args.sequential,
                           on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)),
-                          sim_turns=args.turns)
+                          sim_turns=args.turns,
+                          resume_from=ckpt if resuming else None,
+                          checkpoint_to=ckpt)
     except BaseException as e:
         writer.close({"final": {"outcome": "aborted"}, "deaths": None,
                       "aborted": f"{type(e).__name__}: {e}"[:300],
