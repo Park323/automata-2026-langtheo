@@ -81,7 +81,10 @@ def test_original_success_when_can_read(cfg):
                                   cfg=cfg, translator=None, knob_ai=48)
     assert m["delivered"] is True
     assert m["inbox"]["text"] == "본문"
-    assert m["inbox"]["label"] is None                   # 원문 직통엔 라벨 없음
+    # **통역 없이 닿았다는 표시가 붙는다.** 전에는 라벨이 없어 국내 메시지와 같은
+    # 모양이었고, 수신자는 라벨의 **부재**로만 직통을 추론해야 했다.
+    # `[AI translation]` 이 "기계가 꼈다" 를 알리는 것과 짝이다.
+    assert m["inbox"]["label"] == messaging.DIRECT_LABEL
 
 
 # ── 원문 병기 폐지 (spec 5.1 개정) ────────────────────────────────────────────
@@ -201,3 +204,22 @@ def test_direct_ok_records_the_counterfactual(cfg):
     p = messaging.process_message(_intl(route="ai"), {"zh"}, cfg,
                                   _translator("译文"), 24.0, sender_known_langs={"ja", "zh"})
     assert p["meta"]["direct_ok"] is True and p["meta"]["direct_by"] == "writer"
+
+
+def test_direct_label_is_shown_in_the_recipient_language(cfg):
+    """「번역을 안 거쳤는데 뜻이 통했다」 는 감각은 그 사람의 말로 와야 산다.
+
+    AI 라벨은 영어 그대로 둔다 — 기계가 낀 자리를 이물감 있게 두는 편이 낫고,
+    바꾸면 AI 경로의 자극이 달라져 앞선 런들과의 4a 비교가 흔들린다.
+    """
+    from domains.meteor import prompts
+    marks = {"ja": "通訳なしで通じた", "zh": "无需翻译就能听懂",
+             "fr": "compris sans traduction"}
+    for lang, mark in marks.items():
+        out = prompts.render_inbox(
+            [{"msg_id": 1, "from": "Miris1", "label": messaging.DIRECT_LABEL, "text": "x"},
+             {"msg_id": 2, "from": "Ranoa1", "label": messaging.AI_LABEL, "text": "y"},
+             {"msg_id": 3, "from": "Asla2", "label": None, "text": "z"}], lang)
+        assert mark in out, lang
+        assert "[AI translation]" in out          # 이쪽은 영어 그대로
+        assert out.count(mark) == 1               # 국내 메시지에는 안 붙는다

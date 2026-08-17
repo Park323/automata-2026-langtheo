@@ -8,6 +8,10 @@ from __future__ import annotations
 from core import translate as translate_mod
 
 AI_LABEL = "[AI translation]"
+# 통역이 끼지 않았는데 뜻이 닿았다는 표시. `render_inbox` 가 수신자 언어로 옮긴다.
+# AI 라벨은 영어 그대로 둔다 — 기계가 낀 자리를 이물감 있게 두는 편이 낫고,
+# 바꾸면 AI 경로의 자극이 달라져 오늘 런들과의 4a 비교가 흔들린다.
+DIRECT_LABEL = "[direct]"
 
 
 # ── 길이 절단 (spec 5.3) — 원문에, 발신 언어 상한으로, 번역 전에 ──────────────
@@ -120,7 +124,7 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     if kind == "original":
         if direct:
             meta["text_delivered"] = text_sent      # 원문 그대로 (지표 4d)
-            inbox = {"from": sent["from"], "label": None, "text": text_sent,
+            inbox = {"from": sent["from"], "label": DIRECT_LABEL, "text": text_sent,
                      "original": None, "reply_to": sent.get("reply_to")}
             return {"kind": kind, "delivered": True, "inbox": inbox,
                     "sender_notice": None, "meta": meta}

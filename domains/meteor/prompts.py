@@ -104,7 +104,7 @@ T = {
         in_none="今ターンに届いたメッセージ: なし", in_hdr="今ターンに届いたメッセージ:",
         in_fail="  [{id}] 通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
         in_unread="  [{id}] {frm} より — 読めないメッセージが届きました",
-        in_from="  [{id}] {frm} より{label}",
+        in_from="  [{id}] {frm} より{label}", lbl_direct=" ［通訳なしで通じた］",
         died="  {who} が {age} 歳で亡くなり、{born} が生まれました。",
         fac_gain="  前ターンのあなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
         roster="人々:", roster_you="（あなた）",
@@ -146,7 +146,7 @@ T = {
         in_none="本回合送达的消息: 无", in_hdr="本回合送达的消息:",
         in_fail="  [{id}] 通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
         in_unread="  [{id}] 来自 {frm} — 送到一条你读不懂的消息",
-        in_from="  [{id}] 来自 {frm}{label}",
+        in_from="  [{id}] 来自 {frm}{label}", lbl_direct="［无需翻译就能听懂］",
         died="  {who} 在 {age} 岁去世，{born} 出生了。",
         fac_gain="  你上回合投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
         roster="人们:", roster_you="（你）",
@@ -192,7 +192,7 @@ T = {
         in_none="Messages arrivés ce tour : aucun", in_hdr="Messages arrivés ce tour :",
         in_fail="  [{id}] Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",
         in_unread="  [{id}] de {frm} — un message illisible est arrivé",
-        in_from="  [{id}] de {frm}{label}",
+        in_from="  [{id}] de {frm}{label}", lbl_direct=" [compris sans traduction]",
         died="  {who} est mort à {age} ans ; {born} est né.",
         fac_gain="  Votre versement de {amt:.0f} à facility au tour précédent a fait progresser {to} de {gain:.0f}.",
         roster="Les gens :", roster_you="(vous)",
@@ -305,7 +305,10 @@ def render_inbox(inbox: list[dict], lang: str) -> str:
             out.append(t["fac_gain"].format(amt=m["amount"], to=m["to"],
                                             gain=m["fac_gain"]))
             continue
-        label = f" {m['label']}" if m.get("label") else ""
+        # 통역 없이 닿은 것은 **수신자 언어로** 표시한다 — 「번역을 안 거쳤는데 뜻이
+        # 통했다」 는 감각이 그 사람의 말로 와야 산다. AI 라벨은 영어 그대로 둔다.
+        raw = m.get("label")
+        label = t["lbl_direct"] if raw == "[direct]" else (f" {raw}" if raw else "")
         out.append(t["in_from"].format(id=mid, frm=m["from"], label=label))
         out.append(f'      "{m.get("text", "")}"')
     return "\n".join(out)
