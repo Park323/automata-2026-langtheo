@@ -84,7 +84,9 @@ T = {
         multi="予算が許す限り複数の行動ができます。メッセージは1ターンに3件まで。",
         costs_hdr="行動の費用",
         c_dom="  話す（自国内）", c_orig="  話す（国際・original）",
-        c_orig_note="   相手の国の言語をあなたが扱えるなら、相手が何を読めるかに関わらず届く。\n                          扱えないなら、あなたの言語を読める相手にだけ届く。費用は届かなくても請求される",
+        c_orig_note="   費用は届かなくても請求される",
+        c_orig_sure="    {nation} へ — あなたがこの国の言語を扱えるので**必ず届く**",
+        c_orig_risk="    {nation} へ — 扱えないので、あなたの言語を読める相手にだけ届く",
         c_ai="  話す（国際・ai）",
         c_learn="  {nation} の言語を学ぶ",
         c_learn_prog="   これまで {done:.0f} / {need:.0f}",
@@ -124,7 +126,9 @@ T = {
         multi="只要预算允许，你可以采取多项行动。每回合最多 3 条消息。",
         costs_hdr="行动费用",
         c_dom="  说话（本国内）", c_orig="  说话（国际·original）",
-        c_orig_note="   你会对方国家的语言时，无论对方读得懂什么都能送到。\n                          你不会时，只能送到读得懂你的语言的人那里。送不到也照收费用",
+        c_orig_note="   送不到也照收费用",
+        c_orig_sure="    发往 {nation} — 你会这个国家的语言，**一定送到**",
+        c_orig_risk="    发往 {nation} — 你不会，只能送到读得懂你的语言的人那里",
         c_ai="  说话（国际·ai）",
         c_learn="  学习 {nation} 的语言",
         c_learn_prog="   已投入 {done:.0f} / {need:.0f}",
@@ -165,8 +169,9 @@ T = {
         multi="Vous pouvez agir plusieurs fois si le budget le permet. Jusqu'à 3 messages par tour.",
         costs_hdr="Coûts des actions",
         c_dom="  parler (dans votre nation)", c_orig="  parler (international, original)",
-        c_orig_note="   si vous maniez la langue de sa nation, le message arrive quoi que sache lire le destinataire.\n"
-                          "   sinon, il n'arrive qu'à quelqu'un qui lit la vôtre. le coût est prélevé même s'il n'arrive pas",
+        c_orig_note="   le coût est prélevé même s'il n'arrive pas",
+        c_orig_sure="    vers {nation} — vous maniez sa langue, **il arrive à coup sûr**",
+        c_orig_risk="    vers {nation} — vous ne la maniez pas ; il n'arrive qu'à qui lit la vôtre",
         c_ai="  parler (international, ai)",
         c_learn="  apprendre la langue de {nation}",
         c_learn_prog="   déjà versé {done:.0f} / {need:.0f}",
@@ -250,7 +255,16 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
 
     lines = [t["costs_hdr"],
              row(t["c_dom"], cfg.costs.comm_domestic),
-             row(t["c_orig"], cfg.costs.comm_intl_learner, t["c_orig_note"]),
+             row(t["c_orig"], cfg.costs.comm_intl_learner, t["c_orig_note"])]
+    # **나라별로 보장 여부를 적는다.** 규칙만 적었을 때 에이전트가 연결하지 못했다 —
+    # 20턴 실측에서 자기가 아는 말의 나라에 24원짜리 ai 를 6번 썼다 (5원이면 확실했다).
+    # 자기 언어 능력에서 나오는 사실이라 타국 사정을 흘리지 않는다.
+    for c in world.countries.values():
+        if c.id == agent.country:
+            continue
+        key = "c_orig_sure" if c.lang in agent.known_langs else "c_orig_risk"
+        lines.append(t[key].format(nation=c.id))
+    lines += [
              row(t["c_ai"], knob_ai)]
     for c in world.countries.values():
         if c.id != agent.country:

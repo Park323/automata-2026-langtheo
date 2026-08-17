@@ -751,3 +751,37 @@ def test_national_investment_states_all_three_effects(cfg, world):
         obs = prompts.render_observation(world, a, cfg, 48.0)
         for m in marks[a.native_lang]:
             assert m in obs, f"{a.native_lang}: {m}"
+
+
+def test_cost_table_says_which_nations_are_guaranteed(cfg, world):
+    """**나라별로 보장 여부를 적는다.** 규칙만 적었을 때 연결을 못 했다.
+
+    20턴 실측에서 자기가 아는 말의 나라에 24원짜리 `ai` 를 6번 썼다 — `original` 5원이면
+    **확실히** 닿는데도. Ranoa1(fr·zh)이 Miris 에 그랬다.
+
+    자기 언어 능력에서 나오는 사실이라 타국 사정을 흘리지 않는다.
+    """
+    from domains.meteor import prompts
+    a = world.agents["Ranoa1"]                 # 초기화로 fr 을 안다
+    assert "fr" in a.known_langs
+    obs = prompts.render_observation(world, a, cfg, 48.0)
+    sure = prompts.T[a.native_lang]["c_orig_sure"].format(nation="Miris")
+    risk = prompts.T[a.native_lang]["c_orig_risk"].format(nation="Asla")
+    assert sure in obs and risk in obs
+
+    mono = world.agents["Ranoa2"]              # 자기 말만 안다
+    obs2 = prompts.render_observation(world, mono, cfg, 48.0)
+    assert prompts.T[mono.native_lang]["c_orig_sure"].format(nation="Miris") not in obs2
+    for cid in ("Asla", "Miris"):
+        assert prompts.T[mono.native_lang]["c_orig_risk"].format(nation=cid) in obs2
+
+
+def test_the_guarantee_line_leaks_nothing_about_others(cfg, world):
+    """보장 여부는 **내 언어 능력**만으로 정해진다 — 상대가 무엇을 읽는지와 무관하다."""
+    from domains.meteor import prompts
+    a = world.agents["Ranoa1"]
+    before = prompts.render_observation(world, a, cfg, 48.0)
+    for other in world.agents.values():        # 타국 사람들이 언어를 더 배워도
+        if other.country != a.country:
+            other.known_langs.add("zh")
+    assert prompts.render_observation(world, a, cfg, 48.0) == before
