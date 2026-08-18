@@ -42,9 +42,10 @@ class CountingClient:
         self.completion_tokens = 0
         self._lock = threading.Lock()          # 병렬 공유 시 계측 정확도
 
-    def chat(self, messages, tools=None, temperature=None, tool_choice=None):
+    def chat(self, messages, tools=None, temperature=None, tool_choice=None,
+             log_tag=None):
         resp = self.inner.chat(messages, tools=tools, temperature=temperature,
-                               tool_choice=tool_choice)
+                               tool_choice=tool_choice, log_tag=log_tag)
         usage = resp.get("usage") or {}
         with self._lock:
             self.calls += 1

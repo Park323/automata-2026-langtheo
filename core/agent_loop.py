@@ -529,6 +529,17 @@ def under_pressure(agent, cfg) -> bool:
     return agent.last_prompt_tokens >= cfg.llm.context_limit * cfg.llm.warn_ratio
 
 
+def _redact_args(name: str, args: dict) -> dict:
+    """호출 인자에서 **다른 곳에 온전히 있는 것만** 뺀다.
+
+    `reasoning` 은 같은 이벤트의 `reasonings` 에, `speak` 의 `text` 는 `messages.jsonl` 에
+    원문·도착문이 함께 있다. 그 둘 말고는 아무것도 버리지 않는다 — `memory_write` 의
+    본문과 `procreate` 의 유언이 바로 그렇게 사라지고 있었다.
+    """
+    drop = {"reasoning"} | ({"text"} if name == "speak" else set())
+    return {k: v for k, v in args.items() if k not in drop}
+
+
 def can_act(agent, cfg, knob_ai: float) -> bool:
     """남은 예산·AP 로 실행 가능한 도구가 하나라도 있나 (종료 조건 ②, spec 4.5).
 
@@ -585,6 +596,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     error = None
     evicted = 0
     ended_by = "exhausted"  # ended | exhausted | error | repeat_guard | runaway
+    calls: list[dict] = []  # 도구 호출 전문 (인자·결과·실패 사유)
     seen: dict[str, int] = {}       # (도구,인자) 반복 카운터 — 실패는 자원을 안 쓴다
     steps = 0
     # 한 사람이 한 턴을 사는 데 걸린 시간. llm_ms 를 따로 재는 이유 — 벽시계의 거의
@@ -613,7 +625,10 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             # 날아갔고, JSON 이 아니라 회수기도 못 잡았다 (계획만 적거나, 메시지 본문을
             # 산문으로 씀). **`end_turn` 도 도구이므로 "할 게 없다" 는 여전히 표현된다** —
             # 강제해도 잃는 선택지가 없다.
-            resp = client.chat(messages, tools=tool_list, tool_choice="required")
+            resp = client.chat(messages, tools=tool_list, tool_choice="required",
+                               log_tag={"turn": world.turn, "agent": agent.id,
+                                        "step": steps + 1, "age": agent.age,
+                                        "country": agent.country})
         except Exception as e:                          # 이 에이전트만 턴 종료
             llm_ms += (time.time() - t_call) * 1000
             error = f"{type(e).__name__}: {str(e)[:200]}"
@@ -688,6 +703,17 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
                 control = None
             else:
                 result, control = execute_tool(name, args, world, agent, cfg, sink, knob_ai)
+            # **호출 하나를 통째로 남긴다** — 인자·결과·실패 사유까지.
+            #
+            # 그전에는 성공한 호출만 `actions` 에 인자와 함께 남고, 실패는 `reasonings` 에
+            # 이름과 ok=False 로만 남았다. 그래서 **왜 실패했는지가 어디에도 없었다** —
+            # AP 가 모자랐는지, 국가 이름을 틀렸는지, 이미 아는 언어였는지 구분이 안 됐다.
+            # 성공한 호출도 `actions` 는 **요청한 값**이라 실제 과금·절삭이 안 남는다
+            # (9,999 를 냈는데 AP 가 300 으로 잘라도 로그에는 9,999 로 남았다).
+            calls.append({"step": steps, "tool": name, "args": _redact_args(name, args),
+                          "ok": bool(result.get("ok")),
+                          "error": result.get("error"),
+                          "result": {k: v for k, v in result.items() if k != "error"}})
             why = str(args.get("reasoning", ""))
             if tool_list is TOOLS:
                 reasonings.append({"tool": name, "ok": bool(result.get("ok")),
@@ -718,6 +744,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     if error:
         ended_by = "error"
     return {"reasonings": reasonings, "api_reasoning": api_reasoning,
+            "calls": calls,
             "actions": actions, "error": error, "ended_by": ended_by,
             "reasoning_missing": not any(r["reasoning"] for r in reasonings),
             "steps": steps, "prompt_tokens": agent.last_prompt_tokens,

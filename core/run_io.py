@@ -2,11 +2,11 @@
 
   runs/{run_id}/
     config_snapshot.yaml   설정 + 코드 커밋 해시
-    raw_calls.jsonl        ★ LLM 호출 전문 (요청·응답 원본)
-    state.jsonl            턴별 에이전트 상태
-    messages.jsonl         6.1 스키마
-    events.jsonl           사망·출생·학습·투표·검증 거부
-    metrics.jsonl          턴별 집계
+    raw_calls.jsonl        ★ LLM 호출 전문 (요청·응답 원본 + turn·agent·step·msg_id)
+    state.jsonl            턴별 에이전트 상태 (메모·학습 진척·AP 잔량 포함)
+    messages.jsonl         6.1 스키마 (원문·번역 프롬프트·도착문)
+    events.jsonl           사망·출생·학습·투표·관측 + agent_turn(호출 전문)
+    metrics.jsonl          턴별 집계 (국토·진척·자본·열린 제안)
     summary.json           run 전체 요약
 
 **파생 로그는 전부 raw_calls.jsonl 에서 재생성할 수 있어야 한다.** 파일럿이 raw.jsonl 을
@@ -14,6 +14,29 @@
 그때 다시 돌려야 한다.
 
 턴마다 append 한다. 50턴 × ~1,700콜 런이 45턴에서 죽어도 거기까지는 남는다.
+
+## 빠뜨리는 방식은 늘 같았다
+
+누락은 **분석하려고 파일을 열어 봤을 때** 발견됐고, 그때는 이미 그 런을 다시 돌려야
+했다. 8/18 전수 검토에서 나온 다섯 건이 전부 그런 것이었다.
+
+    memory_write 의 본문   *"본문은 messages 에 있으므로 뺀다"* 가 speak 에만 맞는
+                          말이었는데 종류를 안 가리고 잘랐다. 세 런 60건이 전부
+                          {"type": "memory_write"} 로만 남았다
+    procreate 의 유언      같은 이유로 잘렸다. 부고에도 없었다 — 아이의 기억
+                          초기값으로만 흘러가서, 아이가 덮어쓰면 원문이 사라졌다.
+                          하필 그 덮어쓰기가 spec 3.3 이 관측하려는 구전의 감쇠다
+    도구 호출의 실패 사유   성공만 actions 에 남고 실패는 이름과 ok=False 로만 남았다.
+                          AP 부족인지 국가 이름을 틀렸는지 구분이 안 됐다
+    실제 과금·절삭        actions 는 **요청한 값**이다. 9,999 를 냈는데 AP 가 300 으로
+                          잘라도 로그에는 9,999 가 남았다
+    호출의 임자·시각       kind 는 클라이언트를 만들 때 붙는 고정 태그라 turn·agent 를
+                          담을 수 없었다. raw_calls 를 events 와 이어붙일 키가 없어
+                          호출 단위 분석이 통째로 막혀 있었다
+
+그래서 `tests/test_logging_complete.py` 가 **덮개를 지킨다.** `Agent`·`Country` 에 필드가
+늘면 로그에 안 들어간 채로는 통과하지 못한다 — 면제하려면 이유를 적어야 하고, 이유를
+적을 수 없으면 그건 빠뜨린 것이다.
 """
 from __future__ import annotations
 
@@ -33,6 +56,27 @@ def git_commit() -> str | None:
         return out.stdout.strip() or None
     except Exception:
         return None
+
+
+def _redact(a: dict) -> dict:
+    """행동 인자에서 **중복인 것만** 뺀다.
+
+    전에는 `text`·`testament` 를 종류와 무관하게 잘랐다. 근거는 *"본문은 messages 에
+    있으므로"* 였는데 **그건 `speak` 에만 맞는 말이었다.** `memory_write` 의 본문과
+    `procreate` 의 유언은 messages 에도 events 에도 없어서 **통째로 사라지고 있었다** —
+    세 런 60건의 memory_write 가 전부 `{"type": "memory_write"}` 로만 남았다.
+
+    무엇을 적어둘 가치가 있다고 봤는지, 무엇을 남기고 죽었는지는 이 시뮬레이션이
+    내놓는 자료 중 가장 해석이 필요한 축이다 (spec 3.3 — 유언은 자유 텍스트이고
+    거기가 창발 지점이다). 그것을 로그에서 버리면 사후에 복구할 방법이 없다.
+
+    `reasoning` 은 같은 이벤트의 `reasonings` 에 이미 있으므로 계속 뺀다.
+    `speak` 의 `text` 도 `messages.jsonl` 에 원문·도착문이 함께 있으므로 계속 뺀다.
+    """
+    drop = {"reasoning"}
+    if a.get("type") == "speak":
+        drop.add("text")
+    return {k: v for k, v in a.items() if k not in drop}
 
 
 class RunWriter:
@@ -118,7 +162,14 @@ class RunWriter:
                 "budget_start": round(a.budget_start, 4),
                 "wellness_spent": round(a.wellness_spent, 4),
                 "born_turn": a.born_turn, "born_by": a.born_by, "alive": a.alive,
-                "uid": a.uid,
+                "uid": a.uid, "native_lang": a.native_lang,
+                # **AP 가 남아 있지 않았다.** 이 세계의 진짜 예산인데 턴 끝 잔량이
+                # 어디에도 없어서 "무엇을 포기했는가" 를 사후에 볼 수 없었다.
+                "ap_left": round(a.ap, 4),
+                # **지금 이 사람의 메모.** 쓴 턴에만 남기면 "무엇을 들고 다니는가" 를
+                # 볼 수 없다 — 유언을 물려받고 한 번도 안 고친 아이가 특히 그렇다.
+                "memory": a.memory,
+                "lang_progress": {k: round(v, 2) for k, v in (a.lang_progress or {}).items()},
             })
         for m in result.messages_log:
             if m.get("turn") == turn and not m.get("_written"):
@@ -143,10 +194,11 @@ class RunWriter:
                 "ms_per_step": lg.get("ms_per_step"),
                 # **인자까지 남긴다.** 전에는 종류만 남아서 "누가 어디에 냈는가" 를
                 # 사후에 볼 수 없었다 — raw_calls 에도 agent id 가 없어 호출 단위
-                # 분석이 통째로 막혔다. 본문(text·testament)은 messages 에 있으므로 뺀다.
-                "actions": [{k: v for k, v in a.items()
-                             if k not in ("text", "reasoning", "testament")}
-                            for a in lg.get("actions", [])],
+                # 분석이 통째로 막혔다.
+                "actions": [_redact(a) for a in lg.get("actions", [])],
+                # **호출 전문.** actions 는 성공한 것만, 요청한 값 그대로다.
+                # calls 는 실패까지 남기고 실제 결과(과금·절삭·오류 사유)를 담는다.
+                "calls": lg.get("calls"),
             })
         for lr in result.learns_log:
             if lr.get("turn") == turn and not lr.get("_written"):
@@ -184,6 +236,10 @@ class RunWriter:
             "land": {c.id: c.land for c in world.countries.values()},
             "national_capital": {c.id: round(c.national_capital, 3)
                                  for c in world.countries.values()},
+            # **열린 제안.** vote 이벤트로만 남아 있어서, 제안이 열려 있던 구간을
+            # 사후에 복원하려면 이벤트를 되짚어야 했다 — 採決 전에 무슨 말이 오갔는지를
+            # 보려면 매 턴의 상태가 있어야 한다.
+            "proposal": {c.id: c.proposal for c in world.countries.values()},
             "messages_this_turn": sum(1 for m in result.messages_log if m.get("turn") == turn),
             "agent_turns": len(logs), "llm_failures": failed,
             "llm_failure_rate": round(failed / len(logs), 4) if logs else 0.0,

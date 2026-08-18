@@ -31,16 +31,22 @@ def build_prompt(dst_lang: str, text: str, instruction: str | None) -> str:
 
 
 def translate(client, src_lang: str, dst_lang: str, text: str,
-              instruction: str | None = None) -> dict:
+              instruction: str | None = None, log_tag: dict | None = None) -> dict:
     """직역 1회. 반환: {text, prompt, logprob_mean}.
 
     client 는 번역 전용 LLM (테스트에선 StubClient). temperature 는 낮게.
+
+    `log_tag` 는 raw_calls 행에 합쳐진다 — **어느 메시지의 번역인지가 안 남고 있었다.**
+    번역 호출은 kind="translate" 로만 구분돼서, 원문·도착문(messages.jsonl)과 실제
+    API 왕복(raw_calls.jsonl)을 이어붙일 방법이 없었다. 지표 6a·9 가 재는 것이 바로
+    그 이음매다.
     """
     prompt = build_prompt(dst_lang, text, instruction)
     resp = client.chat(
         [{"role": "system", "content": SYSTEM_CONTRACT},
          {"role": "user", "content": prompt}],
         temperature=0.2,
+        log_tag={**(log_tag or {}), "src_lang": src_lang, "dst_lang": dst_lang},
     )
     msg = resp["choices"][0]["message"]
     content = (msg.get("content") or "").strip()

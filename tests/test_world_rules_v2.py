@@ -907,3 +907,35 @@ def test_natural_death_passes_nothing(cfg, world):
                       itertools.count(700), r)
     child = next(x for x in world.agents.values() if x.country == "Asla" and x.age == 0)
     assert child.lang_progress == {} and child.parent_langs == set()
+
+
+# ── 로그에 본문이 남는가 (8/18) ─────────────────────────────────────────────
+
+def test_memory_and_testament_survive_the_log(cfg, world, tmp_path):
+    """**무엇을 적어뒀고 무엇을 남기고 죽었는가는 로그에서 잘리면 안 된다.**
+
+    `text`·`testament` 를 종류와 무관하게 잘라내고 있었다. 근거는 *"본문은 messages 에
+    있으므로"* 였는데 그건 `speak` 에만 맞는 말이었다 — `memory_write` 의 본문과
+    `procreate` 의 유언은 messages 에도 events 에도 없어서 **통째로 사라졌다.**
+    세 런 60건의 memory_write 가 전부 `{"type": "memory_write"}` 로만 남아 있었다.
+    """
+    from core.run_io import _redact
+    assert _redact({"type": "memory_write", "text": "요격기에 몰아줘라",
+                    "reasoning": "r"}) == {"type": "memory_write", "text": "요격기에 몰아줘라"}
+    assert _redact({"type": "procreate", "testament": "AI 를 믿지 마라",
+                    "reasoning": "r"}) == {"type": "procreate", "testament": "AI 를 믿지 마라"}
+    # speak 의 본문은 messages.jsonl 에 원문·도착문이 함께 있으므로 계속 뺀다
+    assert _redact({"type": "speak", "to": "Ranoa2", "text": "x"}) == {"type": "speak",
+                                                                      "to": "Ranoa2"}
+
+
+def test_procreate_death_carries_the_testament(cfg, world):
+    """유언이 아이의 기억 초기값으로만 흘러가면, 아이가 덮어쓴 뒤 원문이 사라진다 —
+    하필 그 덮어쓰기가 spec 3.3 이 관측하려는 구전의 감쇠 그 자체다."""
+    import itertools
+
+    from core.loop import RunResult, _procreate_child
+    r = RunResult(world=world)
+    _procreate_child(world, "Asla1", "요격기에 몰아줘라", cfg, itertools.count(99), r)
+    (d,) = [x for x in r.deaths_log if x["by"] == "procreate"]
+    assert d["testament"] == "요격기에 몰아줘라" and d["who"] == "Asla1"

@@ -95,6 +95,9 @@
   .drop{border:1px dashed var(--line);border-radius:10px;padding:26px;text-align:center;
         color:var(--dim);margin:16px}
   .empty{color:var(--dim);font-size:12px;padding:6px 0}
+.note{border-left:2px solid var(--dim);padding:6px 0 6px 10px;margin:8px 0}
+.note .hd{display:flex;gap:8px;align-items:center;margin-bottom:3px}
+.note .txt{white-space:pre-wrap;font-size:12px;line-height:1.55}
 </style>
 </head>
 <body>
@@ -137,6 +140,7 @@
   <div>
     <div class="panel" id="events"></div>
     <div class="panel" style="margin-top:12px" id="acts"></div>
+    <div class="panel" style="margin-top:12px" id="notes"></div>
   </div>
 </main>
 
@@ -255,6 +259,15 @@ function nations(b){
   return `<h2>국가</h2>${rows}`;
 }
 
+// 배우다 만 언어. 완주한 것은 known_langs 에 이미 있으므로 **진행 중인 것만** 보인다 —
+// "시작만 하고 마는가" 가 이 시뮬레이션에서 아직 답이 없는 질문이다.
+function prog(s){
+  const e = Object.entries(s.lang_progress || {}).filter(([l, v]) =>
+      v > 0 && !(s.known_langs || []).includes(l));
+  return e.length ? ` · <span style="color:var(--ai)">${
+      e.map(([l, v]) => `${l} ${Math.round(v)}`).join(" ")}</span>` : "";
+}
+
 function agents(b){
   if (!b.state.length) return `<h2>사람</h2><div class="empty">—</div>`;
   // 사전순이면 Asla10 이 Asla2 앞에 온다 — id 를 재사용하지 않아 두 자리로 넘어간다
@@ -270,7 +283,8 @@ function agents(b){
         ${(s.known_langs || []).join("·")}</span>
       <span style="flex:1"></span>
       <span class="muted mono" style="font-size:11px">${Math.round(s.budget)}원 · ${s.age}살${
-        s.wellness_spent ? ` · <span style="color:var(--ok)">♥${Math.round(s.wellness_spent)}</span>` : ""}</span>
+        s.wellness_spent ? ` · <span style="color:var(--ok)">♥${Math.round(s.wellness_spent)}</span>` : ""}${
+        prog(s)}</span>
       ${s.born_by === "procreate" ? `<span class="badge">계승</span>` : ""}
     </div>`;
   }).join("");
@@ -385,6 +399,36 @@ function acts(b){
   return `<h2>누가 무엇을 했는가 <span class="muted">(${acted}/${turns.length} 움직임)</span></h2>${rows}`;
 }
 
+// **무엇을 적어둘 가치가 있다고 봤는가.** 이 시뮬레이션에서 가장 해석이 필요한 축인데
+// 오래도록 로그에서 잘려 나가고 있었다 (세 런 60건이 전부 본문 없이 남았다).
+//
+// 이번 턴에 고쳐 쓴 것은 위에, 안 고쳤어도 들고 다니는 메모는 아래에 접어 둔다 —
+// 유언을 물려받고 한 번도 안 고친 아이가 특히 아래쪽에서만 보인다.
+function notes(b){
+  const wrote = new Map();
+  for (const e of b.events)
+    for (const a of (e.actions || []))
+      if (a.type === "memory_write" && a.text) wrote.set(e.agent, a.text);
+
+  const wills = b.events.filter(e => e.type === "death" && e.testament);
+  const held  = [...b.state].filter(s => s.alive && s.memory && !wrote.has(s.agent))
+                            .sort((x, y) => x.agent.localeCompare(y.agent));
+
+  if (!wrote.size && !wills.length && !held.length)
+    return `<h2>메모와 유언</h2><div class="empty">아직 아무도 적어두지 않았습니다.</div>`;
+
+  const blk = (who, txt, tag) => `<div class="note">
+    <div class="hd"><span class="mono"><b>${who}</b></span>${
+      tag ? `<span class="badge">${tag}</span>` : ""}</div>
+    <div class="txt">${esc(txt)}</div></div>`;
+
+  return `<h2>메모와 유언 <span class="muted">(${wrote.size} 갱신)</span></h2>`
+    + [...wrote].map(([a, t]) => blk(a, t, "이번 턴에 고침")).join("")
+    + wills.map(e => blk(e.who, e.testament, `유언 · ${e.age}살`)).join("")
+    + (held.length ? `<details class="reason"><summary>고치지 않고 들고 있는 메모 (${held.length})</summary>`
+        + held.map(s => blk(s.agent, s.memory, "")).join("") + `</details>` : "");
+}
+
 function render(){
   const b = D.byTurn[turn] || {state:[],messages:[],events:[],metric:null};
   $("#nations").innerHTML = nations(b);
@@ -392,6 +436,7 @@ function render(){
   $("#messages").innerHTML = messages(b);
   $("#events").innerHTML  = events(b);
   $("#acts").innerHTML    = acts(b);
+  $("#notes").innerHTML   = notes(b);
   $("#scrub").value = turn;
   const m = b.metric;
   const wall = m && m.turn_wall_ms ? `  ·  ${(m.turn_wall_ms / 1000).toFixed(1)}s` : "";

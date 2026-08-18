@@ -73,7 +73,7 @@ def direct_works(sender_known_langs, recipient_known_langs,
 # ── 전달 형태 만들기 (spec 5.1 · 5.2 · 5.4) ───────────────────────────────────
 
 def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai: float,
-                    sender_known_langs=frozenset()) -> dict:
+                    sender_known_langs=frozenset(), log_tag: dict | None = None) -> dict:
     """발신 메시지 하나를 처리해 전달 결과를 만든다.
 
     반환:
@@ -146,7 +146,12 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     #   오독된다. 조건별로 빈도가 다르면 4a 도 오염되므로 반드시 따로 센다.
     try:
         tr = translate_mod.translate(translator, from_lang, to_lang, text_sent,
-                                     sent.get("translate_instruction"))
+                                     sent.get("translate_instruction"),
+                                     log_tag={"from": sent.get("from"),
+                                              "to": sent.get("to"),
+                                              # 바깥 태그가 마지막이다 — msg_id 는
+                                              # 루프가 쥐고 있고 sent 에는 없다
+                                              **(log_tag or {})})
     except Exception as e:
         meta["translate_failed"] = f"{type(e).__name__}: {e}"[:200]
         inbox = {"from": sent["from"], "label": None, "text": None,

@@ -20,7 +20,8 @@ ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 
 class LLMClient(Protocol):
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
-             temperature: float | None = None, tool_choice: str | None = None) -> dict:
+             temperature: float | None = None, tool_choice: str | None = None,
+             log_tag: dict | None = None) -> dict:
         """OpenAI 호환 응답을 그대로 반환한다.
 
         반환에서 쓰는 것: choices[0].message (content 또는 tool_calls)
@@ -96,7 +97,14 @@ class OpenRouterClient:
         return box["resp"]
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
-             temperature: float | None = None, tool_choice: str | None = None) -> dict:
+             temperature: float | None = None, tool_choice: str | None = None,
+             log_tag: dict | None = None) -> dict:
+        """`log_tag` 는 raw_calls 행에 그대로 합쳐진다.
+
+        **누가 언제 건 호출인지가 raw 에 없었다.** kind 는 클라이언트를 만들 때 한 번
+        붙는 고정 태그라 turn·agent 를 담을 수 없었고, 그래서 raw_calls 를 events 와
+        이어붙일 방법이 없었다 — 호출 단위 분석이 통째로 막혀 있었다.
+        """
         body: dict = {
             "model": self.model,
             "messages": messages,
@@ -123,7 +131,7 @@ class OpenRouterClient:
             t0 = time.time()
             try:
                 resp = self._call_with_deadline(req)
-                self._record(body, attempt + 1, t0, response=resp)
+                self._record(body, attempt + 1, t0, response=resp, log_tag=log_tag)
                 # ⚠ 프로바이더가 **HTTP 200 에 error 를 실어 보낸다.** gemma :free 에서
                 #   22콜 중 5건이 {"error":{"code":504,"message":"Provider timed out"}}
                 #   였고, choices 를 그대로 인덱싱하다 KeyError 로 **런 전체가 죽었다.**
@@ -134,7 +142,7 @@ class OpenRouterClient:
                         f"no choices — {err.get('code', '?')}: {str(err.get('message'))[:120]}")
                 return resp
             except urllib.error.HTTPError as e:
-                self._record(body, attempt + 1, t0, error=f"HTTP {e.code}")
+                self._record(body, attempt + 1, t0, error=f"HTTP {e.code}", log_tag=log_tag)
                 if e.code == 429:                          # 레이트 리밋: 길게 물러난다
                     time.sleep(min(60, 8 * (2 ** attempt)))
                     continue
@@ -143,16 +151,17 @@ class OpenRouterClient:
                     continue
                 raise
             except Exception as e:
-                self._record(body, attempt + 1, t0, error=f"{type(e).__name__}: {e}")
+                self._record(body, attempt + 1, t0, error=f"{type(e).__name__}: {e}", log_tag=log_tag)
                 if attempt == self.retries - 1:
                     raise
                 time.sleep(3 * (attempt + 1))
         raise RuntimeError("재시도 소진")
 
-    def _record(self, body, attempt, t0, response=None, error=None):
+    def _record(self, body, attempt, t0, response=None, error=None, log_tag=None):
         if self.recorder is None:
             return
-        self.recorder({"attempt": attempt, "latency_ms": round((time.time() - t0) * 1000),
+        self.recorder({**(log_tag or {}),
+                       "attempt": attempt, "latency_ms": round((time.time() - t0) * 1000),
                        "request": body, "response": response, "error": error})
 
 
@@ -175,9 +184,10 @@ class StubClient:
         self.recorder = recorder             # 실물과 같은 raw 기록 경로 (테스트에서 형식 검증)
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
-             temperature: float | None = None, tool_choice: str | None = None) -> dict:
+             temperature: float | None = None, tool_choice: str | None = None,
+             log_tag: dict | None = None) -> dict:
         self.calls.append({"messages": list(messages), "tools": tools,
-                           "tool_choice": tool_choice})                   # 스냅샷
+                           "tool_choice": tool_choice, "log_tag": log_tag})   # 스냅샷
         _t0 = time.time()
         if self._i >= len(self._script):
             # 스크립트 소진 → 도구 없이 종료 신호
@@ -187,9 +197,11 @@ class StubClient:
             self._i += 1
         resp = {"choices": [{"message": msg}]}
         if self.recorder is not None:
-            self.recorder({"attempt": 1, "latency_ms": round((time.time() - _t0) * 1000),
+            self.recorder({**(log_tag or {}),
+                           "attempt": 1, "latency_ms": round((time.time() - _t0) * 1000),
                            "request": {"model": "stub", "messages": list(messages),
-                                       "tools": tools, "temperature": temperature},
+                                       "tools": tools, "temperature": temperature,
+                                       "tool_choice": tool_choice},
                            "response": resp, "error": None})
         return resp
 

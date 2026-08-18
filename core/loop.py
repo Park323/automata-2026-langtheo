@@ -211,8 +211,12 @@ def _procreate_child(world: World, aid: str, testament: str, cfg,
     _replace(world, aid, child, carry)
     result.deaths += 1
     result.death_ages.append(a.age)
+    # **유언 본문을 부고에 남긴다.** 그전에는 아이의 기억 초기값으로만 흘러가서, 아이가
+    # `memory_write` 로 덮어쓰면 무엇을 남기고 죽었는지가 로그 어디에도 안 남았다 —
+    # 하필 그 덮어쓰기가 spec 3.3 이 관측하려는 구전의 감쇠 그 자체다.
     result.deaths_log.append({"turn": world.turn, "who": aid, "born": child.id,
-                              "age": a.age, "country": a.country, "by": "procreate"})
+                              "age": a.age, "country": a.country, "by": "procreate",
+                              "testament": testament})
     result.births.append({"turn": world.turn, "id": child.id, "replaces": aid,
                           "uid": child.uid, "born_by": "procreate",
                           "budget": child.budget})
@@ -453,12 +457,15 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         reck = recipient.known_langs if recipient else set()
         to_uid = recipient.uid if recipient else None
         sender = world.agents.get(sent["from"])
+        # **id 를 번역보다 먼저 뽑는다.** 나중에 뽑으면 번역 호출의 raw 기록에 msg_id 가
+        # null 로 남아, 원문·도착문(messages.jsonl)과 실제 API 왕복을 이어붙일 수 없다.
+        gid = next(msg_ids)
         p = messaging.process_message(sent, reck, cfg, translator, knob_ai,
                                       sender_known_langs=(sender.known_langs if sender
-                                                          else frozenset()))
+                                                          else frozenset()),
+                                      log_tag={"turn": world.turn, "msg_id": gid})
         world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["to"],
                                   "to_uid": to_uid, "msg": p["inbox"]})
-        gid = next(msg_ids)
         p["inbox"]["msg_id"] = gid          # 전역 id — understood 의 조인 키 (spec 6.1)
         result.messages_log.append({"turn": world.turn, "msg_id": gid,
                                     "from": sent["from"], "to": sent["to"],
