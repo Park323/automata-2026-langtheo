@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from core import translate as translate_mod
+from core.llm import LLMCallError
 
 AI_LABEL = "[AI translation]"
 # 통역이 끼지 않았는데 뜻이 닿았다는 표시. `render_inbox` 가 수신자 언어로 옮긴다.
@@ -131,7 +132,9 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         # 실패: 본문 미전달, 발신자·도착 사실만
         inbox = {"from": sent["from"], "label": None, "text": None,
                  "original": None, "unreadable": True, "reply_to": sent.get("reply_to")}
-        notice = {"type": "delivery_failed", "to": sent["to"]}
+        # **원인을 붙인다.** 이 경로의 실패는 세계의 사실이다 — 내가 그 나라 말을
+        # 모르고 상대도 내 말을 못 읽었다. route=original 의 도박이 정보를 주는 지점이다.
+        notice = {"type": "delivery_failed", "to": sent["to"], "reason": "unreadable"}
         return {"kind": kind, "delivered": False, "inbox": inbox,
                 "sender_notice": notice, "meta": meta}
 
@@ -152,12 +155,28 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
                                               # 바깥 태그가 마지막이다 — msg_id 는
                                               # 루프가 쥐고 있고 sent 에는 없다
                                               **(log_tag or {})})
-    except Exception as e:
+    except LLMCallError as e:
+        # **`except Exception` 이었다.** 런이 안 죽는 것이 목적이었는데 그 그물이 우리
+        # 코드의 버그까지 삼켰다 — `LANG_NAME[dst_lang]` 의 KeyError, 응답 모양이 바뀐
+        # TypeError 가 "번역 실패" 통계 한 줄로 묻히고 크래시로 드러나지 않는다.
+        #
+        # **런이 터지더라도 버그는 잡아야 한다.** 그래서 경계가 선언한 실패
+        # (`LLMCallError`)만 잡고 나머지는 통과시킨다.
         meta["translate_failed"] = f"{type(e).__name__}: {e}"[:200]
-        inbox = {"from": sent["from"], "label": None, "text": None,
-                 "original": None, "unreadable": True, "reply_to": sent.get("reply_to")}
-        return {"kind": kind, "delivered": False, "inbox": inbox,
-                "sender_notice": {"type": "delivery_failed", "to": sent["to"]},
+        # **원인을 언어라고 말하면 안 된다.** 엔진 장애를 「상대가 그 언어를 읽지
+        # 못한다」 로 통지하고 있었다 — 상대의 언어 능력과 아무 상관 없는 일인데
+        # 그것을 언어 사실로 심는다. 이 실험의 핵심 변수(누가 무엇을 읽는가)를
+        # 에이전트의 머릿속에서 오염시킨다.
+        #
+        # 그래서 원인을 붙이지 않는다. 「닿지 않았다」 만 사실이다.
+        #
+        # 수신자에게는 **아무것도 보내지 않는다.** 「읽을 수 없는 메시지가 왔다」 도
+        # 같은 거짓이다 — ai 경로였으므로 엔진이 살아 있었다면 읽을 수 있게 도착했다.
+        # 엔진 장애는 세계의 사건이 아니므로(지표 9 와 따로 세는 이유가 그것이다)
+        # 세계에 흔적을 남기지 않는 편이 옳다.
+        return {"kind": kind, "delivered": False, "inbox": None,
+                "sender_notice": {"type": "delivery_failed", "to": sent["to"],
+                                  "reason": "engine"},
                 "meta": meta}
     meta["translate_prompt"] = tr["prompt"]
     meta["logprob_mean"] = tr["logprob_mean"]

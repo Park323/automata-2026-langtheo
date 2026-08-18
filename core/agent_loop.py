@@ -20,6 +20,7 @@ import time
 from dataclasses import dataclass, field
 
 from core import messaging
+from core.llm import LLMCallError
 from core.tools import TOOLS, TOOL_NAMES, TOOLS_NO_REASONING, tools_for
 
 
@@ -629,7 +630,13 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
                                log_tag={"turn": world.turn, "agent": agent.id,
                                         "step": steps + 1, "age": agent.age,
                                         "country": agent.country})
-        except Exception as e:                          # 이 에이전트만 턴 종료
+        except LLMCallError as e:                       # 이 에이전트만 턴 종료
+            # **`except Exception` 이었다.** 한 에이전트의 API 실패로 50턴 런이 죽으면
+            # 안 된다는 것이 목적이었는데, 그 그물이 프롬프트 렌더링·도구 실행의 버그까지
+            # 삼켰다 — 그러면 그 에이전트가 매 턴 조용히 아무것도 못 하고, 로그에는
+            # `error` 한 줄만 남는다. 원인을 찾을 방법이 없다.
+            #
+            # 이제 경계가 선언한 실패만 잡는다. 나머지는 런을 죽이고 **그게 낫다.**
             llm_ms += (time.time() - t_call) * 1000
             error = f"{type(e).__name__}: {str(e)[:200]}"
             break

@@ -103,8 +103,8 @@ def main() -> None:
     import sys
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+    except (AttributeError, OSError, ValueError):
+        pass                       # 리다이렉트된 스트림 등. 그것 말고는 통과시킨다
 
     # ⚠ --turns 는 **시뮬 길이**다. config 의 total_turns(=운석이 떨어지는 해)는
     #   건드리지 않는다. 건드리면 40턴 테스트가 "40턴짜리 세계" 가 되어 남은 턴·임계·
@@ -184,12 +184,23 @@ def main() -> None:
                           resume_from=ckpt if resuming else None,
                           checkpoint_to=ckpt)
     except BaseException as e:
+        # **트레이스백을 디스크에 남긴다.** 전에는 요약 한 줄뿐이라 스택이 stderr 로만
+        # 갔다 — 야간 배치면 그대로 사라지고, 남은 것으로는 어디서 터졌는지 알 수 없다.
+        import traceback as _tb
+        writer.crash(e, where="run")
         writer.close({"final": {"outcome": "aborted"}, "deaths": None,
                       "aborted": f"{type(e).__name__}: {e}"[:300],
+                      "aborted_in_turn": writer.last_turn + 1,   # 돌던 중이던 턴
+                      "last_completed_turn": writer.last_turn,
+                      "aborted_notes": list(getattr(e, "__notes__", []) or []),
+                      "aborted_traceback": "".join(_tb.format_exception(e))[:20000],
                       "elapsed_s": round(time.time() - t0, 1),
                       "raw_calls": writer.counts})
         print(f"\n✗ 런 중단 — {type(e).__name__}: {e}")
+        for n in getattr(e, "__notes__", []) or []:
+            print(f"  {n}")
         print(f"  거기까지의 산출물은 남았습니다: {writer.dir}")
+        print(f"  터진 자리: {writer.dir}/summary.json · events.jsonl 의 type=crash")
         raise
     elapsed = time.time() - t0
     writer.close({"final": res.final, "deaths": res.deaths,

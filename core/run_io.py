@@ -54,7 +54,8 @@ def git_commit() -> str | None:
         out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
                              capture_output=True, text=True, timeout=5)
         return out.stdout.strip() or None
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
+        # git 이 없거나 저장소가 아닌 환경. 그것 말고는 통과시킨다.
         return None
 
 
@@ -102,6 +103,7 @@ class RunWriter:
         self._lock = threading.Lock()
         self._files: dict[str, object] = {}
         self.counts = {"raw": 0, "errors": 0, "retries": 0}
+        self.last_turn = 0                    # 크래시 행을 놓을 자리
         if cfg_raw is not None:
             import yaml
             # ★ knob_ai 는 config 가 아니라 **런 인자**다. config 에는 스윕할 목록
@@ -121,6 +123,32 @@ class RunWriter:
                 self._files[name] = f
             f.write(json.dumps(obj, ensure_ascii=False, default=str) + "\n")
             f.flush()          # 크래시해도 거기까지는 남아야 한다
+
+    def crash(self, exc: BaseException, where: str = "run") -> None:
+        """**터진 자리를 디스크에 남긴다.** 그전에는 트레이스백이 stderr 로만 갔다.
+
+        `summary.json` 의 `aborted` 는 `"KeyError: dst_lang"` 300자뿐이었다. 야간
+        배치나 nohup 이면 스택이 그대로 사라지고, 남은 것으로는 어디서 터졌는지 알 수
+        없다 — 예외를 좁혀 버그를 드러내기로 한 뜻이 절반만 이뤄진다.
+
+        `events.jsonl` 에 넣는 이유는 **턴 순서 안에 놓이기 때문**이다. 마지막 정상
+        턴 바로 뒤에 붙으므로, raw_calls 의 마지막 호출(turn·agent·step 이 붙어 있다)과
+        나란히 읽으면 어느 호출 뒤에 무엇이 터졌는지가 이어진다.
+        """
+        import traceback
+        # **턴을 두 값으로 적는다.** `last_turn` 하나만 적으면 오해를 부른다 —
+        # 1턴 정산 중에 터지면 on_turn_end(1) 이 아직 안 돌아서 0 이 찍히고, 마치
+        # 시작도 못 한 것처럼 읽힌다. 실제로는 그 다음 턴이 돌던 중이다.
+        self._append("events", {
+            "turn": self.last_turn + 1, "last_completed_turn": self.last_turn,
+            "type": "crash", "where": where,
+            "exc": type(exc).__name__, "message": str(exc)[:2000],
+            "notes": list(getattr(exc, "__notes__", []) or []),
+            "traceback": "".join(traceback.format_exception(exc))[:20000],
+        })
+        with self._lock:                      # 곧 죽는다 — 버퍼에 남기면 안 된다
+            for f in self._files.values():
+                f.flush()
 
     def close(self, summary: dict | None = None) -> None:
         if summary is not None:
@@ -152,6 +180,7 @@ class RunWriter:
     # ── 턴별 ──────────────────────────────────────────────────────────────────
     def on_turn_end(self, turn: int, result) -> None:
         """run_agentic 의 on_turn_end 훅으로 그대로 넘길 수 있다."""
+        self.last_turn = turn          # 크래시 행을 마지막 정상 턴 뒤에 놓기 위해
         world = result.world
         for aid in sorted(world.agents):
             a = world.agents[aid]

@@ -460,13 +460,24 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         # **id 를 번역보다 먼저 뽑는다.** 나중에 뽑으면 번역 호출의 raw 기록에 msg_id 가
         # null 로 남아, 원문·도착문(messages.jsonl)과 실제 API 왕복을 이어붙일 수 없다.
         gid = next(msg_ids)
-        p = messaging.process_message(sent, reck, cfg, translator, knob_ai,
-                                      sender_known_langs=(sender.known_langs if sender
-                                                          else frozenset()),
-                                      log_tag={"turn": world.turn, "msg_id": gid})
-        world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["to"],
-                                  "to_uid": to_uid, "msg": p["inbox"]})
-        p["inbox"]["msg_id"] = gid          # 전역 id — understood 의 조인 키 (spec 6.1)
+        try:
+            p = messaging.process_message(sent, reck, cfg, translator, knob_ai,
+                                          sender_known_langs=(sender.known_langs if sender
+                                                              else frozenset()),
+                                          log_tag={"turn": world.turn, "msg_id": gid})
+        except BaseException as e:
+            # 정산은 단일 스레드라 프레임은 남지만 **어느 메시지였는지는 안 남는다.**
+            # 기록하고 그대로 던진다 — 삼키지 않는다.
+            e.add_note(f"[msg {gid} · {sent['from']} → {sent['to']} · "
+                       f"route {sent.get('route')} · turn {world.turn}]")
+            raise
+        # inbox 가 None 인 경우가 있다 — 번역 엔진 장애. 그때는 **세계에 흔적을
+        # 남기지 않는다** (messaging 참조). 수신자에게 「읽을 수 없는 메시지가 왔다」 를
+        # 보내면 엔진 장애를 언어 사실로 심게 된다.
+        if p["inbox"] is not None:
+            p["inbox"]["msg_id"] = gid      # 전역 id — understood 의 조인 키 (spec 6.1)
+            world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["to"],
+                                      "to_uid": to_uid, "msg": p["inbox"]})
         result.messages_log.append({"turn": world.turn, "msg_id": gid,
                                     "from": sent["from"], "to": sent["to"],
                                     "action": sent.get("kind", "speak"),
@@ -478,7 +489,15 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
             world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["from"],
                                       "to_uid": su, "msg": {"from": None, "text": None,
                                       "label": None, "original": None, "msg_id": next(msg_ids),
-                                      "delivery_failed_to": sent["to"]}})
+                                      "delivery_failed_to": sent["to"],
+                                      # 언어 때문인지 엔진 장애인지 — 원인을 섞으면
+                                      # 거짓을 심는다
+                                      "delivery_failed_reason":
+                                          p["sender_notice"].get("reason"),
+                                      # 어느 메시지가 실패한 것인지. 통지에 자기 id 만
+                                      # 붙어서 원본과 이어붙일 수 없었다 — 같은 상대에게
+                                      # 두 번 보낸 턴이면 어느 쪽인지 알 수 없다
+                                      "ref_msg_id": gid}})
 
     # f. 투표 기록 (정식 집계는 이후 과제)
     # ★ 투표는 로그만 남고 아무 일도 하지 않았다. 국토는 첫 시설 투자로
@@ -574,8 +593,17 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         agent = world.agents[aid]
         # system_prompt 는 문자열이거나 (agent)->str 콜러블. 후자는 모국어 프롬프트용
         sp = system_prompt(agent) if callable(system_prompt) else system_prompt
-        return aid, run_agent_turn(world, agent, cfg, client_for(aid), sinks[aid],
-                                   knob_ai, sp, user_prompts[aid])
+        try:
+            return aid, run_agent_turn(world, agent, cfg, client_for(aid), sinks[aid],
+                                       knob_ai, sp, user_prompts[aid])
+        except BaseException as e:
+            # **기록하고 그대로 던진다.** 삼키지 않는다 — 예외를 좁힌 뜻이 사라진다.
+            #
+            # 병렬이면 ThreadPoolExecutor 가 예외를 주 스레드로 옮기는데, 그때 **어느
+            # 에이전트였는지가 사라진다.** 프레임에는 run_agent_turn 만 남고 aid 값은
+            # 안 보인다. add_note 로 트레이스백에 새겨 두면 로그만 보고 찾을 수 있다.
+            e.add_note(f"[agent {aid} · turn {world.turn} · age {agent.age}]")
+            raise
 
     if parallel:
         with ThreadPoolExecutor(max_workers=len(snapshot_ids)) as ex:
