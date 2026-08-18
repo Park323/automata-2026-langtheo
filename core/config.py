@@ -79,7 +79,7 @@ class Risk:
     # 자본 0 일 때의 **표준편차**(상대). 남은 턴은 전체 기간의 이 비율이 σ 가 되고,
     # 임계는 그 값의 이 비율이 σ 가 된다. 정규분포라 꼬리에서는 크게 빗나간다 —
     # 의도된 것이다. 절대 턴 수로 두면 total_turns 를 줄인 런에서 깨진다.
-    sigma_ratio: float = 0.5
+    sigma_ratio: float = 0.25
 
 
 @dataclass(frozen=True)
