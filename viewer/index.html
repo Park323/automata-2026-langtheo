@@ -428,8 +428,6 @@ $("#picker").onchange = async e => {
   source = null;                       // 스냅숏이라 다시 읽을 수 없다
   start(build(files), dir || "run");
 };
-const _demo = $("#demo");   // 버튼이 없으면 건너뛴다 — 없는 요소에 .onclick 하면
-if (_demo) _demo.onclick = () => loadFromPath("phase1_knob48_seed1");  // 여기서 죽어 아래 핸들러가 안 붙었다
 
 // ── 라이브 ────────────────────────────────────────────────────────────────
 // 런이 도는 동안 새 턴을 따라간다. 로그가 턴마다 append 되므로 다시 읽으면 그만이다.
