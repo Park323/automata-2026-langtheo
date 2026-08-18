@@ -15,6 +15,7 @@ import time
 import pytest
 
 from core import config, llm, messaging
+from core.llm import LLMCallError
 
 
 # ── 벽시계 상한 ─────────────────────────────────────────────────────────────────
@@ -70,8 +71,18 @@ def test_fast_call_is_untouched(monkeypatch):
 # ── 번역 실패 ───────────────────────────────────────────────────────────────────
 
 class _BrokenTranslator:
+    """**경계가 선언한 실패**를 낸다 (LLMCallError). 전에는 맨 RuntimeError 였는데,
+    상류가 `except Exception` 이라 아무 예외나 통했다 — 무엇을 흉내내는지가 흐렸다."""
+
     def chat(self, *a, **k):
-        raise RuntimeError("재시도 소진")
+        raise LLMCallError("재시도 소진")
+
+
+class _BuggyTranslator:
+    """**우리 코드의 버그**를 흉내낸다. 이건 삼켜져선 안 된다."""
+
+    def chat(self, *a, **k):
+        raise KeyError("dst_lang")
 
 
 @pytest.fixture(scope="module")
@@ -89,15 +100,85 @@ def test_translation_failure_does_not_kill_the_run(cfg):
     """번역 호출 하나가 2.5시간짜리 런을 통째로 날렸다. 미전달로 떨어뜨린다."""
     p = messaging.process_message(_intl(), set(), cfg, _BrokenTranslator(), 24.0)
     assert p["delivered"] is False
-    assert p["inbox"]["unreadable"] is True and p["inbox"]["text"] is None
     assert p["sender_notice"]["type"] == "delivery_failed"
+
+
+def test_engine_failure_never_says_it_was_the_language(cfg):
+    """**엔진 장애를 「상대가 그 언어를 읽지 못한다」 로 통지하고 있었다.**
+
+    상대의 언어 능력과 아무 상관 없는 일인데 그것을 언어 사실로 심는다 — 이 실험의
+    핵심 변수(누가 무엇을 읽는가)를 에이전트의 머릿속에서 오염시킨다. 원문 직통의
+    실패는 세계의 사실이라 원인을 붙이지만, 엔진 장애는 「닿지 않았다」 만 사실이다.
+    """
+    from domains.meteor import prompts
+    eng = messaging.process_message(_intl(), set(), cfg, _BrokenTranslator(), 24.0)
+    assert eng["sender_notice"]["reason"] == "engine"
+    # 수신자에게는 흔적을 남기지 않는다 — ai 경로였으므로 엔진이 살아 있었다면
+    # 읽을 수 있게 도착했다. 「읽을 수 없는 메시지가 왔다」 도 같은 거짓이다.
+    assert eng["inbox"] is None
+
+    lang = messaging.process_message({**_intl(), "route": "original"}, set(), cfg,
+                                     _BrokenTranslator(), 24.0)
+    assert lang["sender_notice"]["reason"] == "unreadable"
+    assert lang["inbox"]["unreadable"] is True and lang["inbox"]["text"] is None
+
+    # 통지 문구가 실제로 갈린다
+    def notice(reason):
+        return prompts.render_inbox(
+            [{"msg_id": 1, "from": None, "text": None, "label": None, "original": None,
+              "delivery_failed_to": "Miris1", "delivery_failed_reason": reason}], "ja")
+    assert "読めません" in notice("unreadable")
+    assert "読めません" not in notice("engine")
+    assert "届きませんでした" in notice("engine")      # 사실은 그대로 전한다
 
 
 def test_translation_failure_is_tagged_as_an_engine_fault(cfg):
     """지표 9(전달 실패)와 섞이면 '읽을 수 없어서 못 받았다' 로 오독된다."""
     p = messaging.process_message(_intl(), set(), cfg, _BrokenTranslator(), 24.0)
-    assert "RuntimeError" in p["meta"]["translate_failed"]
+    assert "LLMCallError" in p["meta"]["translate_failed"]
     assert p["kind"] == "ai"           # route 는 그대로 ai — 원문 직통이 아니다
+
+
+def test_a_code_bug_is_not_swallowed_as_a_translation_failure(cfg):
+    """**런이 터지더라도 버그는 잡아야 한다.**
+
+    상류가 `except Exception` 이라 우리 코드의 버그가 "번역 실패" 통계 한 줄로 묻혔다.
+    실제로 이 테스트 파일 옆에서 `translator=None` 을 넘기는 테스트가 **삼켜진
+    AttributeError 를 보고 통과하고 있었다** — 검증한 것이 규칙이 아니라 버그였다.
+    """
+    with pytest.raises(KeyError):
+        messaging.process_message(_intl(), set(), cfg, _BuggyTranslator(), 24.0)
+
+
+def test_the_agent_turn_also_only_swallows_declared_failures(cfg):
+    """에이전트 쪽도 같다. API 실패로 50턴 런이 죽으면 안 되지만, 프롬프트 렌더링·도구
+    실행의 버그까지 삼키면 **그 에이전트가 매 턴 조용히 아무것도 못 한다** — 로그에
+    `error` 한 줄만 남고 원인을 찾을 방법이 없다."""
+    import itertools
+    import random
+
+    from core import loop
+    from core.agent_loop import Sink, run_agent_turn
+    from domains.meteor import prompts
+
+    world = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    world.turn = 1
+    a = world.agents["Asla1"]
+    obs = prompts.render_observation(world, a, cfg, 48.0)
+
+    class _Api:
+        def chat(self, *ar, **kw):
+            raise LLMCallError("HTTP 503 Service Unavailable")
+
+    lg = run_agent_turn(world, a, cfg, _Api(), Sink(), 48.0, prompts.system_for(a), obs)
+    assert lg["ended_by"] == "error" and "LLMCallError" in lg["error"]
+
+    class _Bug:
+        def chat(self, *ar, **kw):
+            raise AttributeError("NoneType has no attribute 'get'")
+
+    with pytest.raises(AttributeError):
+        run_agent_turn(world, a, cfg, _Bug(), Sink(), 48.0, prompts.system_for(a), obs)
 
 
 def test_engine_fault_is_counted_apart_from_metric_9(cfg):

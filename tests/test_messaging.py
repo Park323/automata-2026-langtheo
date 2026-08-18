@@ -157,10 +157,18 @@ def test_untranslated_paths_record_the_language_actually_delivered(cfg):
                                        sender_known_langs={"ja"})
     assert direct["meta"]["delivered_lang"] == "ja"      # dst 는 zh 지만 글은 ja 다
 
-    ai = messaging.process_message(_intl(route="ai"), {"zh"}, cfg, None, 24.0,
+    # **번역기를 실제로 준다.** 전에는 `None` 을 넘겨 AttributeError 가 나는데
+    # `except Exception` 이 삼켜서 "번역 실패" 로 떨어지는 걸 보고 통과하고 있었다 —
+    # 테스트가 검증한 것은 규칙이 아니라 삼켜진 버그였다.
+    class _Tr:
+        def chat(self, messages, tools=None, temperature=None, tool_choice=None,
+                 log_tag=None):
+            return {"choices": [{"message": {"content": "我们需要拦截器"}}]}
+
+    ai = messaging.process_message(_intl(route="ai"), {"zh"}, cfg, _Tr(), 24.0,
                                    sender_known_langs={"ja"})
-    # 번역기 없이 호출했으니 실패로 떨어지지만, ai 경로만 언어가 바뀐다는 것은 유지
-    assert ai["kind"] == "ai"
+    assert ai["kind"] == "ai" and ai["delivered"] is True
+    assert ai["meta"]["delivered_lang"] == "zh"          # 이 경로만 언어가 바뀐다
 
 
 def test_marker_scoring_uses_the_delivered_language(cfg):

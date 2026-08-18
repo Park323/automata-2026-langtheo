@@ -103,8 +103,8 @@ def main() -> None:
     import sys
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+    except (AttributeError, OSError, ValueError):
+        pass                       # 리다이렉트된 스트림 등. 그것 말고는 통과시킨다
 
     # ⚠ --turns 는 **시뮬 길이**다. config 의 total_turns(=운석이 떨어지는 해)는
     #   건드리지 않는다. 건드리면 40턴 테스트가 "40턴짜리 세계" 가 되어 남은 턴·임계·

@@ -107,6 +107,7 @@ T = {
         rtt="送ったメッセージは次のターンに届きます。返事が来るのはさらに次のターンです。",
         in_none="今ターンに届いたメッセージ: なし", in_hdr="今ターンに届いたメッセージ:",
         in_fail="  [{id}] 通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
+        in_fail_plain="  [{id}] 通知 — {to} 宛のメッセージは届きませんでした",
         in_unread="  [{id}] {frm} より — 読めないメッセージが届きました",
         in_from="  [{id}] {frm} より{label}", lbl_direct=" ［通訳なしで通じた］",
         died="  {who} が {age} 歳で亡くなり、{born} が生まれました。",
@@ -152,6 +153,7 @@ T = {
         rtt="你发出的消息在下一回合送达。对方的回信要再下一回合才会到。",
         in_none="本回合送达的消息: 无", in_hdr="本回合送达的消息:",
         in_fail="  [{id}] 通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
+        in_fail_plain="  [{id}] 通知 — 你发给 {to} 的消息未能送达",
         in_unread="  [{id}] 来自 {frm} — 送到一条你读不懂的消息",
         in_from="  [{id}] 来自 {frm}{label}", lbl_direct="［无需翻译就能听懂］",
         died="  {who} 在 {age} 岁去世，{born} 出生了。",
@@ -201,6 +203,7 @@ T = {
         rtt="Un message part et arrive au tour suivant ; une réponse n'arrive qu'au tour d'après.",
         in_none="Messages arrivés ce tour : aucun", in_hdr="Messages arrivés ce tour :",
         in_fail="  [{id}] Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",
+        in_fail_plain="  [{id}] Avis — votre message à {to} n'a pas pu être délivré",
         in_unread="  [{id}] de {frm} — un message illisible est arrivé",
         in_from="  [{id}] de {frm}{label}", lbl_direct=" [compris sans traduction]",
         died="  {who} est mort à {age} ans ; {born} est né.",
@@ -318,7 +321,12 @@ def render_inbox(inbox: list[dict], lang: str) -> str:
     for i, m in enumerate(inbox, 1):
         mid = m.get("msg_id", i)
         if m.get("delivery_failed_to"):        # sender's failure notice (spec 5.1)
-            out.append(t["in_fail"].format(id=mid, to=m["delivery_failed_to"]))
+            # **원인을 섞지 않는다.** 엔진 장애를 「상대가 그 언어를 읽지 못한다」 로
+            # 통지하고 있었다 — 상대의 언어 능력과 무관한 일을 언어 사실로 심는 것이고,
+            # 이 실험의 핵심 변수를 에이전트의 머릿속에서 오염시킨다.
+            key = ("in_fail" if m.get("delivery_failed_reason", "unreadable") == "unreadable"
+                   else "in_fail_plain")
+            out.append(t[key].format(id=mid, to=m["delivery_failed_to"]))
             continue
         if m.get("unreadable"):
             out.append(t["in_unread"].format(id=mid, frm=m["from"]))

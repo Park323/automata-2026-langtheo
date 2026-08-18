@@ -18,6 +18,28 @@ ROOT = Path(__file__).resolve().parent.parent
 ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 
 
+class LLMCallError(RuntimeError):
+    """**API·망 쪽 실패.** 이 예외만 상류에서 잡아 미전달로 떨어뜨린다.
+
+    그전에는 상류가 `except Exception` 이었다. 런이 안 죽는 것이 목적이었는데, 그
+    그물이 **우리 코드의 버그까지 삼켰다** — `KeyError`·`TypeError`·`AttributeError` 가
+    "번역 실패" 통계 한 줄로 묻히고 크래시로 드러나지 않는다.
+
+    지난주 HTTP 200 에 error 를 실은 응답이 `KeyError` 로 런을 죽였는데, **죽어서
+    발견됐으니 고칠 수 있었다.** 삼켜지면 그 기회가 없다.
+
+    그래서 경계가 자기 실패를 **선언**한다. 여기 들어오는 것:
+
+        HTTP 4xx (429 제외)          재시도 없이
+        HTTP 5xx · 429 · 타임아웃     재시도를 다 쓴 뒤
+        망 오류 · 잘린 JSON 본문      재시도를 다 쓴 뒤
+        HTTP 200 인데 choices 없음    프로바이더가 error 를 실어 보낸 경우
+        재시도 소진
+
+    나머지는 전부 통과시킨다 — 그것이 버그다.
+    """
+
+
 class LLMClient(Protocol):
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
              temperature: float | None = None, tool_choice: str | None = None,
@@ -129,33 +151,47 @@ class OpenRouterClient:
         )
         for attempt in range(self.retries):
             t0 = time.time()
+            last = attempt == self.retries - 1
+            # ── 망 구간. **여기서만** 예외를 삼킨다 ────────────────────────────
             try:
                 resp = self._call_with_deadline(req)
-                self._record(body, attempt + 1, t0, response=resp, log_tag=log_tag)
-                # ⚠ 프로바이더가 **HTTP 200 에 error 를 실어 보낸다.** gemma :free 에서
-                #   22콜 중 5건이 {"error":{"code":504,"message":"Provider timed out"}}
-                #   였고, choices 를 그대로 인덱싱하다 KeyError 로 **런 전체가 죽었다.**
-                #   여기서 예외로 바꿔야 아래 재시도·백오프를 탄다.
-                if "choices" not in resp:
-                    err = (resp.get("error") or {})
-                    raise RuntimeError(
-                        f"no choices — {err.get('code', '?')}: {str(err.get('message'))[:120]}")
-                return resp
             except urllib.error.HTTPError as e:
                 self._record(body, attempt + 1, t0, error=f"HTTP {e.code}", log_tag=log_tag)
                 if e.code == 429:                          # 레이트 리밋: 길게 물러난다
+                    if last:
+                        raise LLMCallError(f"HTTP 429 (재시도 소진)") from e
                     time.sleep(min(60, 8 * (2 ** attempt)))
                     continue
-                if 500 <= e.code < 600 and attempt < self.retries - 1:
+                if 500 <= e.code < 600 and not last:
                     time.sleep(3 * (attempt + 1))
                     continue
-                raise
-            except Exception as e:
-                self._record(body, attempt + 1, t0, error=f"{type(e).__name__}: {e}", log_tag=log_tag)
-                if attempt == self.retries - 1:
-                    raise
+                raise LLMCallError(f"HTTP {e.code} {e.reason}") from e
+            except (TimeoutError, urllib.error.URLError, OSError, ValueError) as e:
+                # URLError·TimeoutError 는 OSError 계열, 잘린 본문은 JSONDecodeError
+                # (ValueError 계열). 여기까지가 **망 쪽 사정**이다.
+                self._record(body, attempt + 1, t0,
+                             error=f"{type(e).__name__}: {e}", log_tag=log_tag)
+                if last:
+                    raise LLMCallError(f"{type(e).__name__}: {e}") from e
                 time.sleep(3 * (attempt + 1))
-        raise RuntimeError("재시도 소진")
+                continue
+            # ── 응답을 받았다. 여기부터 우리 코드의 문제는 **그대로 터진다** ──
+            #
+            # ⚠ 프로바이더가 **HTTP 200 에 error 를 실어 보낸다.** gemma :free 에서
+            #   22콜 중 5건이 {"error":{"code":504,"message":"Provider timed out"}}
+            #   였고, choices 를 그대로 인덱싱하다 KeyError 로 런 전체가 죽었다.
+            #   이건 우리 버그가 아니라 프로바이더 사정이므로 재시도를 태운다.
+            if "choices" not in resp:
+                err = resp.get("error") or {}
+                why = f"no choices — {err.get('code', '?')}: {str(err.get('message'))[:120]}"
+                self._record(body, attempt + 1, t0, response=resp, error=why, log_tag=log_tag)
+                if last:
+                    raise LLMCallError(why)
+                time.sleep(3 * (attempt + 1))
+                continue
+            self._record(body, attempt + 1, t0, response=resp, log_tag=log_tag)
+            return resp
+        raise LLMCallError("재시도 소진")
 
     def _record(self, body, attempt, t0, response=None, error=None, log_tag=None):
         if self.recorder is None:

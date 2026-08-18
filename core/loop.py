@@ -464,9 +464,13 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                                       sender_known_langs=(sender.known_langs if sender
                                                           else frozenset()),
                                       log_tag={"turn": world.turn, "msg_id": gid})
-        world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["to"],
-                                  "to_uid": to_uid, "msg": p["inbox"]})
-        p["inbox"]["msg_id"] = gid          # 전역 id — understood 의 조인 키 (spec 6.1)
+        # inbox 가 None 인 경우가 있다 — 번역 엔진 장애. 그때는 **세계에 흔적을
+        # 남기지 않는다** (messaging 참조). 수신자에게 「읽을 수 없는 메시지가 왔다」 를
+        # 보내면 엔진 장애를 언어 사실로 심게 된다.
+        if p["inbox"] is not None:
+            p["inbox"]["msg_id"] = gid      # 전역 id — understood 의 조인 키 (spec 6.1)
+            world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["to"],
+                                      "to_uid": to_uid, "msg": p["inbox"]})
         result.messages_log.append({"turn": world.turn, "msg_id": gid,
                                     "from": sent["from"], "to": sent["to"],
                                     "action": sent.get("kind", "speak"),
@@ -478,7 +482,15 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
             world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["from"],
                                       "to_uid": su, "msg": {"from": None, "text": None,
                                       "label": None, "original": None, "msg_id": next(msg_ids),
-                                      "delivery_failed_to": sent["to"]}})
+                                      "delivery_failed_to": sent["to"],
+                                      # 언어 때문인지 엔진 장애인지 — 원인을 섞으면
+                                      # 거짓을 심는다
+                                      "delivery_failed_reason":
+                                          p["sender_notice"].get("reason"),
+                                      # 어느 메시지가 실패한 것인지. 통지에 자기 id 만
+                                      # 붙어서 원본과 이어붙일 수 없었다 — 같은 상대에게
+                                      # 두 번 보낸 턴이면 어느 쪽인지 알 수 없다
+                                      "ref_msg_id": gid}})
 
     # f. 투표 기록 (정식 집계는 이후 과제)
     # ★ 투표는 로그만 남고 아무 일도 하지 않았다. 국토는 첫 시설 투자로

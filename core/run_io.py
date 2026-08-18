@@ -54,7 +54,8 @@ def git_commit() -> str | None:
         out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
                              capture_output=True, text=True, timeout=5)
         return out.stdout.strip() or None
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
+        # git 이 없거나 저장소가 아닌 환경. 그것 말고는 통과시킨다.
         return None
 
 
