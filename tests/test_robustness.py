@@ -281,3 +281,56 @@ def test_seed_and_temperature_reach_the_request(monkeypatch):
     llm.OpenRouterClient("m", api_key="k", temperature=0.7).chat(
         [{"role": "user", "content": "x"}])
     assert "seed" not in seen          # 안 주면 안 보낸다
+
+
+# ── 터진 자리가 디스크에 남는가 (8/18) ──────────────────────────────────────
+
+def test_a_crash_leaves_enough_to_debug_it(tmp_path, cfg):
+    """**예외를 좁혀 버그를 드러내기로 했으니, 드러난 자리가 남아야 한다.**
+
+    전에는 `summary.json` 에 `"KeyError: dst_lang"` 300자뿐이었고 트레이스백은 stderr
+    로만 갔다 — 야간 배치나 nohup 이면 스택이 그대로 사라진다. 런이 터지는 것은
+    괜찮지만, 터진 자리를 못 찾으면 좁힌 뜻이 절반만 이뤄진다.
+    """
+    import json
+
+    from core.run_io import RunWriter
+
+    w = RunWriter("crash", cfg_raw={"x": 1}, root=tmp_path)
+    w.last_turn = 7
+    try:
+        raise KeyError("dst_lang")
+    except KeyError as e:
+        e.add_note("[agent Ranoa2 · turn 7 · age 4]")
+        w.crash(e, where="run")
+    w.close({"final": {"outcome": "aborted"}})
+
+    (row,) = [json.loads(l) for l in (w.dir / "events.jsonl").read_text().splitlines()]
+    # 7턴까지 끝났고 8턴이 돌던 중이었다. 한 값만 적으면 "시작도 못 했다" 로 읽힌다.
+    assert row["type"] == "crash"
+    assert (row["turn"], row["last_completed_turn"]) == (8, 7)
+    assert row["exc"] == "KeyError"
+    assert "Ranoa2" in row["notes"][0]          # 어느 에이전트였는지
+    assert "test_robustness" in row["traceback"]   # 스택이 통째로 남는다
+
+
+def test_the_failing_agent_is_named_in_the_traceback(cfg):
+    """병렬이면 ThreadPoolExecutor 가 예외를 주 스레드로 옮기는데, 그때 **어느
+    에이전트였는지가 사라진다** — 프레임에 run_agent_turn 만 남고 aid 값은 안 보인다."""
+    import random
+
+    from core import loop
+    from domains.meteor import prompts
+
+    class _Bug:
+        def chat(self, *a, **k):
+            raise AttributeError("boom")
+
+    bug = _Bug()
+    with pytest.raises(AttributeError) as ei:
+        loop.run_agentic(cfg, random.Random(1), lambda aid: bug, bug, 48.0,
+                         render_obs=prompts.render_observation,
+                         system_prompt=prompts.system_for,
+                         parallel=True, sim_turns=1)
+    notes = " ".join(getattr(ei.value, "__notes__", []) or [])
+    assert "agent" in notes and "turn 1" in notes
