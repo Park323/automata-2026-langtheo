@@ -547,14 +547,36 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         result.land_changes.append(rec)
 
     # f-2. 출자자에게 자기 몫의 진척 기여를 다음 턴에 알린다 (행위 후 공개)
+    #
+    # **타국에는 액수를 알려주지 않는다.** 알려주면 상대국 생산배수가 새어 나온다:
+    #
+    #     E[gain] / amount = facility.eff × success_prob × multiplier(받는 나라)
+    #
+    # 상수가 모든 나라에 같으므로 **두 나라를 비교하면 상수가 지워지고 배수 비율만
+    # 남는다.** 실측에서 통지를 쌓아 배수 1.13 을 복원했다 (실제 1.13~1.15).
+    # 자국 배수보다 나쁜 누출이다 — 자국은 수입에서 추론하는 정당한 경로가 있는데
+    # (그래서 관측에서 배수 자체를 뺐다), 타국은 4.1 이 "소통으로만" 이라고 못 박았다.
+    #
+    # 「늘었다 / 늘지 않았다」 는 살린다. 두 가지가 그것에 걸려 있다.
+    #   ① 없으면 남의 땅에 내는 선택이 영영 깜깜이가 된다
+    #   ② gain 0 이 곧 "그 나라가 아직 국토를 안 정했다" 다. 통지 자체가 없으면
+    #      그 부재가 같은 말을 하게 되므로, 통지는 어느 쪽이든 똑같이 가야 한다
+    #
+    # 곁들여 **소액 출자의 난수를 신호로 읽는 일**도 막힌다. 80원 출자의 비율은
+    # 상대편차가 16%, 20원은 33% 다. 실측에서 자국에 10~40원·타국에 50~80원을 내던
+    # 에이전트가 자국 비율이 널뛰는 것을 보고 "타국이 더 효율적" 이라 읽었고,
+    # 885원을 남의 **벙커** 로 보냈다.
     for g in result.facility_gains:
         if g["turn"] != world.turn or g["agent"] not in world.agents:
             continue
+        msg = {"msg_id": next(msg_ids), "amount": g["amount"], "to": g["to"]}
+        if world.agents[g["agent"]].country == g["to"]:
+            msg["fac_gain"] = g["gain"]              # 자국은 그대로 (진척 델타로 어차피 보인다)
+        else:
+            msg["fac_moved"] = g["gain"] > 0         # 타국은 늘었는지 여부만
         world.inbox_queue.append({
             "deliver_turn": world.turn + 1, "to": g["agent"],
-            "to_uid": world.agents[g["agent"]].uid,
-            "msg": {"msg_id": next(msg_ids), "fac_gain": g["gain"],
-                    "amount": g["amount"], "to": g["to"]}})
+            "to_uid": world.agents[g["agent"]].uid, "msg": msg})
 
     # g. procreate (예산 환급까지 반영된 뒤라 자식 예산이 정확)
     procreated: set = set()

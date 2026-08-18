@@ -10,6 +10,7 @@ from __future__ import annotations
 import itertools
 import json
 import random
+import re
 
 import pytest
 
@@ -198,8 +199,9 @@ def test_foreign_money_digs_whatever_they_are_building(cfg, world):
     assert world.countries["Ranoa"].progress > 0       # 남의 돈으로 벙커가 깊어진다
     (g,) = r.facility_gains
     assert g["agent"] == "Asla1" and g["gain"] > 0
-    # 출자자는 진척이 얼마나 늘었는지만 알 뿐, **무엇이 깊어졌는지는 모른다**
-    (e,) = [x for x in world.inbox_queue if "fac_gain" in x["msg"]]
+    # 출자자는 **늘었다는 것만** 알 뿐, 무엇이 깊어졌는지도 얼마나인지도 모른다
+    (e,) = [x for x in world.inbox_queue if "fac_moved" in x["msg"]]
+    assert e["msg"]["fac_moved"] is True and "fac_gain" not in e["msg"]
     assert "bunker" not in json.dumps(e["msg"]) and "interceptor" not in json.dumps(e["msg"])
 
 
@@ -216,8 +218,8 @@ def test_the_gain_notice_arrives_either_way(cfg, world):
     sink = Sink()
     sink.facility = [("Miris", 50.0, "Asla1")]         # 미정
     _settle(world, cfg, sink)
-    (e,) = [x for x in world.inbox_queue if "fac_gain" in x["msg"]]
-    assert e["to"] == "Asla1" and e["msg"]["fac_gain"] == 0
+    (e,) = [x for x in world.inbox_queue if "fac_moved" in x["msg"]]
+    assert e["to"] == "Asla1" and e["msg"]["fac_moved"] is False
 
 
 def test_can_invest_once_decided(cfg, world):
@@ -271,10 +273,14 @@ def test_progress_gain_is_reported_after_the_fact(cfg, world):
     by = {g["agent"]: g for g in r.facility_gains}
     assert by["Asla1"]["amount"] == 90.0 and by["Asla1"]["to"] == "Ranoa"
     assert sum(g["gain"] for g in r.facility_gains) == world.countries["Ranoa"].progress
-    # 출자자에게 다음 턴 인박스로 간다
-    gains = [e for e in world.inbox_queue if "fac_gain" in e["msg"]]
+    # 출자자에게 다음 턴 인박스로 간다. **자국민은 액수까지, 외국인은 여부만.**
+    gains = [e for e in world.inbox_queue
+             if "fac_gain" in e["msg"] or "fac_moved" in e["msg"]]
     assert {e["to"] for e in gains} == {"Asla1", "Ranoa2"}
     assert all(e["deliver_turn"] == world.turn + 1 for e in gains)
+    by = {e["to"]: e["msg"] for e in gains}
+    assert "fac_gain" in by["Ranoa2"] and "fac_moved" not in by["Ranoa2"]
+    assert "fac_moved" in by["Asla1"] and "fac_gain" not in by["Asla1"]
 
 
 def test_gain_notice_reaches_a_foreign_contributor(cfg, world):
@@ -283,7 +289,7 @@ def test_gain_notice_reaches_a_foreign_contributor(cfg, world):
     sink = Sink()
     sink.facility = [("Ranoa", 120.0, "Asla1")]
     _settle(world, cfg, sink)
-    (e,) = [x for x in world.inbox_queue if "fac_gain" in x["msg"]]
+    (e,) = [x for x in world.inbox_queue if "fac_moved" in x["msg"]]
     assert e["to"] == "Asla1" and e["msg"]["to"] == "Ranoa"
 
 
@@ -939,3 +945,60 @@ def test_procreate_death_carries_the_testament(cfg, world):
     _procreate_child(world, "Asla1", "요격기에 몰아줘라", cfg, itertools.count(99), r)
     (d,) = [x for x in r.deaths_log if x["by"] == "procreate"]
     assert d["testament"] == "요격기에 몰아줘라" and d["who"] == "Asla1"
+
+
+# ── 타국 생산배수 누출 (8/18) ────────────────────────────────────────────────
+
+def test_foreign_gain_amount_is_hidden(cfg, world):
+    """**액수를 주면 상대국 생산배수가 새어 나온다.**
+
+        E[gain] / amount = facility.eff × success_prob × multiplier(받는 나라)
+
+    상수가 모든 나라에 같으므로 **두 나라를 비교하면 상수가 지워지고 배수 비율만
+    남는다.** 실측 런에서 통지를 쌓아 배수 1.13 을 복원했다 (실제 1.13~1.15).
+
+    자국 배수보다 나쁜 누출이다 — 자국은 수입에서 추론하는 정당한 경로가 있어서
+    관측에서 배수 자체를 뺐지만(prompt_audit), 타국은 4.1 이 *"소통으로만"* 이라고
+    못 박았다. 10원짜리 조회로 읽히면 안 된다.
+    """
+    world.countries["Ranoa"].land = "interceptor"
+    world.countries["Ranoa"].national_capital = 27_000.0     # 배수가 확 벌어진 나라
+    sink = Sink()
+    sink.facility = [("Ranoa", 200.0, "Asla1"), ("Ranoa", 200.0, "Ranoa2")]
+    _settle(world, cfg, sink)
+    msgs = {e["to"]: e["msg"] for e in world.inbox_queue
+            if "fac_gain" in e["msg"] or "fac_moved" in e["msg"]}
+    # 외국인: 숫자가 한 글자도 없다
+    assert msgs["Asla1"] == {"msg_id": msgs["Asla1"]["msg_id"], "amount": 200.0,
+                             "to": "Ranoa", "fac_moved": True}
+    # 자국민: 그대로 — 자국 진척 델타로 어차피 보이는 값이다
+    assert isinstance(msgs["Ranoa2"].get("fac_gain"), int)
+
+
+def test_the_notice_still_tells_whether_anything_moved(cfg, world):
+    """여부는 살린다. 두 가지가 그것에 걸려 있다 —
+    ① 없으면 남의 땅에 내는 선택이 영영 깜깜이가 된다.
+    ② 늘지 않았다는 것이 곧 *"그 나라가 아직 국토를 안 정했다"* 다. 통지 자체가
+       없으면 그 부재가 같은 말을 하므로, 통지는 어느 쪽이든 똑같이 가야 한다."""
+    for land, moved in (("interceptor", True), (None, False)):
+        w = loop.init_world(cfg, itertools.count(1)); w.turn = 5
+        w.countries["Ranoa"].land = land
+        sink = Sink(); sink.facility = [("Ranoa", 300.0, "Asla1")]
+        _settle(w, cfg, sink)
+        (e,) = [x for x in w.inbox_queue if "fac_moved" in x["msg"]]
+        assert e["msg"]["fac_moved"] is moved
+
+
+def test_the_prompt_never_prints_a_foreign_gain_number(cfg, world):
+    """문구까지 확인한다 — 규칙을 고쳐도 렌더러가 숫자를 찍으면 그대로 새어 나간다."""
+    from domains.meteor import prompts
+    for lang in ("ja", "zh", "fr"):
+        for moved in (True, False):
+            out = prompts.render_inbox(
+                [{"msg_id": 3, "from": None, "text": None, "label": None,
+                  "original": None, "amount": 200.0, "to": "Ranoa", "fac_moved": moved}], lang)
+            assert "200" in out                      # 내가 낸 액수는 내가 안다
+            assert "Ranoa" in out
+            # 진척 숫자가 될 수 있는 다른 수가 없다
+            nums = [n for n in re.findall(r"\d+", out) if n not in ("3", "200")]
+            assert not nums, (lang, moved, out)

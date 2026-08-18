@@ -112,6 +112,8 @@ T = {
         in_from="  [{id}] {frm} より{label}", lbl_direct=" ［通訳なしで通じた］",
         died="  {who} が {age} 歳で亡くなり、{born} が生まれました。",
         fac_gain="  前ターンのあなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
+        fac_moved="  前ターンのあなたの facility 出資 {amt:.0f} は {to} の進捗を進めました（どれだけかは分かりません）。",
+        fac_still="  前ターンのあなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
         roster="人々:", roster_you="（あなた）",
         mem_hdr="あなたの覚え書き:", mem_none="  （まだ何もない）",
         warn="［記憶の圧迫］記憶が限界に近づいています。古いものから消えていきます。",
@@ -158,6 +160,8 @@ T = {
         in_from="  [{id}] 来自 {frm}{label}", lbl_direct="［无需翻译就能听懂］",
         died="  {who} 在 {age} 岁去世，{born} 出生了。",
         fac_gain="  你上回合投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
+        fac_moved="  你上回合投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进（前进多少你无法得知）。",
+        fac_still="  你上回合投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
         roster="人们:", roster_you="（你）",
         mem_hdr="你的笔记:", mem_none="  （还没有）",
         warn="［记忆压力］记忆接近上限，旧的内容会先消失。",
@@ -208,6 +212,8 @@ T = {
         in_from="  [{id}] de {frm}{label}", lbl_direct=" [compris sans traduction]",
         died="  {who} est mort à {age} ans ; {born} est né.",
         fac_gain="  Votre versement de {amt:.0f} à facility au tour précédent a fait progresser {to} de {gain:.0f}.",
+        fac_moved="  Votre versement de {amt:.0f} au tour précédent a fait progresser {to} (de combien, vous ne pouvez le savoir).",
+        fac_still="  Votre versement de {amt:.0f} au tour précédent n'a fait progresser {to} en rien.",
         roster="Les gens :", roster_you="(vous)",
         mem_hdr="Vos notes :", mem_none="  (rien encore)",
         warn="[Pression mémoire] Votre mémoire approche de sa limite ; le plus ancien disparaît d'abord.",
@@ -335,9 +341,14 @@ def render_inbox(inbox: list[dict], lang: str) -> str:
             out.append(t["died"].format(who=m["died"], born=m.get("born") or "?",
                                         age=m.get("age") if m.get("age") is not None else "?"))
             continue
-        if m.get("fac_gain") is not None:      # 내 지난 턴 facility 출자의 결과
+        if m.get("fac_gain") is not None:      # 자국 출자 — 액수까지
             out.append(t["fac_gain"].format(amt=m["amount"], to=m["to"],
                                             gain=m["fac_gain"]))
+            continue
+        if m.get("fac_moved") is not None:     # **타국 출자 — 늘었는지 여부만**
+            # 액수를 주면 E[gain]/amount 로 상대국 생산배수가 새어 나온다 (loop f-2).
+            out.append(t["fac_moved" if m["fac_moved"] else "fac_still"]
+                       .format(amt=m["amount"], to=m["to"]))
             continue
         # 통역 없이 닿은 것은 **수신자 언어로** 표시한다 — 「번역을 안 거쳤는데 뜻이
         # 통했다」 는 감각이 그 사람의 말로 와야 산다. AI 라벨은 영어 그대로 둔다.
