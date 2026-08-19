@@ -207,7 +207,7 @@ llm:
   # 안 켜면 지표 4(2단계 판정)의 ①이 읽을 근거가 통째로 사라진다.
   tool_reasoning: true
   provider:
-    order: [deepinfra, venice]
+    order: [akashml, parasail, atlas-cloud]
     allow_fallbacks: true
 
 run:
