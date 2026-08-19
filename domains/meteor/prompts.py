@@ -383,12 +383,34 @@ def _proposal_line(world, c, t) -> str:
 
 def render_observation(world, agent, cfg, knob_ai: float,
                        inbox: list[dict] | None = None,
-                       income_this_turn: float | None = None) -> str:
-    """The observation block of spec 4.1, in the agent's own language."""
+                       income_this_turn: float | None = None,
+                       delta: bool = False) -> str:
+    """The observation block of spec 4.1, in the agent's own language.
+
+    delta=True (순차 라운드로빈의 **같은 턴 재방문**): 안 변하는 골격(비용표·투자옵션
+    설명·roster·규칙)은 그 턴 첫 차례의 풀 관측에 이미 있으므로 반복하지 않는다. 매 차례
+    풀 관측을 다시 쌓으면 context_limit 에 부딪혀 대화 이력이 방출되고, 그것이 투표 후
+    소통을 죽였다 (issue #22). **정보 범위는 풀과 동일** — 타국 내부는 여전히 안 준다.
+    """
     lang = agent.native_lang
     t = T[lang]
     c = world.countries[agent.country]
     land = t["undecided"] if c.land is None else c.land   # 토큰은 영어 그대로
+    if delta:
+        # 동적 상태(예산·자국 진척·제안·내 시설) + 새 도착 메시지만. 골격은 반복 안 함.
+        parts = [
+            t["year"].format(y=FIRST_YEAR + world.turn - 1),
+            t["you"].format(id=agent.id, nation=agent.country),
+            t["budget"].format(b=agent.budget),
+            t["land"].format(v=land),
+            t["prog"].format(v=c.progress),
+            _proposal_line(world, c, t),
+            *[t["c_fac_mine"].format(nation=k, v=v)
+              for k, v in sorted(agent.facility_invested.items()) if v > 0],
+            "",
+            render_inbox(inbox or [], lang),
+        ]
+        return "\n".join(parts)
     mult = c.multiplier(cfg)
     cap = cfg.length.message_max_chars[lang]
     langs = ", ".join(_lang_phrase(world, agent, l) for l in sorted(agent.known_langs))

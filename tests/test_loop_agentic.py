@@ -168,3 +168,17 @@ def test_roundrobin_same_turn_delivery():
     got = _dequeue_inbox_pop(world, "Asla2")
     assert "HELLO_SAME_TURN" in str(got)                    # 같은 턴에 도착
     assert _dequeue_inbox_pop(world, "Asla2") == []         # 두 번 안 옴 (제거됨)
+
+
+def test_delta_observation_drops_static_scaffold():
+    """델타 관측(#22): 안 변하는 골격(비용표)은 빼서 짧고, 상태·inbox 는 유지."""
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 3
+    agent = world.agents["Asla1"]
+    full = prompts.render_observation(world, agent, cfg, 48, [])
+    delta = prompts.render_observation(world, agent, cfg, 48, [], delta=True)
+    costs = prompts.render_costs(world, agent, cfg, 48)
+    assert costs in full                # 풀엔 비용표(골격)가 있고
+    assert costs not in delta           # 델타엔 없다 (반복 제거)
+    assert 0 < len(delta) < len(full) * 0.6   # 골격 빠져 절반 이하로 압축

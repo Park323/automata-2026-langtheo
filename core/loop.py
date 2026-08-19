@@ -868,6 +868,7 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
     accs = {aid: agent_loop._StepAcc() for aid in snapshot_ids}
     t_turns = {aid: time.time() for aid in snapshot_ids}
     ended: dict = {aid: None for aid in snapshot_ids}
+    first_seen: set = set()   # 이 턴 첫 차례엔 풀 관측, 이후엔 델타 (issue #22)
 
     active = True
     while active:
@@ -885,7 +886,8 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
                 continue
             active = True
             inbox = _dequeue_inbox_pop(world, aid)      # 이 차례 도착분 (같은 턴 포함)
-            obs = render_obs(world, agent, cfg, knob_ai, inbox)
+            obs = render_obs(world, agent, cfg, knob_ai, inbox, delta=(aid in first_seen))
+            first_seen.add(aid)
             sp = system_prompt(agent) if callable(system_prompt) else system_prompt
             sink = Sink()
             try:
