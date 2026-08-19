@@ -108,23 +108,24 @@ def _build(reasoning_arg: bool) -> list[dict]:
         {}, []),
 
     fn("propose_vote",
-        "Open a proposal to set your nation's facility. Your nation only. "
-        "Nothing changes yet: three turns pass so people can talk it over, and on the "
-        "fourth turn the ballot is held. **Only people of your own nation may vote on "
-        "it** — a foreigner cannot, no matter what they say. It passes if approvals "
-        "outnumber rejections. A nation can hold only one proposal at a time. "
+        "Call a ballot on what your nation should build. Your nation only. You do not "
+        "say what to build — the ballot itself decides that. Nothing changes yet: three "
+        "turns pass so people can talk it over, and on the fourth turn everyone casts a "
+        "choice. **Only people of your own nation may vote** — a foreigner cannot, no "
+        "matter what they say. If a ballot is already called, calling again does nothing. "
         "It costs no money — poverty must never decide what a nation builds — but it "
         "takes more than half of your action points for the turn.",
-        {"target": {"type": "string", "enum": ["bunker", "interceptor"]}},
-        ["target"]),
+        {}, []),
 
     fn("vote",
-        "Cast your ballot on **your own nation's** open proposal — you cannot vote on "
-        "another nation's. Only on the turn the ballot is held; the observation tells "
-        "you which turn that is. It costs no money and almost no action points, so "
-        "voting never takes away your chance to speak on the day it matters most.",
-        {"approve": {"type": "boolean", "description": "true to approve, false to reject"}},
-        ["approve"]),
+        "Choose what **your own nation** builds — `interceptor`, `bunker`, or `abstain`. "
+        "You cannot vote in another nation. Only on the turn the ballot is held; the "
+        "observation tells you which turn that is. The choice with the most votes wins; "
+        "`abstain` counts for neither. If the two tie, or nobody votes, your nation keeps "
+        "what it has and its progress survives. It costs no money and almost no action "
+        "points, so voting never takes away your chance to speak on the day it matters most.",
+        {"choice": {"type": "string", "enum": ["interceptor", "bunker", "abstain"]}},
+        ["choice"]),
 
     fn("procreate",
         "Leave a child and die. Calling it ends your turn at once. "

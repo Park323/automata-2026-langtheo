@@ -77,10 +77,10 @@ T = {
         land="自国の国土: {v}", undecided="未定",
         prog="自国の進捗: {v:.0f}", thresh="  interceptor の完成に要る進捗: {v:.0f}",
         year="今年: {y} 年",
-        prop="  提案中: 国土を {t} にする（{by} が提案）。採決は {vt} 年",
-        prop_today="  ★ 今年が採決の年です。vote で賛否を出せます",
+        prop="  採決が {vt} 年に開かれます（{by} が召集）。何を建てるかをそこで決めます",
+        prop_today="  ★ 今年が採決の年です。vote で interceptor / bunker / abstain を選べます",
         prop_none="  提案なし。国土は投票でしか決まりません",
-        c_ballot="  vote",  c_ballot_note="提案の採決に賛否を出す",
+        c_ballot="  vote",  c_ballot_note="採決で何を建てるかを選ぶ",
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
         income="今ターンの収入: +{v:.0f}",
         multi="予算が許す限り複数の行動ができます。メッセージは1ターンに3件まで。",
@@ -126,10 +126,10 @@ T = {
         land="本国国土: {v}", undecided="未定",
         prog="本国进度: {v:.0f}", thresh="  建成 interceptor 所需的进度: {v:.0f}",
         year="今年: {y} 年",
-        prop="  提案中: 将国土定为 {t}（由 {by} 提出）。表决在 {vt} 年",
-        prop_today="  ★ 今年就是表决之年。可以用 vote 表态",
+        prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
+        prop_today="  ★ 今年就是表决之年。可以用 vote 选 interceptor / bunker / abstain",
         prop_none="  没有提案。国土只能由投票决定",
-        c_ballot="  vote",  c_ballot_note="对提案表示赞成或反对",
+        c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
         income="本回合收入: +{v:.0f}",
         multi="只要预算允许，你可以采取多项行动。每回合最多 3 条消息。",
@@ -176,10 +176,10 @@ T = {
         prog="Progression de votre nation : {v:.0f}",
         thresh="  Progression requise pour achever un interceptor : {v:.0f}",
         year="Année : {y}",
-        prop="  Proposition en cours : faire du territoire un {t} (proposé par {by}). Scrutin en {vt}",
-        prop_today="  ★ Le scrutin a lieu cette année. Vous pouvez vous prononcer avec vote",
+        prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
+        prop_today="  ★ Le scrutin a lieu cette année. Choisissez avec vote : interceptor / bunker / abstain",
         prop_none="  Aucune proposition. Le territoire ne se décide que par un vote",
-        c_ballot="  vote",  c_ballot_note="se prononcer sur la proposition",
+        c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
         income="Revenu ce tour : +{v:.0f}",
         multi="Vous pouvez agir plusieurs fois si le budget le permet. Jusqu'à 3 messages par tour.",
@@ -367,8 +367,8 @@ def _proposal_line(world, c, t) -> str:
     p = c.proposal
     if p is None:
         return t["prop_none"]
-    line = t["prop"].format(t=p["target"], by=p["by"],
-                            vt=FIRST_YEAR + p["vote_turn"] - 1)
+    # 소집에는 내용이 없다 — 무엇을 지을지는 採決에서 정해진다
+    line = t["prop"].format(by=p["by"], vt=FIRST_YEAR + p["vote_turn"] - 1)
     if world.turn == p["vote_turn"]:
         line += "\n" + t["prop_today"]
     return line

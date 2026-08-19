@@ -37,7 +37,7 @@ class Sink:
     national: list = field(default_factory=list)      # (country, amount, agent_id)
     messages: list = field(default_factory=list)      # 발신 dict (5장, 'from' 에 agent_id)
     votes: list = field(default_factory=list)         # 제안 (agent_id, country, target)
-    ballots: list = field(default_factory=list)       # 찬반 (agent_id, country, approve)
+    ballots: list = field(default_factory=list)       # 표 (agent_id, country, choice)
     learns: list = field(default_factory=list)        # (agent_id, lang) — 다음 턴부터 유효
     procreations: list = field(default_factory=list)  # (agent_id, testament)
     observations: list = field(default_factory=list)  # 위험 관측 (진실·관측치·오차)
@@ -413,16 +413,17 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "propose_vote":
-        target = args.get("target")
-        if target not in ("bunker", "interceptor"):
-            return {"ok": False, "error": "target must be bunker or interceptor"}, None
+        # **무엇을 지을지는 여기서 정하지 않는다 — 採決을 소집하기만 한다.**
+        #
+        # 전에는 `target` 을 들고 「이것으로 하자」 를 열었고, `vote` 는 찬/반이었다.
+        # 그래서 같은 턴에 둘이 제안하면 둘 다 도구를 통과하는데 하나만 열렸고,
+        # 밀린 쪽은 AP 0.6 을 내고 **아무 일도 안 일어난 것을 알 방법이 없었다.**
+        #
+        # 소집에 내용이 없으면 겹칠 것이 없다. 둘이 소집해도 같은 採決이다.
         c = world.countries[agent.country]
         if c.proposal is not None:
             return {"ok": False, "error":
-                    f"your nation already has an open proposal ({c.proposal['target']}); "
-                    f"the ballot is on turn {c.proposal['vote_turn']}"}, None
-        if c.land == target:
-            return {"ok": False, "error": f"your nation is already building {target}"}, None
+                    f"a ballot is already called for turn {c.proposal['vote_turn']}"}, None
         if agent.ap < cfg.ap.propose_vote:
             return {"ok": False, "error": f"not enough AP; propose_vote needs {cfg.ap.propose_vote}"}, None
         # **돈은 안 받는다.** 가난이 제안을 막으면 국토가 돈으로 정해진다. 무게는 AP 로만
@@ -431,11 +432,11 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": f"not enough budget; need {cfg.costs.propose_vote}"}, None
         agent.budget -= cfg.costs.propose_vote
         agent.ap -= cfg.ap.propose_vote
-        sink.votes.append((agent.id, agent.country, target))
-        # 採決이 언제인지는 **돌려줄 수 없다.** 제안은 정산 때 열리고, 같은 턴에 둘이
-        # 제안하면 하나만 열린다 — 여기서 날짜를 답하면 못 열린 쪽에 거짓을 준다.
-        # 관측이 다음 턴에 실제 날짜를 적어 준다.
-        return {"ok": True, "ap_left": round(agent.ap, 1)}, None
+        sink.votes.append((agent.id, agent.country))
+        # **이제 날짜를 돌려줄 수 있다.** 소집에 내용이 없으니 둘이 소집해도 같은
+        # 採決이고, 밀려서 안 열리는 일이 없다.
+        return {"ok": True, "ballot_turn": world.turn + loop_vote_delay(),
+                "ap_left": round(agent.ap, 1)}, None
 
     if name == "vote":
         c = world.countries[agent.country]
@@ -444,14 +445,16 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         if world.turn != c.proposal["vote_turn"]:
             return {"ok": False, "error":
                     f"the ballot is on turn {c.proposal['vote_turn']}, not now"}, None
-        if "approve" not in args:
-            return {"ok": False, "error": "vote needs approve (true or false)"}, None
+        choice = args.get("choice")
+        if choice not in ("interceptor", "bunker", "abstain"):
+            return {"ok": False, "error":
+                    "choice must be interceptor, bunker or abstain"}, None
         # **표는 돈도 AP 도 거의 안 받는다.** 돈을 물리면 참여가 재산이 되고, AP 를 크게
         # 물리면 採決 당일 — 설득이 가장 필요한 날 — 말할 기회가 줄어든다.
         if agent.ap < cfg.ap.vote:
             return {"ok": False, "error": f"not enough AP; vote needs {cfg.ap.vote}"}, None
         agent.ap -= cfg.ap.vote
-        sink.ballots.append((agent.id, agent.country, bool(args["approve"])))
+        sink.ballots.append((agent.id, agent.country, choice))
         return {"ok": True, "ap_left": round(agent.ap, 1)}, None
 
     if name == "procreate":
@@ -532,6 +535,12 @@ def evict(convo: list[dict], limit_tokens: int, tool_tokens: int = 0) -> tuple[l
 def under_pressure(agent, cfg) -> bool:
     """직전 호출의 실측 토큰이 경고 임계를 넘었나."""
     return agent.last_prompt_tokens >= cfg.llm.context_limit * cfg.llm.warn_ratio
+
+
+def loop_vote_delay() -> int:
+    """`core.loop.VOTE_DELAY`. 여기서 import 하면 순환이 되므로 호출 시점에 읽는다."""
+    from core.loop import VOTE_DELAY
+    return VOTE_DELAY
 
 
 def _clamped(asked: float, charged: float) -> dict:

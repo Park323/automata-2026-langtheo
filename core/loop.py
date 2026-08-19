@@ -504,46 +504,57 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     #   DEFAULT_FACILITY_TYPE 이 되는 게 전부였고, 43턴 실측에서 세 나라가 모두
     #   interceptor 였던 것은 **고른 게 아니라 기본값**이었다.
     #
-    #   이제 국토는 **투표로만** 정해진다. 제안 → 3턴 유예(상의할 시간) → 네 번째 턴에 찬반.
-    #   유예가 있는 이유 — 그 사이에 설득하지 않으면 한 사람의 제안이 그대로 통과한다.
-    #   막는 것은 규칙이 아니라 사람들이어야 한다.
-    for by, country, target in sorted(sink.votes):
+    #   이제 국토는 **투표로만** 정해진다. 소집 → 3턴 유예(상의할 시간) → 네 번째 턴에
+    #   무엇을 지을지 고른다. 유예가 있는 이유 — 그 사이에 설득하지 않으면 한 사람의 표가
+    #   그대로 나라를 정한다. 막는 것은 규칙이 아니라 사람들이어야 한다.
+    #
+    #   **소집에는 내용이 없다.** 전에는 `target` 을 들고 「이것으로 하자」 를 열었고 같은
+    #   턴에 둘이 제안하면 하나만 열렸다 — 밀린 쪽은 AP 0.6 을 내고 아무 일도 안 일어난
+    #   것을 알 방법이 없었다. 지금은 둘이 소집해도 같은 採決이라 겹칠 것이 없다.
+    for by, country in sorted(sink.votes):
         c = world.countries.get(country)
-        rec = {"target": target, "by": by, "opened_turn": world.turn,
-               "vote_turn": world.turn + VOTE_DELAY}
-        # 같은 턴에 둘이 제안하면 둘 다 도구를 통과한다 (행동 시점엔 둘 다 proposal=None
-        # 을 본다). 실제로 열리는 것은 하나뿐이므로 **어느 쪽이 열렸는지 기록**한다 —
-        # 안 그러면 로그만 보고는 유령 제안을 진짜로 읽게 된다.
-        opened = c is not None and c.proposal is None and c.land != target
+        opened = c is not None and c.proposal is None
+        rec = {"by": by, "opened_turn": world.turn, "vote_turn": world.turn + VOTE_DELAY}
         result.votes_log.append({"turn": world.turn, "kind": "propose",
-                                 "by": by, "country": country, "target": target,
+                                 "by": by, "country": country,
                                  "vote_turn": rec["vote_turn"], "opened": opened})
         if opened:
             c.proposal = rec
 
-    # 개표 — 찬성이 반대보다 많으면 통과. **1찬 0반도 통과한다.**
-    #   반대하려면 그 턴에 표를 내야 한다. 침묵은 동의로 센다.
+    # 개표 — **최다득표.** 표는 interceptor / bunker / abstain 중 하나다.
+    #
+    #   `abstain` 은 어느 쪽으로도 안 센다. 표를 아예 안 낸 것과 개표상 같지만 **로그에는
+    #   다르게 남는다** — 「생각해봤지만 정하지 않았다」 가 근거와 함께 남아 지표가 읽는다.
+    #
+    #   동수거나 아무도 안 내면 **현 상태 그대로다.** 진척도 살아 있다. 합의 실패의 대가를
+    #   진척 파괴로 물리면, 소집 한 번이 남의 나라 진척을 지우는 무기가 된다.
+    #
+    #   결과가 지금 국토와 같아도 그대로다 — 착수를 다시 하는 것이 아니라 유지다.
     ballots_by: dict[str, list] = defaultdict(list)
-    for by, country, approve in sorted(sink.ballots):
-        ballots_by[country].append((by, approve))
+    for by, country, choice in sorted(sink.ballots):
+        ballots_by[country].append((by, choice))
         result.votes_log.append({"turn": world.turn, "kind": "ballot",
-                                 "by": by, "country": country, "approve": approve})
+                                 "by": by, "country": country, "choice": choice})
     for cid in sorted(world.countries):
         c = world.countries[cid]
         if c.proposal is None or c.proposal["vote_turn"] != world.turn:
             continue
         cast = ballots_by.get(cid, [])
-        yes = sum(1 for _, a in cast if a)
-        no = len(cast) - yes
-        passed = yes > no
-        rec = {"turn": world.turn, "country": cid, "target": c.proposal["target"],
-               "by": c.proposal["by"], "yes": yes, "no": no, "passed": passed,
-               "from": c.land, "progress_lost": 0.0}
-        if passed:
+        counts = {k: sum(1 for _, ch in cast if ch == k)
+                  for k in ("interceptor", "bunker", "abstain")}
+        top = max(counts["interceptor"], counts["bunker"])
+        tie = counts["interceptor"] == counts["bunker"]
+        chosen = None if (top == 0 or tie) else (
+            "interceptor" if counts["interceptor"] > counts["bunker"] else "bunker")
+        rec = {"turn": world.turn, "country": cid, "called_by": c.proposal["by"],
+               "counts": counts, "chosen": chosen, "from": c.land,
+               "changed": False, "progress_lost": 0.0}
+        if chosen is not None and chosen != c.land:
             # 다른 시설을 착수하면 기존 시설은 파괴된다 — 진척 0 (SYSTEM 규칙 5)
+            rec["changed"] = True
             rec["progress_lost"] = round(c.progress, 3)
-            c.land, c.progress = c.proposal["target"], 0.0
-        c.proposal = None                       # 통과하든 부결되든 제안은 닫힌다
+            c.land, c.progress = chosen, 0.0
+        c.proposal = None                       # 바뀌든 안 바뀌든 採決은 닫힌다
         result.land_changes.append(rec)
 
     # f-2. 출자자에게 자기 몫의 진척 기여를 다음 턴에 알린다 (행위 후 공개)

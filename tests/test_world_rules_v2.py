@@ -41,110 +41,177 @@ def _settle(world, cfg, sink, result=None):
 
 # ── 국토 배타성 ─────────────────────────────────────────────────────────────────
 
-def _propose(world, cfg, who, target):
+def _call(world, cfg, who):
+    """採決을 소집한다. **무엇을 지을지는 여기서 정하지 않는다.**"""
     sink = Sink()
-    sink.votes = [(who, world.agents[who].country, target)]
+    sink.votes = [(who, world.agents[who].country)]
     return _settle(world, cfg, sink)
 
 
 def _ballot(world, cfg, *votes):
+    """(who, choice) 들. choice 는 interceptor / bunker / abstain."""
     sink = Sink()
-    sink.ballots = [(w, world.agents[w].country, a) for w, a in votes]
+    sink.ballots = [(w, world.agents[w].country, ch) for w, ch in votes]
     return _settle(world, cfg, sink)
 
 
-def test_proposal_does_not_change_anything_for_three_turns(cfg, world):
-    """제안한 순간에는 아무 일도 일어나지 않는다. **유예가 상의할 시간이다.**"""
+def test_calling_a_ballot_changes_nothing_for_three_turns(cfg, world):
+    """소집한 순간에는 아무 일도 일어나지 않는다. **유예가 상의할 시간이다.**"""
     c = world.countries["Ranoa"]
     c.land, c.progress = "interceptor", 295.0
     world.turn = 10
-    _propose(world, cfg, "Ranoa1", "bunker")
+    _call(world, cfg, "Ranoa1")
     assert (c.land, c.progress) == ("interceptor", 295.0)
-    assert c.proposal["target"] == "bunker" and c.proposal["by"] == "Ranoa1"
-    assert c.proposal["vote_turn"] == 10 + loop.VOTE_DELAY
+    assert c.proposal["by"] == "Ranoa1" and c.proposal["vote_turn"] == 10 + loop.VOTE_DELAY
+    assert "target" not in c.proposal          # 소집에는 내용이 없다
+
+
+def test_calling_a_ballot_carries_no_choice(cfg, world):
+    """**전에는 `target` 을 들고 「이것으로 하자」 를 열었다.** 같은 턴에 둘이 제안하면
+    둘 다 도구를 통과하는데 하나만 열렸고, 밀린 쪽은 AP 0.6 을 내고 아무 일도 안 일어난
+    것을 알 방법이 없었다. 소집에 내용이 없으면 겹칠 것이 없다."""
+    from core.agent_loop import execute_tool
+    world.turn = 10
+    a = world.agents["Ranoa1"]; a.ap, a.budget = 1.0, 100.0
+    res, _ = execute_tool("propose_vote", {"reasoning": "r"}, world, a, cfg, Sink(), 48.0)
+    assert res["ok"] and res["ballot_turn"] == 10 + loop.VOTE_DELAY
+
+
+def test_two_people_calling_the_same_ballot_is_harmless(cfg, world):
+    """둘이 소집해도 **같은 採決**이다. 유령 제안이 생기지 않는다."""
+    world.turn = 10
+    sink = Sink()
+    sink.votes = [("Ranoa1", "Ranoa"), ("Ranoa3", "Ranoa")]
+    r = _settle(world, cfg, sink)
+    calls = [v for v in r.votes_log if v["kind"] == "propose"]
+    assert [c["opened"] for c in calls] == [True, False]     # id 순으로 앞선 것만 연다
+    assert all(c["vote_turn"] == 10 + loop.VOTE_DELAY for c in calls)  # 같은 날짜다
+    assert world.countries["Ranoa"].proposal["by"] == "Ranoa1"
 
 
 def test_ballot_only_counts_on_the_ballot_turn(cfg, world):
-    """유예 중에 던진 표는 무효다 — 그때 통과되면 상의할 시간이 사라진다."""
+    """유예 중에 던진 표는 무효다 — 그때 정해지면 상의할 시간이 사라진다."""
     from core.agent_loop import execute_tool
-    c = world.countries["Ranoa"]
     world.turn = 10
-    _propose(world, cfg, "Ranoa1", "bunker")
+    _call(world, cfg, "Ranoa1")
     a = world.agents["Ranoa2"]; a.ap = 1.0
     world.turn = 12                                    # 아직 유예 중
-    res, _ = execute_tool("vote", {"approve": True, "reasoning": "r"},
+    res, _ = execute_tool("vote", {"choice": "bunker", "reasoning": "r"},
                           world, a, cfg, Sink(), 48.0)
     assert not res["ok"] and "14" in res["error"]
 
 
-def test_silence_counts_as_consent(cfg, world):
-    """찬성이 반대보다 많으면 통과 — **1찬 0반도 통과한다.**
+def test_one_vote_decides_when_nobody_else_shows_up(cfg, world):
+    """**한 표만 나오면 그 한 표가 나라를 정한다.**
 
-    반대하려면 그 턴에 표를 내야 한다. 한 사람이 나라를 망칠 수 있다는 것이 의도이고,
-    막는 것은 규칙이 아니라 사람들이다. 유예 3턴은 그러라고 준 시간이다.
+    한 사람이 나라를 망칠 수 있다는 것이 의도이고, 막는 것은 규칙이 아니라 사람들이다.
+    유예 3턴은 그러라고 준 시간이다.
     """
     c = world.countries["Ranoa"]
     c.land, c.progress = "interceptor", 295.0
     world.turn = 10
-    _propose(world, cfg, "Ranoa1", "bunker")
+    _call(world, cfg, "Ranoa1")
     world.turn = 10 + loop.VOTE_DELAY
-    r = _ballot(world, cfg, ("Ranoa1", True))
+    r = _ballot(world, cfg, ("Ranoa1", "bunker"))
     assert (c.land, c.progress) == ("bunker", 0.0)
     (ch,) = r.land_changes
-    assert (ch["yes"], ch["no"], ch["passed"]) == (1, 0, True)
-    assert ch["progress_lost"] == 295.0
-    assert c.proposal is None
+    assert ch["chosen"] == "bunker" and ch["changed"] is True
+    assert ch["counts"] == {"interceptor": 0, "bunker": 1, "abstain": 0}
+    assert ch["progress_lost"] == 295.0 and c.proposal is None
 
 
-def test_two_against_one_blocks_it(cfg, world):
+def test_the_majority_choice_wins(cfg, world):
     """설득에 성공하면 막힌다. 진척은 그대로 남는다."""
     c = world.countries["Ranoa"]
     c.land, c.progress = "interceptor", 295.0
     world.turn = 10
-    _propose(world, cfg, "Ranoa1", "bunker")
+    _call(world, cfg, "Ranoa1")
     world.turn = 10 + loop.VOTE_DELAY
-    r = _ballot(world, cfg, ("Ranoa1", True), ("Ranoa2", False), ("Ranoa3", False))
+    r = _ballot(world, cfg, ("Ranoa1", "bunker"),
+                ("Ranoa2", "interceptor"), ("Ranoa3", "interceptor"))
     assert (c.land, c.progress) == ("interceptor", 295.0)
-    assert r.land_changes[0]["passed"] is False
-    assert c.proposal is None                     # 부결돼도 제안은 닫힌다
+    (ch,) = r.land_changes
+    assert ch["chosen"] == "interceptor" and ch["changed"] is False     # 이미 그것이다
+    assert ch["progress_lost"] == 0.0
 
 
-def test_nobody_votes_nothing_passes(cfg, world):
-    """아무도 표를 안 내면 통과도 부결도 없다 — 0 > 0 이 아니다."""
+def test_a_tie_keeps_what_the_nation_has(cfg, world):
+    """**동수면 현 상태 그대로고 진척도 살아 있다.**
+
+    합의 실패의 대가를 진척 파괴로 물리면, 소집 한 번이 남의 나라 진척을 지우는
+    무기가 된다.
+    """
     c = world.countries["Ranoa"]
     c.land, c.progress = "interceptor", 295.0
     world.turn = 10
-    _propose(world, cfg, "Ranoa1", "bunker")
+    _call(world, cfg, "Ranoa1")
+    world.turn = 10 + loop.VOTE_DELAY
+    r = _ballot(world, cfg, ("Ranoa1", "bunker"), ("Ranoa2", "interceptor"))
+    assert (c.land, c.progress) == ("interceptor", 295.0)
+    (ch,) = r.land_changes
+    assert ch["chosen"] is None and ch["changed"] is False
+    assert c.proposal is None                     # 정해지지 않아도 採決은 닫힌다
+
+
+def test_nobody_voting_keeps_what_the_nation_has(cfg, world):
+    """아무도 표를 안 내면 정해지지 않는다 — 0 > 0 이 아니다."""
+    c = world.countries["Ranoa"]
+    c.land, c.progress = "interceptor", 295.0
+    world.turn = 10
+    _call(world, cfg, "Ranoa1")
     world.turn = 10 + loop.VOTE_DELAY
     r = _ballot(world, cfg)
     assert (c.land, c.progress) == ("interceptor", 295.0)
-    assert r.land_changes[0]["passed"] is False
+    assert r.land_changes[0]["chosen"] is None
 
 
-def test_same_turn_duplicate_proposals_are_marked(cfg, world):
-    """같은 턴에 둘이 제안하면 **둘 다 도구를 통과한다** — 행동 시점엔 둘 다
-    proposal=None 을 본다. 실제로 열리는 것은 하나뿐이므로 어느 쪽이 열렸는지
-    기록한다. 안 하면 로그만 보고 유령 제안을 진짜로 읽게 된다.
-    """
+def test_abstain_counts_for_neither_but_is_recorded(cfg, world):
+    """**기권은 개표상 표를 안 낸 것과 같다.** 다만 「생각해봤지만 정하지 않았다」 가
+    근거와 함께 로그에 남아 지표가 읽는다."""
+    c = world.countries["Ranoa"]
+    c.land = None
     world.turn = 10
-    sink = Sink()
-    sink.votes = [("Ranoa1", "Ranoa", "bunker"), ("Ranoa3", "Ranoa", "interceptor")]
-    r = _settle(world, cfg, sink)
-    props = [v for v in r.votes_log if v["kind"] == "propose"]
-    assert len(props) == 2
-    assert [p["opened"] for p in props] == [True, False]        # id 순으로 앞선 것만
-    assert world.countries["Ranoa"].proposal["target"] == "bunker"
+    _call(world, cfg, "Ranoa1")
+    world.turn = 10 + loop.VOTE_DELAY
+    r = _ballot(world, cfg, ("Ranoa1", "abstain"), ("Ranoa2", "abstain"),
+                ("Ranoa3", "bunker"))
+    (ch,) = r.land_changes
+    assert ch["counts"] == {"interceptor": 0, "bunker": 1, "abstain": 2}
+    assert ch["chosen"] == "bunker"                # 기권은 어느 쪽으로도 안 센다
+    votes = [v for v in r.votes_log if v["kind"] == "ballot"]
+    assert sorted(v["choice"] for v in votes) == ["abstain", "abstain", "bunker"]
 
 
-def test_only_one_proposal_at_a_time(cfg, world):
-    """제안이 열려 있으면 새 제안을 못 연다 — 안 그러면 유예가 무의미해진다."""
+def test_only_one_ballot_at_a_time(cfg, world):
+    """採決이 열려 있으면 새로 소집할 수 없다 — 안 그러면 유예가 무의미해진다."""
     from core.agent_loop import execute_tool
     world.turn = 10
-    _propose(world, cfg, "Ranoa1", "bunker")
+    _call(world, cfg, "Ranoa1")
     a = world.agents["Ranoa2"]; a.ap, a.budget = 1.0, 100.0
-    res, _ = execute_tool("propose_vote", {"target": "interceptor", "reasoning": "r"},
+    res, _ = execute_tool("propose_vote", {"reasoning": "r"}, world, a, cfg, Sink(), 48.0)
+    assert not res["ok"] and "already called" in res["error"]
+
+
+def test_only_nationals_may_vote(cfg, world):
+    """투표는 그 나라 주민에 한한다. **도구 설명에 명시돼 있어야 한다.**
+
+    8턴 실측에서 Asla2 가 외국인 Ranoa2 에게 자국 제안의 투표를 부탁했다 —
+    「Asla2はinterceptorの建設に賛成し、Ranoa2の投票を依頼します」. 자연스러운
+    오해지만 의도 밖이라 규칙을 말로 적었다.
+    """
+    from core import tools
+    d = {t["function"]["name"]: t["function"]["description"] for t in tools.TOOLS}
+    assert "own nation" in d["propose_vote"] and "foreigner cannot" in d["propose_vote"]
+    assert "your own nation" in d["vote"] and "another nation" in d["vote"]
+
+    # 말뿐이 아니라 코드도 막는다 — vote 는 언제나 부른 사람 자신의 나라에만 들어간다
+    from core.agent_loop import execute_tool
+    world.turn = 10
+    _call(world, cfg, "Ranoa1")                        # Ranoa 에 採決이 열림
+    a = world.agents["Asla1"]; a.ap = 1.0
+    res, _ = execute_tool("vote", {"choice": "bunker", "reasoning": "r"},
                           world, a, cfg, Sink(), 48.0)
-    assert not res["ok"] and "already has an open proposal" in res["error"]
+    assert not res["ok"] and "no open proposal" in res["error"]
 
 
 def test_investing_never_reveals_whether_a_nation_decided(cfg, world):
@@ -234,31 +301,6 @@ def test_can_invest_once_decided(cfg, world):
                                      "to": "Ranoa", "reasoning": "r"},
                           world, a, cfg, sink, 48.0)
     assert res["ok"] and sink.facility == [("Ranoa", 100.0, "Asla1")]
-
-
-def test_only_nationals_may_vote(cfg, world):
-    """투표는 그 나라 주민에 한한다. **도구 설명에 명시돼 있어야 한다.**
-
-    8턴 실측에서 Asla2 가 외국인 Ranoa2 에게 자국 제안의 투표를 부탁했다 —
-    「Asla2はinterceptorの建設に賛成し、Ranoa2の投票を依頼します」. 자연스러운
-    오해지만 의도 밖이라 규칙을 말로 적었다.
-    """
-    from core import tools
-    d = {t["function"]["name"]: t["function"]["description"] for t in tools.TOOLS}
-    assert "own nation" in d["propose_vote"] and "foreigner cannot" in d["propose_vote"]
-    assert "your own nation" in d["vote"] and "another nation" in d["vote"]
-
-    # 말뿐이 아니라 코드도 막는다 — vote 는 언제나 제안자 자신의 나라에만 들어간다
-    from core.agent_loop import execute_tool
-    world.turn = 10
-    _propose(world, cfg, "Ranoa1", "bunker")           # Ranoa 에 제안이 열림
-    a = world.agents["Asla1"]                          # 외국인
-    a.ap = 1.0
-    sink = Sink()
-    res, _ = execute_tool("vote", {"approve": True, "reasoning": "r"},
-                          world, a, cfg, sink, 48.0)
-    assert not res["ok"] and "no open proposal" in res["error"]
-    assert sink.ballots == []
 
 
 # ── 진척 공개 ───────────────────────────────────────────────────────────────────
