@@ -31,7 +31,16 @@ class Agent:
     # 관측에 그대로 보인다 (별도 관측 없이 투명). 완료 판정은 **그 순간의** 학습가로
     # 하므로, 국내 구사자가 생기면 필요액이 절반이 되어 즉시 완료될 수 있다 (3.4).
     lang_progress: dict = field(default_factory=dict)
-    # 이번 턴에 national·facility 로 낸 액. 매 턴 리셋. 기술력이 정한 상한에 걸린다.
+    # **내가 그 나라 시설에 낸 누적액** {나라: 합계}. 생애 누적이고 상속되지 않는다.
+    #
+    # `learn` 은 누적을 돌려주는데(progress/required) `facility` 는 안 돌려주고 있었다.
+    # 실측에서 13턴에 885원을 한 나라에 나눠 낸 에이전트가 **자기가 얼마 냈는지를
+    # 메모로만** 알았고, memory_write 로 덮이면 그마저 사라진다.
+    #
+    # 내 행동의 합이라 상대 국가 정보를 흘리지 않는다. 그 나라의 총 진척이나 이번 턴
+    # 그 나라에 모인 총액은 여전히 안 알려준다 — 전자는 4.1(타국 진척), 후자는 남의
+    # 투자를 드러낸다.
+    facility_invested: dict = field(default_factory=dict)
 
 
 @dataclass

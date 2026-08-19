@@ -136,7 +136,8 @@ def test_calls_record_what_was_actually_charged(tmp_path, cfg, world):
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
     res, _ = execute_tool("invest", {"target": "facility", "amount": 9999, "reasoning": "r"},
                           world, a, cfg, Sink(), 48.0)
-    assert res["charged"] < 9999 and res["ap_spent"] == 1.0
+    # `charged` 는 **요청과 다를 때만** 온다 — 그 존재 자체가 「잘렸다」 는 신호다
+    assert res["charged"] < 9999 and a.ap == 0.0
 
 
 def test_memory_and_testament_are_not_stripped_from_calls():

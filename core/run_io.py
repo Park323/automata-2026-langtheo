@@ -199,6 +199,8 @@ class RunWriter:
                 # 볼 수 없다 — 유언을 물려받고 한 번도 안 고친 아이가 특히 그렇다.
                 "memory": a.memory,
                 "lang_progress": {k: round(v, 2) for k, v in (a.lang_progress or {}).items()},
+                "facility_invested": {k: round(v, 2)
+                                      for k, v in (a.facility_invested or {}).items()},
             })
         for m in result.messages_log:
             if m.get("turn") == turn and not m.get("_written"):

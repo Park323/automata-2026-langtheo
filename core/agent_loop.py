@@ -204,7 +204,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
     """(tool_result, control). control="end" 면 턴 종료 (procreate/end_turn)."""
 
     if name == "end_turn":
-        return {"ok": True, "ended": True}, "end"
+        return {"ok": True}, "end"
 
     if name == "memory_write":
         # 예산이 아니라 AP 로 묶는다 (spec 4.5) — 예산을 물리면 기억이 시설 투자와
@@ -217,7 +217,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": "memory_write needs text"}, None
         agent.ap -= cfg.ap.memory_write
         agent.memory = str(args.get("text", ""))
-        return {"ok": True, "saved": len(agent.memory), "ap_left": round(agent.ap, 2)}, None
+        return {"ok": True}, None      # 돈도 AP 도 안 든다 — 돌려줄 것이 없다
 
     if name == "invest":
         target = args.get("target")
@@ -229,6 +229,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": f"unknown invest target: {target}"}, None
         if amount <= 0:
             return {"ok": False, "error": "amount must be positive"}, None
+        asked = amount        # 절삭 전 요청액. 다르면 그것만 돌려준다 (_clamped)
         # facility 대상 국가는 예산 차감 전에 검증한다 (LLM 이 국가 대신 에이전트 id 를 줄 수 있음)
         to = None
         if target == "facility":
@@ -268,18 +269,20 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             # 그보다 싸다), "타국 사정은 소통해야만 안다" 는 전제가 통째로 무너진다.
             # 정해지지 않았으면 돈은 나가고 아무 일도 일어나지 않는다 — route=original 과
             # 같은 도박이다 (spec 4.1 은닉 목록: 타국의 진척·예산·국토·언어 능력).
-            return {"ok": True, "accepted": f"{to} facility investment accepted",
-                    "charged": amount, "ap_spent": round(ap_used, 3),
-                    "per_ap": round(per_ap, 1),
+            # **내가 그 나라에 낸 누적**을 함께 돌려준다. learn 이 그러는데 여기만
+            # 안 그러고 있었다 (state.Agent.facility_invested).
+            agent.facility_invested[to] = agent.facility_invested.get(to, 0.0) + amount
+            return {"ok": True, **_clamped(asked, amount),
+                    "your_total_into": round(agent.facility_invested[to], 1),
                     "budget_left": round(agent.budget, 1),
                     "ap_left": round(agent.ap, 3)}, None
         if target == "wellness":
             sink.wellness.append((agent.id, amount))
-            return {"ok": True, "accepted": "wellness investment accepted", "charged": amount,
-                    "budget_left": round(agent.budget, 1)}, None    # λ 변화 비공개
+            return {"ok": True, **_clamped(asked, amount),        # λ 변화 비공개
+                    "budget_left": round(agent.budget, 1),
+                    "ap_left": round(agent.ap, 3)}, None
         sink.national.append((agent.country, amount, agent.id))
-        return {"ok": True, "accepted": "national investment accepted", "charged": amount,
-                "ap_spent": round(ap_used, 3), "per_ap": round(per_ap, 1),
+        return {"ok": True, **_clamped(asked, amount),
                 "budget_left": round(agent.budget, 1),
                 "ap_left": round(agent.ap, 3)}, None
 
@@ -298,6 +301,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": "amount must be a number"}, None
         if amount <= 0:
             return {"ok": False, "error": "amount must be positive"}, None
+        asked = amount        # 절삭 전 요청액. 다르면 그것만 돌려준다 (_clamped)
         need, reason = learn_cost(agent, country_id, world, cfg)
         done_before = agent.lang_progress.get(lang, 0.0)
         # 넘치게 내면 필요한 만큼만 받는다 — 남는 돈이 조용히 사라지면 안 된다
@@ -332,12 +336,12 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "lam": round(agent.lam, 4),
         })
         done = done_before + amount
-        return {"ok": True, "toward": country_id, "charged": amount,
-                "ap_spent": round(ap_used, 3),
-                "progress": round(done, 1), "required_now": need, "discount": reason,
+        # 남는 것은 **내가 몰랐던 것**뿐이다. 누적 진척과 그때그때의 필요액은 턴을
+        # 넘나들며 바뀌고(국내 구사자가 생기면 절반이 된다), 계산으로 알 수 없다.
+        return {"ok": True, **_clamped(asked, amount),
+                "progress": round(done, 1), "required": need,
                 "remaining": round(max(0.0, need - done), 1),
-                "effect": ("you can read it from next turn" if done >= need
-                           else "not enough yet; keep putting in"),
+                "can_read_next_turn": done >= need,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "speak":
@@ -367,7 +371,8 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "reply_to": args.get("reply_to"),
         })
         # 전달 성공/실패는 알리지 않는다 (original 은 도박). 접수·과금만.
-        return {"ok": True, "queued": f"will arrive at {to} next turn", "charged": c,
+        # 받는 이·다음 턴 도착은 내가 방금 말한 것이고 규칙이다. 남은 자원만 돌려준다.
+        return {"ok": True,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "observe_risk":
@@ -400,12 +405,11 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "threshold_sigma": round(rel, 4),
             "national_capital": round(world.countries[agent.country].national_capital, 1),
         })
+        # 전부 내가 몰랐던 것이다. "당신만의 것" 은 도구 설명에 이미 있다.
         return {"ok": True,
                 "turns_until_impact": seen, "typical_error": round(err, 1),
                 "interceptor_needs": thr_seen,
                 "interceptor_typical_error_pct": round(rel * 100, 1),
-                "note": "your own reading; nobody else has it",
-                "charged": cfg.costs.observe_risk,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "propose_vote":
@@ -428,9 +432,10 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         agent.budget -= cfg.costs.propose_vote
         agent.ap -= cfg.ap.propose_vote
         sink.votes.append((agent.id, agent.country, target))
-        return {"ok": True, "proposed": target, "charged": cfg.costs.propose_vote,
-                "effect": "nothing changes yet; the ballot is held after three turns",
-                "ap_left": round(agent.ap, 1)}, None
+        # 採決이 언제인지는 **돌려줄 수 없다.** 제안은 정산 때 열리고, 같은 턴에 둘이
+        # 제안하면 하나만 열린다 — 여기서 날짜를 답하면 못 열린 쪽에 거짓을 준다.
+        # 관측이 다음 턴에 실제 날짜를 적어 준다.
+        return {"ok": True, "ap_left": round(agent.ap, 1)}, None
 
     if name == "vote":
         c = world.countries[agent.country]
@@ -447,15 +452,14 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": f"not enough AP; vote needs {cfg.ap.vote}"}, None
         agent.ap -= cfg.ap.vote
         sink.ballots.append((agent.id, agent.country, bool(args["approve"])))
-        return {"ok": True, "voted": bool(args["approve"]),
-                "on": c.proposal["target"], "ap_left": round(agent.ap, 1)}, None
+        return {"ok": True, "ap_left": round(agent.ap, 1)}, None
 
     if name == "procreate":
         if agent.ap < cfg.ap.procreate:
             return {"ok": False, "error": f"not enough AP; procreate needs {cfg.ap.procreate}"}, None
         agent.ap -= cfg.ap.procreate
         sink.procreations.append((agent.id, args.get("testament", "")))
-        return {"ok": True, "done": "you leave a child and die"}, "end"
+        return {"ok": True}, "end"
 
     return {"ok": False, "error": f"unknown tool: {name}"}, None
 
@@ -528,6 +532,15 @@ def evict(convo: list[dict], limit_tokens: int, tool_tokens: int = 0) -> tuple[l
 def under_pressure(agent, cfg) -> bool:
     """직전 호출의 실측 토큰이 경고 임계를 넘었나."""
     return agent.last_prompt_tokens >= cfg.llm.context_limit * cfg.llm.warn_ratio
+
+
+def _clamped(asked: float, charged: float) -> dict:
+    """**청구액은 요청과 다를 때만 돌려준다.** 그 존재 자체가 「잘렸다」 는 신호다.
+
+    같으면 이미 바로 위 `assistant` 메시지에 그 숫자가 있다 — 되돌려주면 군더더기이고,
+    필드가 일곱 개쯤 되면 **정작 잘렸을 때 그것이 묻힌다.**
+    """
+    return {} if abs(charged - asked) < 1e-9 else {"charged": round(charged, 1)}
 
 
 def _redact_args(name: str, args: dict) -> dict:

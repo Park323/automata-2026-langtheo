@@ -166,11 +166,14 @@ def test_investing_never_reveals_whether_a_nation_decided(cfg, world):
         outs.append(res)
     # 나라 이름·잔액·AP 말고는 한 글자도 달라선 안 된다 — 다르면 그것이 곧 조회다.
     # (잔액과 AP 는 두 번 연달아 내서 줄어든 것이지 나라 차이가 아니다)
-    seq = ("accepted", "budget_left", "ap_left")
+    # 잔액·AP 말고는 한 글자도 달라선 안 된다 — 다르면 그것이 곧 조회다.
+    # (둘을 두 번 연달아 내서 줄어든 것이지 나라 차이가 아니다)
+    seq = ("budget_left", "ap_left")
     shape = [{k: (v if k not in seq else None) for k, v in o.items()} for o in outs]
     assert shape[0] == shape[1]
-    assert outs[0]["accepted"].replace("Ranoa", "") == outs[1]["accepted"].replace("Miris", "")
     assert all(o["ok"] for o in outs)
+    # 나라 이름조차 안 나온다 — 응답이 입력을 되돌려주지 않게 된 부수 효과다
+    assert not any("Ranoa" in json.dumps(o) or "Miris" in json.dumps(o) for o in outs)
     assert a.budget == 480.0                           # 둘 다 과금됐다
 
 
@@ -433,7 +436,12 @@ def test_reading_is_private(cfg, world):
     world.turn = 10
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 1000.0
     r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, Sink(), 48.0)
-    assert "nobody else" in r["note"]
+    assert set(r) == {"ok", "turns_until_impact", "typical_error", "interceptor_needs",
+                      "interceptor_typical_error_pct", "budget_left", "ap_left"}
+    # "당신만의 것" 은 **도구 설명**에 있다 — 응답마다 되풀이할 규칙이 아니다
+    from core.tools import TOOLS
+    (t,) = [f for f in TOOLS if f["function"]["name"] == "observe_risk"]
+    assert "yours alone" in t["function"]["description"]
 
 def test_production_multiplier_is_gone(cfg, world):
     """배수는 안 알려준다 — 수입에서 추론 가능하다."""
@@ -818,7 +826,7 @@ def test_investment_costs_action_points_in_proportion(cfg, world):
 
     r, _ = execute_tool("invest", {"target": "facility", "amount": per_ap / 2,
                                    "reasoning": "r"}, world, a, cfg, Sink(), 48.0)
-    assert r["ok"] and r["ap_spent"] == 0.5 and a.ap == 0.5
+    assert r["ok"] and a.ap == 0.5 and r["ap_left"] == 0.5
 
 
 def test_action_points_clamp_an_oversized_investment(cfg, world):
@@ -873,7 +881,8 @@ def test_wellness_is_not_metered_by_amount(cfg, world):
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
     r, _ = execute_tool("invest", {"target": "wellness", "amount": 5000, "reasoning": "r"},
                         world, a, cfg, Sink(), 48.0)
-    assert r["ok"] and r["charged"] == 5000
+    assert r["ok"] and "charged" not in r            # 잘리지 않았으므로 조용하다
+    assert a.budget == 10_000.0 - 5000
     assert a.ap == 1.0 - cfg.ap.invest_wellness      # 금액과 무관한 정액
 
 
@@ -1002,3 +1011,69 @@ def test_the_prompt_never_prints_a_foreign_gain_number(cfg, world):
             # 진척 숫자가 될 수 있는 다른 수가 없다
             nums = [n for n in re.findall(r"\d+", out) if n not in ("3", "200")]
             assert not nums, (lang, moved, out)
+
+
+# ── 내가 그 나라에 낸 누적 (8/18) ───────────────────────────────────────────
+
+def test_facility_investment_returns_my_running_total(cfg, world):
+    """**`learn` 은 누적을 돌려주는데 `facility` 는 안 돌려주고 있었다.**
+
+    실측에서 13턴에 885원을 한 나라에 나눠 낸 에이전트가 자기가 얼마 냈는지를
+    **메모로만** 알았다 — `memory_write` 로 덮이면 그마저 사라진다.
+    """
+    from core.agent_loop import Sink, execute_tool
+    world.countries["Ranoa"].land = "interceptor"
+    a = world.agents["Asla1"]; a.budget = 10_000.0
+    sink = Sink()
+    tot = 0.0
+    for amt in (50, 60, 70):
+        a.ap = 1.0
+        r, _ = execute_tool("invest", {"target": "facility", "amount": amt,
+                                       "to": "Ranoa", "reasoning": "r"},
+                            world, a, cfg, sink, 48.0)
+        tot += amt
+        assert r["your_total_into"] == tot
+    assert a.facility_invested == {"Ranoa": 180.0}
+
+
+def test_the_running_total_is_per_nation_and_leaks_nothing_about_them(cfg, world):
+    """나라별로 따로 센다. 그리고 이것은 **내 행동의 합**이라 상대 국가 정보가 아니다 —
+    그 나라의 총 진척이나 이번 턴 그 나라에 모인 총액은 여전히 안 알려준다."""
+    from core.agent_loop import Sink, execute_tool
+    for c in ("Ranoa", "Miris"):
+        world.countries[c].land = "interceptor"
+    world.countries["Ranoa"].progress = 5555.0        # 알려주면 안 되는 값
+    a = world.agents["Asla1"]; a.budget = 10_000.0
+    sink = Sink()
+    outs = []
+    for c, amt in (("Ranoa", 100), ("Miris", 40), ("Ranoa", 30)):
+        a.ap = 1.0
+        r, _ = execute_tool("invest", {"target": "facility", "amount": amt,
+                                       "to": c, "reasoning": "r"}, world, a, cfg, sink, 48.0)
+        outs.append(r)
+    assert a.facility_invested == {"Ranoa": 130.0, "Miris": 40.0}
+    assert "5555" not in json.dumps(outs)             # 타국 진척은 안 새어 나온다
+    assert not any("progress" in o for o in outs)
+
+
+def test_the_observation_shows_only_my_own_contributions(cfg, world):
+    """관측에도 적는다 — `learn` 진척이 그러는 것과 같다. 낸 적 없는 나라는 안 나온다."""
+    from domains.meteor import prompts
+    a = world.agents["Asla1"]
+    a.facility_invested = {"Ranoa": 210.0}
+    world.countries["Miris"].progress = 7777.0
+    obs = prompts.render_observation(world, a, cfg, 48.0)
+    assert "210" in obs and "Ranoa" in obs
+    assert "7777" not in obs                          # 타국 진척은 여전히 없다
+
+
+def test_the_child_does_not_inherit_my_contribution_record(cfg, world):
+    """내 생애의 기록이다. 아이는 예산·유언·학습 진척 절반만 물려받는다 (3.3)."""
+    import itertools
+
+    from core.loop import RunResult, _procreate_child
+    world.agents["Asla1"].facility_invested = {"Ranoa": 900.0}
+    r = RunResult(world=world)
+    _procreate_child(world, "Asla1", "유언", cfg, itertools.count(99), r)
+    child = next(a for a in world.agents.values() if a.born_by == "procreate")
+    assert child.facility_invested == {}
