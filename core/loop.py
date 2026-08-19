@@ -8,6 +8,7 @@ from __future__ import annotations
 import itertools
 import json
 import random
+import time
 from pathlib import Path
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -684,8 +685,254 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         on_turn_end(world.turn, result)
 
 
+# ── 순차 라운드로빈 (spec — 한 턴 안에서 서로 반영·대화. issue #20) ──────────────
+
+def _dequeue_inbox_pop(world: World, aid: str) -> list[dict]:
+    """이 차례에 받을 메시지를 큐에서 **꺼내며 제거**한다 (라운드로빈).
+
+    같은 턴 도착분(deliver_turn ≤ turn)을 수령한다 — A 가 이번 턴에 보낸 것을 B 가
+    다음 차례에 본다. 수신 슬롯 점유자가 바뀌었으면(사망·교체) 폐기한다 (spec 4.2)."""
+    current = world.agents.get(aid)
+    out, keep = [], []
+    for e in world.inbox_queue:
+        if e["deliver_turn"] <= world.turn and e["to"] == aid:
+            if current and e.get("to_uid") is not None and e["to_uid"] != current.uid:
+                continue                     # recipient_dead → 폐기 (큐에서도 제거)
+            out.append(e["msg"])
+        else:
+            keep.append(e)
+    world.inbox_queue = keep
+    return out
+
+
+def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
+                 knob_ai: float, msg_ids: "itertools.count", result: RunResult,
+                 turn_facility: dict, ballots_acc: list, proc_acc: list) -> None:
+    """한 차례(sink)를 세계에 **즉시** 반영. 개표·procreate·부고는 턴 끝에서 (누적만)."""
+    # 학습 — 즉시 반영 + 완료 즉시 판정 (그 순간의 학습가로)
+    for rec in sink.learns:
+        result.learns_log.append({"turn": world.turn, **rec})
+        a = world.agents.get(rec["agent"])
+        if a is None:
+            continue
+        a.lang_progress[rec["lang"]] = a.lang_progress.get(rec["lang"], 0.0) + rec["charged"]
+        cid = rec["target"]
+        c = world.countries.get(cid)
+        if c is not None and c.lang not in a.known_langs:
+            need, _ = agent_loop.learn_cost(a, cid, world, cfg)
+            if a.lang_progress.get(c.lang, 0.0) >= need:
+                a.known_langs.add(c.lang)
+                result.learns_log.append({
+                    "turn": world.turn, "kind": "acquired", "agent": rec["agent"],
+                    "country": a.country, "target": cid, "lang": c.lang,
+                    "charged": round(a.lang_progress[c.lang], 2), "required": need,
+                    "rung": round(need / cfg.costs.learn_base, 4),
+                    "age": a.age, "budget_after": round(a.budget, 2),
+                    "discount_domestic": agent_loop.learn_discounts(a, cid, world)[0],
+                    "discount_parent": agent_loop.learn_discounts(a, cid, world)[1]})
+    for o in sink.observations:
+        result.risk_log.append({"turn": world.turn, **o})
+    # 시설 — 이번 턴 국가별 누적(turn_facility) 기준 **선착순 cap**, 즉시 진척 + 같은 턴 통지
+    for to_country, amount, agent_id in sink.facility:
+        cap = cfg.facility.cap_per_turn
+        used = turn_facility.get(to_country, 0.0)
+        share = min(amount, max(0.0, cap - used))
+        excess = amount - share
+        if excess > 0 and agent_id in world.agents:
+            world.agents[agent_id].budget += excess       # 선착순 초과분 즉시 환급
+        turn_facility[to_country] = used + share
+        c = world.countries[to_country]
+        eff = cfg.facility.eff * c.multiplier(cfg)
+        if c.land is None:
+            gain = 0
+        else:
+            n_i = int(share * eff)
+            gain = sum(1 for _ in range(n_i) if rng.random() < cfg.world.success_prob)
+            c.progress += gain
+        result.facility_gains.append({"turn": world.turn, "agent": agent_id,
+                                      "to": to_country, "amount": round(share, 2),
+                                      "gain": gain})
+        if agent_id in world.agents:                       # 자기 몫 통지 (같은 턴)
+            note = {"msg_id": next(msg_ids), "amount": round(share, 2), "to": to_country}
+            if world.agents[agent_id].country == to_country:
+                note["fac_gain"] = gain                     # 자국은 그대로
+            else:
+                note["fac_moved"] = gain > 0                # 타국은 늘었는지 여부만
+            world.inbox_queue.append({"deliver_turn": world.turn, "to": agent_id,
+                                      "to_uid": world.agents[agent_id].uid, "msg": note})
+    # wellness / national
+    for aid, amount in sink.wellness:
+        if aid in world.agents:
+            world.agents[aid].lam += amount * cfg.wellness.gain
+            world.agents[aid].wellness_spent += amount
+    for cid, amount, _ in sink.national:
+        world.countries[cid].national_capital += amount
+    # 메시지 — 번역 후 **같은 턴** 배달
+    for sent in sink.messages:
+        recipient = world.agents.get(sent["to"])
+        reck = recipient.known_langs if recipient else set()
+        to_uid = recipient.uid if recipient else None
+        sender = world.agents.get(sent["from"])
+        gid = next(msg_ids)
+        try:
+            p = messaging.process_message(sent, reck, cfg, translator, knob_ai,
+                                          sender_known_langs=(sender.known_langs if sender
+                                                              else frozenset()),
+                                          log_tag={"turn": world.turn, "msg_id": gid})
+        except BaseException as e:
+            e.add_note(f"[msg {gid} · {sent['from']} → {sent['to']} · "
+                       f"route {sent.get('route')} · turn {world.turn}]")
+            raise
+        if p["inbox"] is not None:
+            p["inbox"]["msg_id"] = gid
+            world.inbox_queue.append({"deliver_turn": world.turn, "to": sent["to"],
+                                      "to_uid": to_uid, "msg": p["inbox"]})
+        result.messages_log.append({"turn": world.turn, "msg_id": gid,
+                                    "from": sent["from"], "to": sent["to"],
+                                    "action": sent.get("kind", "speak"),
+                                    "reply_to": sent.get("reply_to"),
+                                    "route": p["kind"], "delivered": p["delivered"],
+                                    "meta": p["meta"]})
+        if p["sender_notice"]:
+            su = world.agents[sent["from"]].uid if sent["from"] in world.agents else None
+            world.inbox_queue.append({"deliver_turn": world.turn, "to": sent["from"],
+                                      "to_uid": su, "msg": {"from": None, "text": None,
+                                      "label": None, "original": None, "msg_id": next(msg_ids),
+                                      "delivery_failed_to": sent["to"],
+                                      "delivery_failed_reason": p["sender_notice"].get("reason"),
+                                      "ref_msg_id": gid}})
+    # 투표 — 소집은 즉시 열고, ballot 은 누적(턴 끝 개표)
+    for by, country in sink.votes:
+        c = world.countries.get(country)
+        opened = c is not None and c.proposal is None
+        rec = {"by": by, "opened_turn": world.turn, "vote_turn": world.turn + VOTE_DELAY}
+        result.votes_log.append({"turn": world.turn, "kind": "propose", "by": by,
+                                 "country": country, "vote_turn": rec["vote_turn"],
+                                 "opened": opened})
+        if opened:
+            c.proposal = rec
+    for by, country, choice in sink.ballots:
+        ballots_acc.append((by, country, choice))
+        result.votes_log.append({"turn": world.turn, "kind": "ballot",
+                                 "by": by, "country": country, "choice": choice})
+    for aid, testament in sink.procreations:
+        proc_acc.append((aid, testament))
+
+
+def _roundrobin_tally(world: World, cfg, result: RunResult, ballots_acc: list) -> None:
+    """턴 끝 개표 — 최다득표(interceptor/bunker/abstain). _settle_agentic 과 같은 규칙."""
+    ballots_by: dict[str, list] = defaultdict(list)
+    for by, country, choice in sorted(ballots_acc):
+        ballots_by[country].append((by, choice))
+    for cid in sorted(world.countries):
+        c = world.countries[cid]
+        if c.proposal is None or c.proposal["vote_turn"] != world.turn:
+            continue
+        cast = ballots_by.get(cid, [])
+        counts = {k: sum(1 for _, ch in cast if ch == k)
+                  for k in ("interceptor", "bunker", "abstain")}
+        tie = counts["interceptor"] == counts["bunker"]
+        top = max(counts["interceptor"], counts["bunker"])
+        chosen = None if (top == 0 or tie) else (
+            "interceptor" if counts["interceptor"] > counts["bunker"] else "bunker")
+        rec = {"turn": world.turn, "country": cid, "called_by": c.proposal["by"],
+               "counts": counts, "chosen": chosen, "from": c.land,
+               "changed": False, "progress_lost": 0.0}
+        if chosen is not None and chosen != c.land:
+            rec["changed"] = True
+            rec["progress_lost"] = round(c.progress, 3)
+            c.land, c.progress = chosen, 0.0
+        c.proposal = None
+        result.land_changes.append(rec)
+
+
+def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult,
+                        counter: "itertools.count", client_for, translator, knob_ai: float,
+                        render_obs, system_prompt, msg_ids, is_last: bool = False,
+                        on_turn_end=None) -> None:
+    """한 턴 — 순차 라운드로빈. 임의 순서로 한 명씩 한 차례(1콜)씩, AP 남은 사람끼리
+    전원 소진까지 돈다. 차례마다 관측을 새로 렌더하고 액션을 즉시 반영한다 (issue #20)."""
+    # 1. 소득 + AP 리셋
+    for a in world.agents.values():
+        a.budget += cfg.income.per_turn * world.countries[a.country].multiplier(cfg)
+        a.ap = cfg.turn.action_points
+        a.budget_start = a.budget                       # x̂ 분모 (결정 시점 예산)
+    snapshot_ids = sorted(world.agents.keys())
+    snapshot_uids = {world.agents[aid].uid for aid in snapshot_ids}
+    order = list(snapshot_ids)
+    rng.shuffle(order)                                  # 임의 순서 (시드로 결정론)
+
+    turn_facility: dict = {}
+    ballots_acc: list = []
+    proc_acc: list = []
+    accs = {aid: agent_loop._StepAcc() for aid in snapshot_ids}
+    t_turns = {aid: time.time() for aid in snapshot_ids}
+    ended: dict = {aid: None for aid in snapshot_ids}
+
+    active = True
+    while active:
+        active = False
+        for aid in order:
+            if ended[aid] is not None:
+                continue
+            agent = world.agents[aid]
+            st = accs[aid]
+            if st.steps >= agent_loop.RUNAWAY_CAP:
+                ended[aid] = "runaway"
+                continue
+            if not agent_loop.can_act(agent, cfg, knob_ai):
+                ended[aid] = "exhausted"
+                continue
+            active = True
+            inbox = _dequeue_inbox_pop(world, aid)      # 이 차례 도착분 (같은 턴 포함)
+            obs = render_obs(world, agent, cfg, knob_ai, inbox)
+            sp = system_prompt(agent) if callable(system_prompt) else system_prompt
+            sink = Sink()
+            try:
+                done = agent_loop.run_agent_step(world, agent, cfg, client_for(aid), sink,
+                                                 knob_ai, sp, obs, st)
+            except BaseException as e:
+                e.add_note(f"[agent {aid} · turn {world.turn} · age {agent.age}]")
+                raise
+            _settle_step(world, cfg, rng, sink, translator, knob_ai, msg_ids, result,
+                         turn_facility, ballots_acc, proc_acc)
+            if done is not None:
+                ended[aid] = done
+
+    logs = {aid: agent_loop._turn_log(world.agents[aid], accs[aid],
+                                      ended[aid] or "exhausted", t_turns[aid])
+            for aid in snapshot_ids}
+    result.agent_logs.append(logs)
+
+    # 턴 끝 — 개표 → procreate → 생사판정
+    _roundrobin_tally(world, cfg, result, ballots_acc)
+    procreated: set = set()
+    for aid, testament in proc_acc:
+        _procreate_child(world, aid, testament, cfg, counter, result)
+        procreated.add(aid)
+
+    if not is_last:
+        _death_birth(world, cfg, rng, snapshot_ids, procreated, counter, result)
+        for d in result.deaths_log:
+            if d["turn"] != world.turn:
+                continue
+            for aid, a in sorted(world.agents.items()):
+                if a.country != d["country"] or aid == d["who"]:
+                    continue
+                world.inbox_queue.append({
+                    "deliver_turn": world.turn + 1, "to": aid, "to_uid": a.uid,
+                    "msg": {"msg_id": next(msg_ids), "died": d["who"],
+                            "born": d.get("born"), "age": d.get("age")}})
+
+    result.acted.append(snapshot_uids)
+    result.alive_counts.append(sum(1 for a in world.agents.values() if a.alive))
+    result.state_lines.append(_state_line(world))
+    if on_turn_end is not None:
+        on_turn_end(world.turn, result)
+
+
 def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
-                render_obs, system_prompt, parallel: bool = True,
+                render_obs, system_prompt, parallel: bool = True, sequential: bool = False,
                 on_turn_end=None, sim_turns: int | None = None,
                 resume_from: "Path | None" = None,
                 checkpoint_to: "Path | None" = None) -> RunResult:
@@ -713,10 +960,15 @@ def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
     last = min(sim_turns or cfg.world.total_turns, cfg.world.total_turns)
     for t in range(done + 1, last + 1):
         world.turn = t
-        run_turn_agentic(world, cfg, rng, result, counter, client_for, translator, knob_ai,
-                         render_obs, system_prompt, msg_ids,
-                         is_last=(t == cfg.world.total_turns),
-                         parallel=parallel, on_turn_end=on_turn_end)
+        if sequential:
+            run_turn_roundrobin(world, cfg, rng, result, counter, client_for, translator,
+                                knob_ai, render_obs, system_prompt, msg_ids,
+                                is_last=(t == cfg.world.total_turns), on_turn_end=on_turn_end)
+        else:
+            run_turn_agentic(world, cfg, rng, result, counter, client_for, translator, knob_ai,
+                             render_obs, system_prompt, msg_ids,
+                             is_last=(t == cfg.world.total_turns),
+                             parallel=parallel, on_turn_end=on_turn_end)
         if checkpoint_to is not None:
             # 매 턴 적는다. 한 턴이 12~40초인데 체크포인트는 밀리초라 값이 싸다.
             # `itertools.count` 는 현재 값을 못 읽으므로 하나 꺼내 보고 **그 값부터

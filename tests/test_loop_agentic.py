@@ -31,10 +31,18 @@ def _clients(overrides=None):
     return d
 
 
-def _run(cfg, clients, translator=None, knob_ai=48, seed=1, parallel=True):
+def _run(cfg, clients, translator=None, knob_ai=48, seed=1, parallel=True, sequential=False):
     translator = translator or StubClient([{"role": "assistant", "content": "译", "tool_calls": []}] * 50)
-    return run_agentic(cfg, random.Random(seed), clients.__getitem__, translator, knob_ai,
-                       prompts.render_observation, prompts.system_for, parallel=parallel)
+
+    def client_for(aid):                       # 신생아(사망→출생)도 빈 스크립트로 받는다
+        c = clients.get(aid)
+        if c is None:
+            c = clients[aid] = StubClient([])
+        return c
+
+    return run_agentic(cfg, random.Random(seed), client_for, translator, knob_ai,
+                       prompts.render_observation, prompts.system_for, parallel=parallel,
+                       sequential=sequential)
 
 
 # ── #5 도착 지연 ─────────────────────────────────────────────────────────────
@@ -116,3 +124,47 @@ def test_full_prompt_hides_secrets():
             blob = "".join(m.get("content") or "" for m in call["messages"])
             for bad in forbidden:
                 assert bad not in blob, f"프롬프트 금지어 '{bad}'"
+
+
+# ── 순차 라운드로빈 (issue #20) ──────────────────────────────────────────────
+
+def test_roundrobin_reproducible():
+    """순차 라운드로빈도 결정론이다 — 같은 seed 두 번 → state 로그 바이트 동일."""
+    cfg = _cfg(3)
+
+    def once():
+        c = _clients({"Asla1": [assistant_msg(
+            tool_call("invest", "1", target="facility", amount=50))]})
+        return _run(cfg, c, seed=5, sequential=True).state_log
+
+    a, b = once(), once()
+    assert a == b and a.encode() == b.encode()
+
+
+def test_roundrobin_population_invariant():
+    """순차 경로도 매 턴 9명 생존을 지킨다 (턴 루프 정상 작동)."""
+    cfg = _cfg(3)
+    r = _run(cfg, _clients(), seed=1, sequential=True)
+    assert all(n == 9 for n in r.alive_counts)
+
+
+def test_roundrobin_same_turn_delivery():
+    """핵심 (issue #20): 라운드로빈에서 보낸 메시지는 **같은 턴**에 도착한다.
+
+    `_settle_step` 이 deliver_turn=turn 으로 넣고 `_dequeue_inbox_pop` 이 같은 턴에
+    꺼내며 제거한다. 옛 경로(무조건 다음 턴 배달)와 갈리는 지점."""
+    from core.loop import _settle_step, _dequeue_inbox_pop
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 1
+    sink = Sink()
+    sink.messages.append({
+        "kind": "speak", "from": "Asla1", "from_country": "Asla", "from_lang": "ja",
+        "to": "Asla2", "to_country": "Asla", "to_lang": "ja", "route": None,
+        "text": "HELLO_SAME_TURN", "translate_instruction": None, "reply_to": None})
+    _settle_step(world, cfg, random.Random(1), sink,
+                 StubClient([{"role": "assistant", "content": "x", "tool_calls": []}] * 5),
+                 48, itertools.count(1000), RunResult(world=world), {}, [], [])
+    got = _dequeue_inbox_pop(world, "Asla2")
+    assert "HELLO_SAME_TURN" in str(got)                    # 같은 턴에 도착
+    assert _dequeue_inbox_pop(world, "Asla2") == []         # 두 번 안 옴 (제거됨)

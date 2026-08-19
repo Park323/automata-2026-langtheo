@@ -86,7 +86,9 @@ def main() -> None:
     ap.add_argument("--price-out", type=float, default=None,
                     help="에이전트 모델 출력 1M당 $ (비용 추정용, 선택)")
     ap.add_argument("--check", action="store_true", help="모델 검증만 하고 종료")
-    ap.add_argument("--sequential", action="store_true")
+    ap.add_argument("--sequential", action="store_true",
+                    help="순차 라운드로빈 (issue #20 — 한 턴 안에서 서로 반영·대화). "
+                         "기본은 병렬·1회정산.")
     ap.add_argument("--reasoning-effort", default=None,
                     choices=["low", "medium", "high"],
                     help="사고 강도 (config 의 reasoning.max_tokens 를 대신함)")
@@ -178,7 +180,7 @@ def main() -> None:
         res = run_agentic(cfg, random.Random(args.seed),
                           client_for=lambda aid: agent_client, translator=translator,
                           knob_ai=knob, render_obs=prompts.render_observation,
-                          system_prompt=prompts.system_for, parallel=not args.sequential,
+                          system_prompt=prompts.system_for, sequential=args.sequential,
                           on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)),
                           sim_turns=args.turns,
                           resume_from=ckpt if resuming else None,
