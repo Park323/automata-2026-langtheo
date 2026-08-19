@@ -397,16 +397,12 @@ def render_observation(world, agent, cfg, knob_ai: float,
     c = world.countries[agent.country]
     land = t["undecided"] if c.land is None else c.land   # 토큰은 영어 그대로
     if delta:
-        # 동적 상태(예산·자국 진척·제안·내 시설) + 새 도착 메시지만. 골격은 반복 안 함.
+        # 재방문 — 바뀌는 것만: 예산·자국 진척·(열린)제안 + 새 도착 메시지.
+        # year/you/land/골격은 그 턴 첫 차례 풀 관측에 있으므로 반복하지 않는다.
         parts = [
-            t["year"].format(y=FIRST_YEAR + world.turn - 1),
-            t["you"].format(id=agent.id, nation=agent.country),
             t["budget"].format(b=agent.budget),
-            t["land"].format(v=land),
             t["prog"].format(v=c.progress),
             _proposal_line(world, c, t),
-            *[t["c_fac_mine"].format(nation=k, v=v)
-              for k, v in sorted(agent.facility_invested.items()) if v > 0],
             "",
             render_inbox(inbox or [], lang),
         ]
