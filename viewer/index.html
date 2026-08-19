@@ -253,7 +253,7 @@ function nations(b){
       <div class="muted mono" style="font-size:11px">
         진척 ${Math.round(p)}${D.threshold ? ` / ${D.threshold}` : ""}
         · 국가자본 ${Math.round(m.national_capital[c])}</div>
-      ${pr ? `<div class="prop">제안 ${pr.target} (${pr.by}) · 採決 ${FIRST_YEAR + pr.vote_turn - 1}년</div>` : ""}
+      ${pr ? `<div class="prop">투표 소집 (${pr.by}) · 採決 ${FIRST_YEAR + pr.vote_turn - 1}년</div>` : ""}
     </div>`;
   }).join("");
   return `<h2>국가</h2>${rows}`;
@@ -334,13 +334,18 @@ function events(b){
 function describe(e){
   switch (e.type){
     case "vote": return e.kind === "propose"
-      ? `${e.by} 가 ${e.country} 국토를 ${e.target} 로 제안` +
+      ? `${e.by} 가 ${e.country} 투표를 소집` +
         (e.opened === false ? " — 이미 열린 제안이 있어 무산"
                             : ` · 採決 ${FIRST_YEAR + e.vote_turn - 1}년`)
       : `${e.by} — ${e.choice ?? (e.approve ? "찬성" : "반대")}`;
-    case "land_change": return e.passed
-      ? `${e.country} → ${e.target} (찬 ${e.yes} 반 ${e.no}) · 진척 ${Math.round(e.progress_lost)} 소실`
-      : `${e.country} 부결 (찬 ${e.yes} 반 ${e.no}) · ${e.target} 로 바뀌지 않음`;
+    case "land_change": {
+      const c = e.counts || {};
+      const t = `interceptor ${c.interceptor || 0} · bunker ${c.bunker || 0} · 기권 ${c.abstain || 0}`;
+      return e.changed
+        ? `${e.country} → ${e.chosen} (${t}) · 진척 ${Math.round(e.progress_lost || 0)} 소실`
+        : (e.chosen ? `${e.country} ${e.chosen} 유지 (${t})`
+                    : `${e.country} 부결 (${t}) · 국토 안 바뀜`);
+    }
     case "death": return `${e.who} ${e.age ?? "?"}살 사망 → ${e.born || "?"} 출생 (${e.country}, ${
       e.by === "procreate" ? "계승" : "자연사"})`;
     case "birth": return `${e.id} 출생${e.replaces ? ` (${e.replaces} 의 자리)` : ""}`
