@@ -587,6 +587,170 @@ def can_act(agent, cfg, knob_ai: float) -> bool:
 
 # ── 에이전트 한 턴 ────────────────────────────────────────────────────────────
 
+class _StepAcc:
+    """한 턴(병렬 경로) 또는 한 차례(순차 라운드로빈)가 스텝마다 쌓는 로그.
+
+    `run_agent_turn`(병렬·1회정산)과 순차 라운드로빈이 **같은 스텝 실행기**
+    (`_agent_one_call`)를 공유하려고 누적 상태를 밖으로 뺐다.
+    """
+    __slots__ = ("actions", "reasonings", "calls", "seen", "api_reasoning", "steps",
+                 "evicted", "error", "recovered", "no_tool_content", "llm_ms", "pressured")
+
+    def __init__(self):
+        self.actions = []
+        self.reasonings = []
+        self.calls = []
+        self.seen = {}
+        self.api_reasoning = ""
+        self.steps = 0
+        self.evicted = 0
+        self.error = None
+        self.recovered = 0
+        self.no_tool_content = ""
+        self.llm_ms = 0.0
+        self.pressured = False
+
+
+def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
+                    system_prompt: str, tool_list, tool_tokens, st: "_StepAcc") -> str | None:
+    """LLM 한 콜 + 그 응답의 도구들을 실행한다. 의도는 sink 에 적는다(정산은 밖).
+
+    반환: 이 콜로 턴/차례가 끝나면 그 사유("ended"·"repeat_guard"·"no_tool_call"·
+    "error"), 계속하면 None. steps·actions·reasonings·calls 는 st 에 누적된다.
+    """
+    st.steps += 1
+    # 한계를 넘으면 오래된 턴 블록부터 버린다. system 은 convo 밖이라 안전하다.
+    agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, tool_tokens)
+    st.evicted += dropped
+    messages = [{"role": "system", "content": system_prompt}, *agent.convo]
+    t_call = time.time()
+    try:
+        # 모든 스텝에서 도구 호출을 강제한다 (end_turn 도 도구라 "할 게 없다"는 표현됨).
+        resp = client.chat(messages, tools=tool_list, tool_choice="required",
+                           log_tag={"turn": world.turn, "agent": agent.id,
+                                    "step": st.steps + 1, "age": agent.age,
+                                    "country": agent.country})
+    except LLMCallError as e:                       # 이 에이전트만 턴/차례 종료
+        st.llm_ms += (time.time() - t_call) * 1000
+        st.error = f"{type(e).__name__}: {str(e)[:200]}"
+        return "error"
+    st.llm_ms += (time.time() - t_call) * 1000
+    usage = resp.get("usage") or {}
+    agent.last_prompt_tokens = int(usage.get("prompt_tokens")
+                                   or estimate_tokens(messages, tool_tokens))
+    try:
+        msg = resp["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError):
+        st.error = f"malformed response: {str(resp)[:150]}"
+        return "error"
+    # message.reasoning 은 추론 모델의 사고이고 spec 의 reasoning 과 다르다 (섞지 않는다).
+    think = str(msg.get("reasoning") or "").strip()
+    if think:
+        st.api_reasoning = think
+        if tool_list is not TOOLS:
+            st.reasonings.append({"tool": None, "ok": True, "step": st.steps,
+                                  "source": "thinking", "reasoning": think})
+    tool_calls = msg.get("tool_calls") or []
+    if not tool_calls:
+        tool_calls = recover_tool_calls(msg.get("content"))   # content 로 샌 호출 회수
+        if tool_calls:
+            st.recovered += len(tool_calls)
+            msg = {**msg, "content": None}
+        else:
+            st.no_tool_content = (msg.get("content") or "")[:400]
+            return "no_tool_call"
+    for i, tc in enumerate(tool_calls):
+        if not tc.get("id"):
+            tc["id"] = f"call_{i}"
+        fn = tc.get("function") or {}
+        raw_args = fn.get("arguments")
+        if isinstance(raw_args, dict):
+            fn["arguments"] = json.dumps(raw_args, ensure_ascii=False)
+        elif isinstance(raw_args, str):
+            try:
+                json.loads(raw_args)
+            except (json.JSONDecodeError, TypeError):
+                fn["arguments"] = "{}"
+        else:
+            fn["arguments"] = "{}"
+    agent.convo.append({"role": "assistant", "content": msg.get("content") or None,
+                        "tool_calls": tool_calls})
+    for tc in tool_calls:
+        fn = tc.get("function") or {}
+        name = fn.get("name")
+        raw = fn.get("arguments")
+        if isinstance(raw, dict):
+            args = raw
+        else:
+            try:
+                args = json.loads(raw or "{}")
+            except (json.JSONDecodeError, TypeError):
+                args = {}
+        if name not in TOOL_NAMES:
+            result = {"ok": False, "error": f"unknown tool: {name}"}
+            control = None
+        else:
+            result, control = execute_tool(name, args, world, agent, cfg, sink, knob_ai)
+        st.calls.append({"step": st.steps, "tool": name, "args": _redact_args(name, args),
+                         "ok": bool(result.get("ok")),
+                         "error": result.get("error"),
+                         "result": {k: v for k, v in result.items() if k != "error"}})
+        why = str(args.get("reasoning", ""))
+        if tool_list is TOOLS:
+            st.reasonings.append({"tool": name, "ok": bool(result.get("ok")),
+                                  "source": "tool", "reasoning": why})
+        else:
+            st.reasonings.append({"tool": name, "ok": bool(result.get("ok")),
+                                  "source": "tool", "reasoning": ""})
+        if name != "end_turn" and result.get("ok"):
+            st.actions.append({"type": name, **args})
+        agent.convo.append({"role": "tool", "tool_call_id": tc["id"],
+                            "content": json.dumps(result, ensure_ascii=False)})
+        # 실패한 호출만 센다 (성공은 자원을 쓰므로 can_act 가 이미 막는다).
+        if not result.get("ok"):
+            key = f"{name}|{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
+            st.seen[key] = st.seen.get(key, 0) + 1
+            if st.seen[key] >= cfg.llm.repeat_guard:
+                return "repeat_guard"
+        if control == "end":
+            return "ended"     # procreate/end_turn 뒤쪽 tool_call 은 버린다
+    return None
+
+
+def _turn_log(agent, st: "_StepAcc", ended_by: str, t_turn: float) -> dict:
+    """스텝 누적(st)을 이벤트 로그 dict 로. run_agent_turn 과 라운드로빈이 공유한다."""
+    return {"reasonings": st.reasonings, "api_reasoning": st.api_reasoning,
+            "calls": st.calls,
+            "actions": st.actions, "error": st.error, "ended_by": ended_by,
+            "reasoning_missing": not any(r["reasoning"] for r in st.reasonings),
+            "steps": st.steps, "prompt_tokens": agent.last_prompt_tokens,
+            "pressured": st.pressured, "evicted_blocks": st.evicted,
+            "memory_len": len(agent.memory),
+            "recovered_calls": st.recovered, "no_tool_content": st.no_tool_content,
+            "elapsed_ms": round((time.time() - t_turn) * 1000),
+            "llm_ms": round(st.llm_ms),
+            "ms_per_step": round(st.llm_ms / st.steps) if st.steps else None}
+
+
+def run_agent_step(world, agent, cfg, client, sink: Sink, knob_ai: float,
+                   system_prompt: str, user_prompt: str, st: "_StepAcc") -> str | None:
+    """순차 라운드로빈의 **한 차례**. 신선한 관측을 convo 에 붙이고 `_agent_one_call` 1회.
+
+    `st` 는 이 에이전트의 **이번 턴 누적**이라 차례를 거듭해도 유지된다(스텝·행동·근거를
+    모아 턴당 로그 하나로). 압박 경고는 관측 앞에 붙인다(사실 통지). 반환은 종료 사유
+    또는 None(계속) — `_agent_one_call` 과 같다.
+    """
+    if under_pressure(agent, cfg):
+        from domains.meteor.prompts import T          # 도메인 문구 (모국어)
+        user_prompt = T[agent.native_lang]["warn"] + "\n\n" + user_prompt
+        st.pressured = True
+    agent.convo.append({"role": "user", "content": user_prompt})
+    tool_list = tools_for(cfg)
+    tool_tokens = _TOOL_TOKENS if tool_list is TOOLS else _TOOL_TOKENS_NR
+    return _agent_one_call(world, agent, cfg, client, sink, knob_ai,
+                           system_prompt, tool_list, tool_tokens, st)
+
+
 def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
                    system_prompt: str, user_prompt: str) -> dict:
     """한 에이전트의 한 턴. 대화는 태어나서 죽을 때까지 이어진다 (spec 4.5).

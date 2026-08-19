@@ -206,7 +206,10 @@ class RunWriter:
             if m.get("turn") == turn and not m.get("_written"):
                 m["_written"] = True
                 self._append("messages", {k: v for k, v in m.items() if k != "_written"})
-        logs = result.agent_logs[turn - 1] if len(result.agent_logs) >= turn else {}
+        # on_turn_end 은 이번 턴 로그를 append 한 **직후** 호출되므로 마지막 것이 이 턴이다.
+        # 절대 인덱스(turn-1)로 잡으면 resume 시 result 가 새로 시작해 어긋난다 —
+        # 이어받은 턴의 agent_turn 이벤트가 통째로 안 써졌다.
+        logs = result.agent_logs[-1] if result.agent_logs else {}
         for aid in sorted(logs):
             lg = logs[aid]
             self._append("events", {
