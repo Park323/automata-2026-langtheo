@@ -37,7 +37,7 @@ class Sink:
     national: list = field(default_factory=list)      # (country, amount, agent_id)
     messages: list = field(default_factory=list)      # 발신 dict (5장, 'from' 에 agent_id)
     votes: list = field(default_factory=list)         # 제안 (agent_id, country, target)
-    ballots: list = field(default_factory=list)       # 찬반 (agent_id, country, approve)
+    ballots: list = field(default_factory=list)       # 표 (agent_id, country, choice)
     learns: list = field(default_factory=list)        # (agent_id, lang) — 다음 턴부터 유효
     procreations: list = field(default_factory=list)  # (agent_id, testament)
     observations: list = field(default_factory=list)  # 위험 관측 (진실·관측치·오차)
@@ -204,7 +204,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
     """(tool_result, control). control="end" 면 턴 종료 (procreate/end_turn)."""
 
     if name == "end_turn":
-        return {"ok": True, "ended": True}, "end"
+        return {"ok": True}, "end"
 
     if name == "memory_write":
         # 예산이 아니라 AP 로 묶는다 (spec 4.5) — 예산을 물리면 기억이 시설 투자와
@@ -217,7 +217,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": "memory_write needs text"}, None
         agent.ap -= cfg.ap.memory_write
         agent.memory = str(args.get("text", ""))
-        return {"ok": True, "saved": len(agent.memory), "ap_left": round(agent.ap, 2)}, None
+        return {"ok": True}, None      # 돈도 AP 도 안 든다 — 돌려줄 것이 없다
 
     if name == "invest":
         target = args.get("target")
@@ -229,6 +229,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": f"unknown invest target: {target}"}, None
         if amount <= 0:
             return {"ok": False, "error": "amount must be positive"}, None
+        asked = amount        # 절삭 전 요청액. 다르면 그것만 돌려준다 (_clamped)
         # facility 대상 국가는 예산 차감 전에 검증한다 (LLM 이 국가 대신 에이전트 id 를 줄 수 있음)
         to = None
         if target == "facility":
@@ -268,18 +269,20 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             # 그보다 싸다), "타국 사정은 소통해야만 안다" 는 전제가 통째로 무너진다.
             # 정해지지 않았으면 돈은 나가고 아무 일도 일어나지 않는다 — route=original 과
             # 같은 도박이다 (spec 4.1 은닉 목록: 타국의 진척·예산·국토·언어 능력).
-            return {"ok": True, "accepted": f"{to} facility investment accepted",
-                    "charged": amount, "ap_spent": round(ap_used, 3),
-                    "per_ap": round(per_ap, 1),
+            # **내가 그 나라에 낸 누적**을 함께 돌려준다. learn 이 그러는데 여기만
+            # 안 그러고 있었다 (state.Agent.facility_invested).
+            agent.facility_invested[to] = agent.facility_invested.get(to, 0.0) + amount
+            return {"ok": True, **_clamped(asked, amount),
+                    "your_total_into": round(agent.facility_invested[to], 1),
                     "budget_left": round(agent.budget, 1),
                     "ap_left": round(agent.ap, 3)}, None
         if target == "wellness":
             sink.wellness.append((agent.id, amount))
-            return {"ok": True, "accepted": "wellness investment accepted", "charged": amount,
-                    "budget_left": round(agent.budget, 1)}, None    # λ 변화 비공개
+            return {"ok": True, **_clamped(asked, amount),        # λ 변화 비공개
+                    "budget_left": round(agent.budget, 1),
+                    "ap_left": round(agent.ap, 3)}, None
         sink.national.append((agent.country, amount, agent.id))
-        return {"ok": True, "accepted": "national investment accepted", "charged": amount,
-                "ap_spent": round(ap_used, 3), "per_ap": round(per_ap, 1),
+        return {"ok": True, **_clamped(asked, amount),
                 "budget_left": round(agent.budget, 1),
                 "ap_left": round(agent.ap, 3)}, None
 
@@ -298,6 +301,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": "amount must be a number"}, None
         if amount <= 0:
             return {"ok": False, "error": "amount must be positive"}, None
+        asked = amount        # 절삭 전 요청액. 다르면 그것만 돌려준다 (_clamped)
         need, reason = learn_cost(agent, country_id, world, cfg)
         done_before = agent.lang_progress.get(lang, 0.0)
         # 넘치게 내면 필요한 만큼만 받는다 — 남는 돈이 조용히 사라지면 안 된다
@@ -332,12 +336,12 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "lam": round(agent.lam, 4),
         })
         done = done_before + amount
-        return {"ok": True, "toward": country_id, "charged": amount,
-                "ap_spent": round(ap_used, 3),
-                "progress": round(done, 1), "required_now": need, "discount": reason,
+        # 남는 것은 **내가 몰랐던 것**뿐이다. 누적 진척과 그때그때의 필요액은 턴을
+        # 넘나들며 바뀌고(국내 구사자가 생기면 절반이 된다), 계산으로 알 수 없다.
+        return {"ok": True, **_clamped(asked, amount),
+                "progress": round(done, 1), "required": need,
                 "remaining": round(max(0.0, need - done), 1),
-                "effect": ("you can read it from next turn" if done >= need
-                           else "not enough yet; keep putting in"),
+                "can_read_next_turn": done >= need,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "speak":
@@ -367,7 +371,8 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "reply_to": args.get("reply_to"),
         })
         # 전달 성공/실패는 알리지 않는다 (original 은 도박). 접수·과금만.
-        return {"ok": True, "queued": f"will arrive at {to} next turn", "charged": c,
+        # 받는 이·다음 턴 도착은 내가 방금 말한 것이고 규칙이다. 남은 자원만 돌려준다.
+        return {"ok": True,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "observe_risk":
@@ -400,25 +405,25 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "threshold_sigma": round(rel, 4),
             "national_capital": round(world.countries[agent.country].national_capital, 1),
         })
+        # 전부 내가 몰랐던 것이다. "당신만의 것" 은 도구 설명에 이미 있다.
         return {"ok": True,
                 "turns_until_impact": seen, "typical_error": round(err, 1),
                 "interceptor_needs": thr_seen,
                 "interceptor_typical_error_pct": round(rel * 100, 1),
-                "note": "your own reading; nobody else has it",
-                "charged": cfg.costs.observe_risk,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "propose_vote":
-        target = args.get("target")
-        if target not in ("bunker", "interceptor"):
-            return {"ok": False, "error": "target must be bunker or interceptor"}, None
+        # **무엇을 지을지는 여기서 정하지 않는다 — 採決을 소집하기만 한다.**
+        #
+        # 전에는 `target` 을 들고 「이것으로 하자」 를 열었고, `vote` 는 찬/반이었다.
+        # 그래서 같은 턴에 둘이 제안하면 둘 다 도구를 통과하는데 하나만 열렸고,
+        # 밀린 쪽은 AP 0.6 을 내고 **아무 일도 안 일어난 것을 알 방법이 없었다.**
+        #
+        # 소집에 내용이 없으면 겹칠 것이 없다. 둘이 소집해도 같은 採決이다.
         c = world.countries[agent.country]
         if c.proposal is not None:
             return {"ok": False, "error":
-                    f"your nation already has an open proposal ({c.proposal['target']}); "
-                    f"the ballot is on turn {c.proposal['vote_turn']}"}, None
-        if c.land == target:
-            return {"ok": False, "error": f"your nation is already building {target}"}, None
+                    f"a ballot is already called for turn {c.proposal['vote_turn']}"}, None
         if agent.ap < cfg.ap.propose_vote:
             return {"ok": False, "error": f"not enough AP; propose_vote needs {cfg.ap.propose_vote}"}, None
         # **돈은 안 받는다.** 가난이 제안을 막으면 국토가 돈으로 정해진다. 무게는 AP 로만
@@ -427,9 +432,10 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": f"not enough budget; need {cfg.costs.propose_vote}"}, None
         agent.budget -= cfg.costs.propose_vote
         agent.ap -= cfg.ap.propose_vote
-        sink.votes.append((agent.id, agent.country, target))
-        return {"ok": True, "proposed": target, "charged": cfg.costs.propose_vote,
-                "effect": "nothing changes yet; the ballot is held after three turns",
+        sink.votes.append((agent.id, agent.country))
+        # **이제 날짜를 돌려줄 수 있다.** 소집에 내용이 없으니 둘이 소집해도 같은
+        # 採決이고, 밀려서 안 열리는 일이 없다.
+        return {"ok": True, "ballot_turn": world.turn + loop_vote_delay(),
                 "ap_left": round(agent.ap, 1)}, None
 
     if name == "vote":
@@ -439,23 +445,24 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         if world.turn != c.proposal["vote_turn"]:
             return {"ok": False, "error":
                     f"the ballot is on turn {c.proposal['vote_turn']}, not now"}, None
-        if "approve" not in args:
-            return {"ok": False, "error": "vote needs approve (true or false)"}, None
+        choice = args.get("choice")
+        if choice not in ("interceptor", "bunker", "abstain"):
+            return {"ok": False, "error":
+                    "choice must be interceptor, bunker or abstain"}, None
         # **표는 돈도 AP 도 거의 안 받는다.** 돈을 물리면 참여가 재산이 되고, AP 를 크게
         # 물리면 採決 당일 — 설득이 가장 필요한 날 — 말할 기회가 줄어든다.
         if agent.ap < cfg.ap.vote:
             return {"ok": False, "error": f"not enough AP; vote needs {cfg.ap.vote}"}, None
         agent.ap -= cfg.ap.vote
-        sink.ballots.append((agent.id, agent.country, bool(args["approve"])))
-        return {"ok": True, "voted": bool(args["approve"]),
-                "on": c.proposal["target"], "ap_left": round(agent.ap, 1)}, None
+        sink.ballots.append((agent.id, agent.country, choice))
+        return {"ok": True, "ap_left": round(agent.ap, 1)}, None
 
     if name == "procreate":
         if agent.ap < cfg.ap.procreate:
             return {"ok": False, "error": f"not enough AP; procreate needs {cfg.ap.procreate}"}, None
         agent.ap -= cfg.ap.procreate
         sink.procreations.append((agent.id, args.get("testament", "")))
-        return {"ok": True, "done": "you leave a child and die"}, "end"
+        return {"ok": True}, "end"
 
     return {"ok": False, "error": f"unknown tool: {name}"}, None
 
@@ -528,6 +535,21 @@ def evict(convo: list[dict], limit_tokens: int, tool_tokens: int = 0) -> tuple[l
 def under_pressure(agent, cfg) -> bool:
     """직전 호출의 실측 토큰이 경고 임계를 넘었나."""
     return agent.last_prompt_tokens >= cfg.llm.context_limit * cfg.llm.warn_ratio
+
+
+def loop_vote_delay() -> int:
+    """`core.loop.VOTE_DELAY`. 여기서 import 하면 순환이 되므로 호출 시점에 읽는다."""
+    from core.loop import VOTE_DELAY
+    return VOTE_DELAY
+
+
+def _clamped(asked: float, charged: float) -> dict:
+    """**청구액은 요청과 다를 때만 돌려준다.** 그 존재 자체가 「잘렸다」 는 신호다.
+
+    같으면 이미 바로 위 `assistant` 메시지에 그 숫자가 있다 — 되돌려주면 군더더기이고,
+    필드가 일곱 개쯤 되면 **정작 잘렸을 때 그것이 묻힌다.**
+    """
+    return {} if abs(charged - asked) < 1e-9 else {"charged": round(charged, 1)}
 
 
 def _redact_args(name: str, args: dict) -> dict:

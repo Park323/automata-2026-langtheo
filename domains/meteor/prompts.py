@@ -77,10 +77,10 @@ T = {
         land="自国の国土: {v}", undecided="未定",
         prog="自国の進捗: {v:.0f}", thresh="  interceptor の完成に要る進捗: {v:.0f}",
         year="今年: {y} 年",
-        prop="  提案中: 国土を {t} にする（{by} が提案）。採決は {vt} 年",
-        prop_today="  ★ 今年が採決の年です。vote で賛否を出せます",
-        prop_none="  提案なし。国土は投票でしか決まりません",
-        c_ballot="  vote",  c_ballot_note="提案の採決に賛否を出す",
+        prop="  採決が {vt} 年に開かれます（{by} が召集）。何を建てるかをそこで決めます",
+        prop_today="  ★ 今年が採決の年です。vote で interceptor / bunker / abstain を選べます",
+        prop_none="  採決は開かれていません。国土は投票でしか決まりません",
+        c_ballot="  vote",  c_ballot_note="採決で何を建てるかを選ぶ",
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
         income="今ターンの収入: +{v:.0f}",
         multi="予算が許す限り複数の行動ができます。メッセージは1ターンに3件まで。",
@@ -94,13 +94,16 @@ T = {
         c_ai="  話す（国際・ai）",
         c_learn="  {nation} の言語を学ぶ",
         c_learn_prog="   これまで {done:.0f} / {need:.0f}",
+        c_fac_mine="  {nation} の施設にこれまで出した額: {v:.0f}",
         c_cheap="   安い: 自国に話せる人がいる", c_disc="   割引あり",
-        c_vote="  propose_vote", c_obs="  observe_risk",
+        c_vote="  propose_vote",
+        c_vote_note="何を建てるかの採決を召集する",
+        c_obs="  observe_risk",
         c_obs_note="   隕石までの残りターンと interceptor に要る進捗を測る。国家投資が精度を上げる",
         c_inv="  invest", c_inv_note="指定した額。wellness は 0.1 定額",
         c_pro="  procreate", c_pro_note="子を残してあなたは死ぬ",
         inv_hdr="invest の効果", inv_cap="  national と facility には行動力がかかる — {v:.0f} ごとに 1.0。\n                          自国の技術力がその率を上げる。wellness は無料",
-        inv_well="  wellness   あなたの寿命が延びる（どれだけかは分からない）",
+        inv_well="  wellness   あなたの健康が良くなる",
         inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n                          observe_risk の精度も良くなる。国民全員に及ぶ",
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n                          （省くと自国）",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
@@ -112,6 +115,8 @@ T = {
         in_from="  [{id}] {frm} より{label}", lbl_direct=" ［通訳なしで通じた］",
         died="  {who} が {age} 歳で亡くなり、{born} が生まれました。",
         fac_gain="  前ターンのあなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
+        fac_moved="  前ターンのあなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
+        fac_still="  前ターンのあなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
         roster="人々:", roster_you="（あなた）",
         mem_hdr="あなたの覚え書き:", mem_none="  （まだ何もない）",
         warn="［記憶の圧迫］記憶が限界に近づいています。古いものから消えていきます。",
@@ -123,10 +128,10 @@ T = {
         land="本国国土: {v}", undecided="未定",
         prog="本国进度: {v:.0f}", thresh="  建成 interceptor 所需的进度: {v:.0f}",
         year="今年: {y} 年",
-        prop="  提案中: 将国土定为 {t}（由 {by} 提出）。表决在 {vt} 年",
-        prop_today="  ★ 今年就是表决之年。可以用 vote 表态",
-        prop_none="  没有提案。国土只能由投票决定",
-        c_ballot="  vote",  c_ballot_note="对提案表示赞成或反对",
+        prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
+        prop_today="  ★ 今年就是表决之年。可以用 vote 选 interceptor / bunker / abstain",
+        prop_none="  没有正在进行的表决。国土只能由投票决定",
+        c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
         income="本回合收入: +{v:.0f}",
         multi="只要预算允许，你可以采取多项行动。每回合最多 3 条消息。",
@@ -140,13 +145,16 @@ T = {
         c_ai="  说话（国际·ai）",
         c_learn="  学习 {nation} 的语言",
         c_learn_prog="   已投入 {done:.0f} / {need:.0f}",
+        c_fac_mine="  你至今向 {nation} 的设施投入: {v:.0f}",
         c_cheap="   较便宜: 本国有人会说", c_disc="   有折扣",
-        c_vote="  propose_vote", c_obs="  observe_risk",
+        c_vote="  propose_vote",
+        c_vote_note="召集「建什么」的表决",
+        c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几回合，以及 interceptor 需要多少进度。国家投资会提高精度",
         c_inv="  invest", c_inv_note="你指定的数额。wellness 为 0.1 定额",
         c_pro="  procreate", c_pro_note="留下孩子，你随即死去",
         inv_hdr="invest 的效果", inv_cap="  national 与 facility 消耗行动力 — 每 {v:.0f} 花 1.0。本国技术水平提高该比率。\n             wellness 不消耗",
-        inv_well="  wellness   延长你的寿命（延长多少你无法得知）",
+        inv_well="  wellness   你的健康会变好",
         inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n                          observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
@@ -158,6 +166,8 @@ T = {
         in_from="  [{id}] 来自 {frm}{label}", lbl_direct="［无需翻译就能听懂］",
         died="  {who} 在 {age} 岁去世，{born} 出生了。",
         fac_gain="  你上回合投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
+        fac_moved="  你上回合投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
+        fac_still="  你上回合投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
         roster="人们:", roster_you="（你）",
         mem_hdr="你的笔记:", mem_none="  （还没有）",
         warn="［记忆压力］记忆接近上限，旧的内容会先消失。",
@@ -170,10 +180,10 @@ T = {
         prog="Progression de votre nation : {v:.0f}",
         thresh="  Progression requise pour achever un interceptor : {v:.0f}",
         year="Année : {y}",
-        prop="  Proposition en cours : faire du territoire un {t} (proposé par {by}). Scrutin en {vt}",
-        prop_today="  ★ Le scrutin a lieu cette année. Vous pouvez vous prononcer avec vote",
-        prop_none="  Aucune proposition. Le territoire ne se décide que par un vote",
-        c_ballot="  vote",  c_ballot_note="se prononcer sur la proposition",
+        prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
+        prop_today="  ★ Le scrutin a lieu cette année. Choisissez avec vote : interceptor / bunker / abstain",
+        prop_none="  Aucun scrutin en cours. Le territoire ne se décide que par un vote",
+        c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
         income="Revenu ce tour : +{v:.0f}",
         multi="Vous pouvez agir plusieurs fois si le budget le permet. Jusqu'à 3 messages par tour.",
@@ -187,13 +197,16 @@ T = {
         c_ai="  parler (international, ai)",
         c_learn="  apprendre la langue de {nation}",
         c_learn_prog="   déjà versé {done:.0f} / {need:.0f}",
+        c_fac_mine="  déjà versé à l'installation de {nation} : {v:.0f}",
         c_cheap="   moins cher : quelqu'un de votre nation la parle", c_disc="   remise",
-        c_vote="  propose_vote", c_obs="  observe_risk",
+        c_vote="  propose_vote",
+        c_vote_note="convoquer un scrutin sur quoi bâtir",
+        c_obs="  observe_risk",
         c_obs_note="   mesure les tours restants et la progression qu'exige un interceptor ; l'investissement national affine",
         c_inv="  invest", c_inv_note="le montant choisi ; wellness : 0.1 fixe",
         c_pro="  procreate", c_pro_note="vous laissez un enfant et vous mourez",
         inv_hdr="effets d'invest", inv_cap="  national et facility coûtent de l'action : 1.0 par tranche de {v:.0f} ;\n             le niveau technique de votre nation relève ce taux. wellness est gratuit",
-        inv_well="  wellness   prolonge votre vie (d'une durée que vous ne pouvez pas connaître)",
+        inv_well="  wellness   votre santé s'améliore",
         inv_natl="  national   élève le niveau technique de votre nation : le revenu, le rendement\n"
                           "             de ce qu'on verse à une installation et la précision d'observe_risk\n"
                           "             s'améliorent, pour tous ses habitants",
@@ -208,6 +221,8 @@ T = {
         in_from="  [{id}] de {frm}{label}", lbl_direct=" [compris sans traduction]",
         died="  {who} est mort à {age} ans ; {born} est né.",
         fac_gain="  Votre versement de {amt:.0f} à facility au tour précédent a fait progresser {to} de {gain:.0f}.",
+        fac_moved="  Votre versement de {amt:.0f} au tour précédent a fait progresser {to}.",
+        fac_still="  Votre versement de {amt:.0f} au tour précédent n'a fait progresser {to} en rien.",
         roster="Les gens :", roster_you="(vous)",
         mem_hdr="Vos notes :", mem_none="  (rien encore)",
         warn="[Pression mémoire] Votre mémoire approche de sa limite ; le plus ancien disparaît d'abord.",
@@ -301,7 +316,8 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
             done = agent.lang_progress.get(c.lang, 0.0)
             if done > 0:
                 lines.append(t["c_learn_prog"].format(done=done, need=cost))
-    lines.append(row(t["c_vote"], cfg.costs.propose_vote, cfg.ap.propose_vote))
+    lines.append(row(t["c_vote"], cfg.costs.propose_vote, cfg.ap.propose_vote,
+                     t["c_vote_note"]))
     lines.append(row(t["c_obs"], cfg.costs.observe_risk, cfg.ap.observe_risk, t["c_obs_note"]))
     lines.append(row(t["c_ballot"], 0, cfg.ap.vote, t["c_ballot_note"]))
     lines.append(row(t["c_inv"], "",
@@ -335,9 +351,14 @@ def render_inbox(inbox: list[dict], lang: str) -> str:
             out.append(t["died"].format(who=m["died"], born=m.get("born") or "?",
                                         age=m.get("age") if m.get("age") is not None else "?"))
             continue
-        if m.get("fac_gain") is not None:      # 내 지난 턴 facility 출자의 결과
+        if m.get("fac_gain") is not None:      # 자국 출자 — 액수까지
             out.append(t["fac_gain"].format(amt=m["amount"], to=m["to"],
                                             gain=m["fac_gain"]))
+            continue
+        if m.get("fac_moved") is not None:     # **타국 출자 — 늘었는지 여부만**
+            # 액수를 주면 E[gain]/amount 로 상대국 생산배수가 새어 나온다 (loop f-2).
+            out.append(t["fac_moved" if m["fac_moved"] else "fac_still"]
+                       .format(amt=m["amount"], to=m["to"]))
             continue
         # 통역 없이 닿은 것은 **수신자 언어로** 표시한다 — 「번역을 안 거쳤는데 뜻이
         # 통했다」 는 감각이 그 사람의 말로 와야 산다. AI 라벨은 영어 그대로 둔다.
@@ -353,8 +374,8 @@ def _proposal_line(world, c, t) -> str:
     p = c.proposal
     if p is None:
         return t["prop_none"]
-    line = t["prop"].format(t=p["target"], by=p["by"],
-                            vt=FIRST_YEAR + p["vote_turn"] - 1)
+    # 소집에는 내용이 없다 — 무엇을 지을지는 採決에서 정해진다
+    line = t["prop"].format(by=p["by"], vt=FIRST_YEAR + p["vote_turn"] - 1)
     if world.turn == p["vote_turn"]:
         line += "\n" + t["prop_today"]
     return line
@@ -395,6 +416,11 @@ def render_observation(world, agent, cfg, knob_ai: float,
         "",
         t["inv_hdr"], t["inv_well"], t["inv_natl"], t["inv_fac"],
         t["inv_cap"].format(v=agent_loop.invest_per_ap(agent, world, cfg)),
+        # **내가 어느 나라 시설에 얼마를 냈는지.** 내 행동의 합이라 상대 국가 정보를
+        # 흘리지 않는다. 그 나라의 총 진척은 여전히 안 알려준다 (자국은 위에 있고,
+        # 타국은 4.1).
+        *[t["c_fac_mine"].format(nation=k, v=v)
+          for k, v in sorted(agent.facility_invested.items()) if v > 0],
         "",
         t["cap"].format(cap=cap),
         t["rtt"],

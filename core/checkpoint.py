@@ -24,7 +24,7 @@ from pathlib import Path
 
 from core.state import Agent, Country, World
 
-VERSION = 1
+VERSION = 2   # 8/18: Agent.facility_invested 추가
 
 
 def _agent_to_json(a: Agent) -> dict:

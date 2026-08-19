@@ -176,9 +176,11 @@ def test_learn_is_paid_in_instalments(cfg, world):
     (rec,) = sink.learns
     assert rec["charged"] == 250 and rec["required"] == 600 and rec["rung"] == 1.0
     assert rec["progress_before"] == 0.0
-    res = next(r for r in _results(client) if r.get("toward"))
+    # **응답은 내가 몰랐던 것만 담는다** — 요청한 국가·액수는 되돌려주지 않는다.
+    res = next(r for r in _results(client) if "progress" in r)
     assert res["progress"] == 250 and res["remaining"] == 350
-    assert "not enough yet" in res["effect"]
+    assert res["can_read_next_turn"] is False
+    assert "charged" not in res and "toward" not in res    # 잘리지 않았으므로 조용하다
 
 
 def test_learn_never_takes_more_than_needed(cfg, world):
@@ -221,7 +223,7 @@ def test_learn_action_points_scale_with_the_amount(cfg, world):
     lump = world.agents["Asla2"]; lump.ap, lump.budget = 1.0, 10_000.0
     r, _ = execute_tool("learn", {"country": "Miris", "amount": base, "reasoning": "r"},
                         world, lump, cfg, Sink(), 48.0)
-    assert r["ok"] and r["ap_spent"] == cfg.ap.learn_full     # 정가 전액 = 한 턴
+    assert r["ok"] and lump.ap == 1.0 - cfg.ap.learn_full    # 정가 전액 = 한 턴
 
     split = world.agents["Asla3"]; split.ap, split.budget = 1.0, 10_000.0
     sink = Sink()
