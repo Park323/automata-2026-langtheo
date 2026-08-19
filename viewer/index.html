@@ -444,18 +444,34 @@ function render(){
 }
 
 // ── 조작 ──────────────────────────────────────────────────────────────────
+//
+// **핸들러는 on() 으로만 붙인다.** `$("#x").onclick = f` 는 요소가 없으면 TypeError 로
+// 죽고, init 이 평평한 등록 시퀀스라 **그 아래 핸들러가 전부 안 붙는다.**
+//
+// 실제로 겪었다 (#16). 데모 버튼을 「폴더 열기 / 라이브」 로 교체하면서 요소만 지우고
+// 핸들러를 남겼더니, 그 줄 위의 재생·◀▶ 는 되고 아래의 라이브·폴더 열기가 먹통이었다.
+// 더 나쁜 것은 **증상만 보였다는 점**이다 — 콘솔을 열지 않으면 「버튼이 안 눌린다」 로만
+// 나타나고, 원인은 전혀 다른 곳(이벤트 위임·CSS·z-index)을 뒤지게 만든다.
+//
+// on() 은 실패를 **국소화하고 눈에 보이게** 한다. 그 자리만 건너뛰고 콘솔에 남긴다.
+const on = (id, ev, fn) => {
+  const el = $("#" + id);
+  if (el) el[ev] = fn;
+  else console.warn(`[viewer] #${id} 가 없습니다 — ${ev} 핸들러를 건너뜁니다`);
+};
+
 const go = t => { turn = Math.min(D.turns, Math.max(1, t)); render(); };
-$("#prev").onclick = () => go(turn - 1);
-$("#next").onclick = () => go(turn + 1);
-$("#scrub").oninput = e => go(+e.target.value);
-$("#play").onclick = () => {
+on("prev", "onclick", () => go(turn - 1));
+on("next", "onclick", () => go(turn + 1));
+on("scrub", "oninput", e => go(+e.target.value));
+on("play", "onclick", () => {
   if (timer){ clearInterval(timer); timer = null; $("#play").textContent = "▶ 재생"; return; }
   $("#play").textContent = "⏸ 정지";
   timer = setInterval(() => {
     if (turn >= D.turns){ clearInterval(timer); timer = null; $("#play").textContent = "▶ 재생"; return; }
     go(turn + 1);
   }, 700);
-};
+});
 addEventListener("keydown", e => {
   if (!D) return;
   if (e.key === "ArrowLeft") go(turn - 1);
@@ -463,7 +479,7 @@ addEventListener("keydown", e => {
   if (e.key === " "){ e.preventDefault(); $("#play").click(); }
 });
 
-$("#picker").onchange = async e => {
+on("picker", "onchange", async e => {
   const files = {};
   await Promise.all([...e.target.files].map(async f => {
     if (/\.(jsonl|json|yaml)$/.test(f.name)) files[f.name] = await f.text();
@@ -472,7 +488,7 @@ $("#picker").onchange = async e => {
   const dir = ([...e.target.files][0].webkitRelativePath || "").split("/")[0];
   source = null;                       // 스냅숏이라 다시 읽을 수 없다
   start(build(files), dir || "run");
-};
+});
 
 // ── 라이브 ────────────────────────────────────────────────────────────────
 // 런이 도는 동안 새 턴을 따라간다. 로그가 턴마다 append 되므로 다시 읽으면 그만이다.
@@ -493,9 +509,9 @@ function setLive(on){
     } catch { /* 파일이 쓰이는 중일 수 있다 — 다음 주기에 다시 */ }
   }, 3000);
 }
-$("#live").onclick = () => setLive(!liveTimer);
+on("live", "onclick", () => setLive(!liveTimer));
 
-$("#pickdir").onclick = async () => {
+on("pickdir", "onclick", async () => {
   if (!window.showDirectoryPicker){
     alert("이 브라우저는 폴더 열기를 지원하지 않습니다. 아래 파일 선택을 쓰세요 "
           + "(스냅숏이라 라이브는 안 됩니다).");
@@ -506,7 +522,7 @@ $("#pickdir").onclick = async () => {
   if (!files["state.jsonl"]) { alert("state.jsonl 이 없습니다 — 런 디렉터리를 골라주세요"); return; }
   source = { name: dir.name, read: () => readHandle(dir) };
   start(build(files), dir.name);
-};
+});
 
 const q = new URLSearchParams(location.search).get("run");
 if (q) loadFromPath(q).then(() => {
