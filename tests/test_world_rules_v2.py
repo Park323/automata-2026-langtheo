@@ -1119,3 +1119,28 @@ def test_the_child_does_not_inherit_my_contribution_record(cfg, world):
     _procreate_child(world, "Asla1", "유언", cfg, itertools.count(99), r)
     child = next(a for a in world.agents.values() if a.born_by == "procreate")
     assert child.facility_invested == {}
+
+
+def test_the_observation_never_describes_the_old_ballot(cfg, world):
+    """**규칙을 고치고 문구를 두면 그대로 남는다.** 소집이 내용을 갖지 않게 된 뒤에도
+    관측이 「제안」·「찬반」 을 말하고 있으면 에이전트는 옛 세계를 산다.
+
+    그리고 `propose_vote` 행에는 오래도록 설명이 **비어 있었다** — 다른 행은 다 있는데
+    성격이 바뀐 바로 그 도구만 없었다.
+    """
+    from domains.meteor import prompts
+    STALE = ("賛否", "赞成", "反対", "提案なし", "没有提案", "Aucune proposition",
+             "prononcer")
+    world.turn = 10
+    for aid in ("Asla1", "Ranoa1", "Miris1"):
+        obs = prompts.render_observation(world, world.agents[aid], cfg, 48.0)
+        for w in STALE:
+            assert w not in obs, (aid, w)
+        # propose_vote 행에 설명이 있고, 그 설명이 「고르지 않는다」 를 말한다
+        (line,) = [l for l in obs.splitlines() if l.strip().startswith("propose_vote")]
+        assert len(line.split()) > 3, line
+    # 採決 당일에는 세 선택지가 이름 그대로 보인다
+    world.countries["Asla"].proposal = {"by": "Asla2", "opened_turn": 6, "vote_turn": 10}
+    obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
+    for w in ("interceptor", "bunker", "abstain"):
+        assert w in obs

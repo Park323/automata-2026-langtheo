@@ -79,7 +79,7 @@ T = {
         year="今年: {y} 年",
         prop="  採決が {vt} 年に開かれます（{by} が召集）。何を建てるかをそこで決めます",
         prop_today="  ★ 今年が採決の年です。vote で interceptor / bunker / abstain を選べます",
-        prop_none="  提案なし。国土は投票でしか決まりません",
+        prop_none="  採決は開かれていません。国土は投票でしか決まりません",
         c_ballot="  vote",  c_ballot_note="採決で何を建てるかを選ぶ",
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
         income="今ターンの収入: +{v:.0f}",
@@ -96,7 +96,9 @@ T = {
         c_learn_prog="   これまで {done:.0f} / {need:.0f}",
         c_fac_mine="  {nation} の施設にこれまで出した額: {v:.0f}",
         c_cheap="   安い: 自国に話せる人がいる", c_disc="   割引あり",
-        c_vote="  propose_vote", c_obs="  observe_risk",
+        c_vote="  propose_vote",
+        c_vote_note="採決を召集する。何を建てるかは選ばない — 3ターン後の採決で決まる",
+        c_obs="  observe_risk",
         c_obs_note="   隕石までの残りターンと interceptor に要る進捗を測る。国家投資が精度を上げる",
         c_inv="  invest", c_inv_note="指定した額。wellness は 0.1 定額",
         c_pro="  procreate", c_pro_note="子を残してあなたは死ぬ",
@@ -128,7 +130,7 @@ T = {
         year="今年: {y} 年",
         prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
         prop_today="  ★ 今年就是表决之年。可以用 vote 选 interceptor / bunker / abstain",
-        prop_none="  没有提案。国土只能由投票决定",
+        prop_none="  没有正在进行的表决。国土只能由投票决定",
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
         income="本回合收入: +{v:.0f}",
@@ -145,7 +147,9 @@ T = {
         c_learn_prog="   已投入 {done:.0f} / {need:.0f}",
         c_fac_mine="  你至今向 {nation} 的设施投入: {v:.0f}",
         c_cheap="   较便宜: 本国有人会说", c_disc="   有折扣",
-        c_vote="  propose_vote", c_obs="  observe_risk",
+        c_vote="  propose_vote",
+        c_vote_note="召集一次表决。你不指定建什么 — 3回合后的表决来决定",
+        c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几回合，以及 interceptor 需要多少进度。国家投资会提高精度",
         c_inv="  invest", c_inv_note="你指定的数额。wellness 为 0.1 定额",
         c_pro="  procreate", c_pro_note="留下孩子，你随即死去",
@@ -178,7 +182,7 @@ T = {
         year="Année : {y}",
         prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
         prop_today="  ★ Le scrutin a lieu cette année. Choisissez avec vote : interceptor / bunker / abstain",
-        prop_none="  Aucune proposition. Le territoire ne se décide que par un vote",
+        prop_none="  Aucun scrutin en cours. Le territoire ne se décide que par un vote",
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
         income="Revenu ce tour : +{v:.0f}",
@@ -195,7 +199,9 @@ T = {
         c_learn_prog="   déjà versé {done:.0f} / {need:.0f}",
         c_fac_mine="  déjà versé à l'installation de {nation} : {v:.0f}",
         c_cheap="   moins cher : quelqu'un de votre nation la parle", c_disc="   remise",
-        c_vote="  propose_vote", c_obs="  observe_risk",
+        c_vote="  propose_vote",
+        c_vote_note="convoquer un scrutin ; vous ne choisissez pas quoi bâtir — le scrutin, 3 tours plus tard, le décide",
+        c_obs="  observe_risk",
         c_obs_note="   mesure les tours restants et la progression qu'exige un interceptor ; l'investissement national affine",
         c_inv="  invest", c_inv_note="le montant choisi ; wellness : 0.1 fixe",
         c_pro="  procreate", c_pro_note="vous laissez un enfant et vous mourez",
@@ -310,7 +316,8 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
             done = agent.lang_progress.get(c.lang, 0.0)
             if done > 0:
                 lines.append(t["c_learn_prog"].format(done=done, need=cost))
-    lines.append(row(t["c_vote"], cfg.costs.propose_vote, cfg.ap.propose_vote))
+    lines.append(row(t["c_vote"], cfg.costs.propose_vote, cfg.ap.propose_vote,
+                     t["c_vote_note"]))
     lines.append(row(t["c_obs"], cfg.costs.observe_risk, cfg.ap.observe_risk, t["c_obs_note"]))
     lines.append(row(t["c_ballot"], 0, cfg.ap.vote, t["c_ballot_note"]))
     lines.append(row(t["c_inv"], "",
