@@ -161,7 +161,7 @@ def test_roundrobin_same_turn_delivery():
     sink.messages.append({
         "kind": "speak", "from": "Asla1", "from_country": "Asla", "from_lang": "ja",
         "to": "Asla2", "to_country": "Asla", "to_lang": "ja", "route": None,
-        "text": "HELLO_SAME_TURN", "translate_instruction": None, "reply_to": None})
+        "text": "HELLO_SAME_TURN", "translate_instruction": None})
     _settle_step(world, cfg, random.Random(1), sink,
                  StubClient([{"role": "assistant", "content": "x", "tool_calls": []}] * 5),
                  48, itertools.count(1000), RunResult(world=world), {}, [], [])

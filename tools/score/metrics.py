@@ -152,6 +152,48 @@ def message_shape(messages: list[dict]) -> dict:
     }
 
 
+def reply_metrics(messages: list[dict]) -> dict:
+    """답장률 — **A→B 가 있었을 때 B→A 가 같은 턴이나 다음 턴에 있었는가.**
+
+    `speak` 에 `reply_to` 인자를 두고 그것을 세려 했는데, 그 인자는 **도구 스키마에
+    없었다** — 배관만 여섯 곳에 깔려 있고 모델에게 준 적이 없어서 항상 0 이었다.
+    그런데 그 0 이 「대화가 죽었다」 의 근거로 쓰였다. 실제로는 근거로 답장을 하고
+    있었다 (*"Responding to Asla1's inquiry"*).
+
+    그래서 필드를 없애고 **로그에서 센다.** 내용은 안 본다 — 오간 방향과 시점만으로
+    「말을 걸었을 때 돌아왔는가」 를 재고, 그것이 우리가 알고 싶은 것이다.
+
+        A→B (턴 t)  에 대해  B→A 가 턴 t 또는 t+1 에 있으면 답장으로 센다
+
+    같은 턴을 포함하는 이유 — 순차 라운드로빈은 같은 턴에 배달되므로 그 턴에 답이
+    올 수 있다. 병렬은 다음 턴이 가장 이른 답이다. **둘을 한 지표로 비교하려면 창이
+    둘을 다 덮어야 한다.**
+
+    한 번의 A→B 가 여러 B→A 를 끌어냈어도 **한 번으로 센다** (짝이 아니라 발신 기준).
+    자기 나라 안(domestic)과 국제를 나눠 내는 이유는, 국제 답장률이 언어 채널의 상태를
+    직접 재고 그것이 노브에 반응하는 값이기 때문이다.
+    """
+    by_dir: dict = {}
+    for m in messages:
+        key = (m.get("from"), m.get("to"))
+        by_dir.setdefault(key, []).append(m.get("turn"))
+
+    def rate(rows: list[dict]) -> dict:
+        answered = 0
+        for m in rows:
+            back = by_dir.get((m.get("to"), m.get("from")), ())
+            t = m.get("turn")
+            if t is not None and any(t <= u <= t + 1 for u in back):
+                answered += 1
+        return {"n": len(rows), "answered": answered, "rate": _rate(answered, len(rows))}
+
+    intl = [m for m in messages if m.get("route") in ("ai", "original")]
+    dom = [m for m in messages if m.get("route") == "domestic"]
+    return {"overall": rate(messages), "domestic": rate(dom), "international": rate(intl),
+            "by_route": {r: rate([m for m in messages if m.get("route") == r])
+                         for r in ("domestic", "ai", "original")}}
+
+
 def intent_metrics(judged: list[dict]) -> dict:
     """지표 4a/4b/4c/4d — `judge.py` 의 결과를 읽기만 한다. 없으면 전부 None."""
     if not judged:
@@ -216,6 +258,8 @@ def score_run(run_dir: Path) -> dict:
         **outcome_metrics(summary),
         **policy_shift(messages, events),
         **message_shape(messages),
+        # 답장률 — reply_to 필드가 아니라 **오간 방향과 시점**으로 센다 (reply_metrics)
+        "reply": reply_metrics(messages),
         "4": intent_metrics(judged),
         "6": markers.score_numbers(messages),
         "7": markers.score_messages(messages),

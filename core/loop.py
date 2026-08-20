@@ -482,7 +482,6 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         result.messages_log.append({"turn": world.turn, "msg_id": gid,
                                     "from": sent["from"], "to": sent["to"],
                                     "action": sent.get("kind", "speak"),
-                                    "reply_to": sent.get("reply_to"),
                                     "route": p["kind"], "delivered": p["delivered"],
                                     "meta": p["meta"]})
         if p["sender_notice"]:
@@ -790,7 +789,6 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         result.messages_log.append({"turn": world.turn, "msg_id": gid,
                                     "from": sent["from"], "to": sent["to"],
                                     "action": sent.get("kind", "speak"),
-                                    "reply_to": sent.get("reply_to"),
                                     "route": p["kind"], "delivered": p["delivered"],
                                     "meta": p["meta"]})
         if p["sender_notice"]:
