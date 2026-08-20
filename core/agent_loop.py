@@ -377,7 +377,6 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             # LLM 이 문자열 아닌 값을 줄 수 있어 강제 문자열화 (truncate·translate 크래시 방지)
             "text": str(args.get("text", "")),
             "translate_instruction": None if ti is None else str(ti),
-            "reply_to": args.get("reply_to"),
         })
         # 전달 성공/실패는 알리지 않는다 (original 은 도박). 접수·과금만.
         # 받는 이·다음 턴 도착은 내가 방금 말한 것이고 규칙이다. 남은 자원만 돌려준다.

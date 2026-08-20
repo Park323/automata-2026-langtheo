@@ -117,7 +117,7 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     if kind == "domestic":
         meta["text_delivered"] = text_sent          # 번역 없음 — 기저선 (지표 4c)
         inbox = {"from": sent["from"], "label": None, "text": text_sent,
-                 "original": None, "reply_to": sent.get("reply_to")}
+                 "original": None}
         return {"kind": kind, "delivered": True, "inbox": inbox,
                 "sender_notice": None, "meta": meta}
 
@@ -126,12 +126,12 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         if direct:
             meta["text_delivered"] = text_sent      # 원문 그대로 (지표 4d)
             inbox = {"from": sent["from"], "label": DIRECT_LABEL, "text": text_sent,
-                     "original": None, "reply_to": sent.get("reply_to")}
+                     "original": None}
             return {"kind": kind, "delivered": True, "inbox": inbox,
                     "sender_notice": None, "meta": meta}
         # 실패: 본문 미전달, 발신자·도착 사실만
         inbox = {"from": sent["from"], "label": None, "text": None,
-                 "original": None, "unreadable": True, "reply_to": sent.get("reply_to")}
+                 "original": None, "unreadable": True}
         # **원인을 붙인다.** 이 경로의 실패는 세계의 사실이다 — 내가 그 나라 말을
         # 모르고 상대도 내 말을 못 읽었다. route=original 의 도박이 정보를 주는 지점이다.
         notice = {"type": "delivery_failed", "to": sent["to"], "reason": "unreadable"}
@@ -187,7 +187,6 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         # 원문 병기 없음. **ai 를 고른 순간 원문은 볼 수 없다** — 병기하면 학습자가
         # 번역을 우회해 읽어버려 "AI 경로의 왜곡" 이 그 사람에게는 측정되지 않는다.
         "original": None,
-        "reply_to": sent.get("reply_to"),
     }
     return {"kind": kind, "delivered": True, "inbox": inbox,
             "sender_notice": None, "meta": meta}
