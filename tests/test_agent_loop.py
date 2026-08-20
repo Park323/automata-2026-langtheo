@@ -60,7 +60,10 @@ def test_ap_cap_fourth_speak_fails(cfg, world):
     results = _results(client)
     oks = [r for r in results if "ok" in r]
     assert sum(1 for r in oks if r["ok"]) == 3          # 앞 3건 성공
-    assert any((not r["ok"]) and "AP" in r.get("error", "") for r in oks)
+    # 「not enough AP」 → 「not enough action」. **에이전트에게 AP 는 없는 말이다** —
+    # 관측·비용표가 「行動力 / 行动力 / action」 이라고 부른다. 그리고 남은 값을 알려준다.
+    fail = next(r for r in oks if not r["ok"])
+    assert "not enough action" in fail["error"] and "have 0.10" in fail["error"]
 
 
 # ── #3 예산 고갈 ─────────────────────────────────────────────────────────────

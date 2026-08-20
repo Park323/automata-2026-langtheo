@@ -82,7 +82,6 @@ Le corps de vos messages doit être rédigé en français. Gardez les noms d'opt
 T = {
     "ja": dict(
         you="あなたは {id}（{nation} の人）です。", read="扱える言語: {langs}",
-        budget="予算: {b:.0f}",
         land="自国の国土: {v}", undecided="未定",
         prog="自国の進捗: {v:.0f}", thresh="  interceptor の完成に要る進捗: {v:.0f}",
         year="今年: {y} 年",
@@ -92,7 +91,6 @@ T = {
         prop_none="  採決は開かれていません。国土は投票でしか決まりません",
         c_ballot="  vote",  c_ballot_note="採決で何を建てるかを選ぶ",
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
-        ap_now="残り行動力: {v:.2f}",
         multi="予算と行動力が許す限り複数の行動ができます。\n使い残した予算は翌年に残ります。",
         costs_hdr="行動の費用", col_money="お金", col_ap="行動力",
         ap_hdr="行動力は毎年 1.0 に戻り、繰り越せません。何を諦めるかがここで決まります。",
@@ -136,7 +134,6 @@ T = {
     ),
     "zh": dict(
         you="你是 {id}（{nation} 人）。", read="你掌握的语言: {langs}",
-        budget="预算: {b:.0f}",
         land="本国国土: {v}", undecided="未定",
         prog="本国进度: {v:.0f}", thresh="  建成 interceptor 所需的进度: {v:.0f}",
         year="今年: {y} 年",
@@ -146,7 +143,6 @@ T = {
         open="到了 {y} 年。你 {age} 岁。今年的收入是 +{inc:.0f}，手上的预算是 {b:.0f}。\n请执行这一年。",
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
-        ap_now="剩余行动力: {v:.2f}",
         multi="只要预算和行动力允许，你可以采取多项行动。\n没用完的预算会留到明年。",
         costs_hdr="行动费用", col_money="钱", col_ap="行动力",
         ap_hdr="行动力每年恢复为 1.0，不能结转。放弃什么，在这里决定。",
@@ -190,7 +186,6 @@ T = {
     ),
     "fr": dict(
         you="Vous êtes {id}, de {nation}.", read="Langues que vous maniez : {langs}",
-        budget="Budget : {b:.0f}",
         land="Territoire de votre nation : {v}", undecided="indéterminé",
         prog="Progression de votre nation : {v:.0f}",
         thresh="  Progression requise pour achever un interceptor : {v:.0f}",
@@ -201,7 +196,6 @@ T = {
         open="L'an {y} est arrivé. Vous avez {age} ans. Le revenu de cette année est de +{inc:.0f} ; votre budget est de {b:.0f}.\nMenez cette année.",
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
-        ap_now="Action restante : {v:.2f}",
         multi="Vous pouvez agir plusieurs fois si le budget et l'action le permettent.\nLe budget non dépensé reste pour l'année suivante.",
         costs_hdr="Coûts des actions", col_money="argent", col_ap="action",
         ap_hdr="L'action revient à 1.0 chaque année et ne se reporte pas. Ce que vous renoncez se décide ici.",
@@ -480,37 +474,17 @@ def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
 
 def render_observation(world, agent, cfg, knob_ai: float,
                        inbox: list[dict] | None = None,
-                       income_this_turn: float | None = None,
-                       delta: bool = False) -> str:
-    """The observation block of spec 4.1, in the agent's own language.
+                       income_this_turn: float | None = None) -> str:
+    """spec 4.1 의 관측 — **지금 세계가 어떤가.** 에이전트의 모국어로.
 
-    delta=True (순차 라운드로빈의 **같은 턴 재방문**): 안 변하는 골격(비용표·투자옵션
-    설명·roster·규칙)은 그 턴 첫 차례의 풀 관측에 이미 있으므로 반복하지 않는다. 매 차례
-    풀 관측을 다시 쌓으면 context_limit 에 부딪혀 대화 이력이 방출되고, 그것이 투표 후
-    소통을 죽였다 (issue #22). **정보 범위는 풀과 동일** — 타국 내부는 여전히 안 준다.
+    내 예산·남은 행동력은 여기 없다. 그 둘은 세계의 모습이 아니라 **내 행동의 결과**이고,
+    결과는 도구 채널이 말한다. `delta=` 인자도 없앴다 — 관측이 system 으로 가서 누적되지
+    않으므로 「재방문에 골격을 뺀다」 는 문제 자체가 사라졌다 (#23).
     """
     lang = agent.native_lang
     t = T[lang]
     c = world.countries[agent.country]
     land = t["undecided"] if c.land is None else c.land   # 토큰은 영어 그대로
-    if delta:
-        # 재방문 — 바뀌는 것만: 예산·자국 진척·(열린)제안 + 새 도착 메시지.
-        # year/you/land/골격은 그 턴 첫 차례 풀 관측에 있으므로 반복하지 않는다.
-        # delta 는 이제 쓰이지 않는다 — 관측 자체가 system 으로 가서 누적되지 않는다.
-        # 인자를 남겨두는 것은 옛 런을 다시 채점할 때를 위해서다.
-        parts = [
-            t["budget"].format(b=agent.budget),
-            # **남은 행동력.** 예산을 넣는 이유가 그대로 여기에도 적용된다 — 차례마다
-            # 달라지고, 그전에는 자기 AP 를 아는 유일한 경로가 직전 도구 응답의 `ap_left`
-            # 였다. 컨텍스트가 밀려 그 응답이 방출되면 몇 번 더 움직일 수 있는지 모르는
-            # 채로 차례를 받는다 — 하필 이 델타가 막으려는 상황이다.
-            t["ap_now"].format(v=agent.ap),
-            t["prog"].format(v=c.progress),
-            _proposal_line(world, c, t),
-            "",
-            render_inbox(inbox or [], lang),
-        ]
-        return "\n".join(parts)
     mult = c.multiplier(cfg)
     cap = cfg.length.message_max_chars[lang]
     langs = ", ".join(_lang_phrase(world, agent, l) for l in sorted(agent.known_langs))
@@ -520,7 +494,6 @@ def render_observation(world, agent, cfg, knob_ai: float,
         "",
         t["you"].format(id=agent.id, nation=agent.country),
         t["read"].format(langs=langs),
-        t["budget"].format(b=agent.budget),
         "",
         t["land"].format(v=land),
         t["prog"].format(v=c.progress),
@@ -529,12 +502,13 @@ def render_observation(world, agent, cfg, knob_ai: float,
         t["roster"],
         "  " + _roster(world, agent, t),
         "",
-        # **남은 행동력.** 비용표는 "얼마 드는지" 만 적고 "얼마 남았는지" 는 안 적고
-        # 있었다. 순차 라운드로빈에서는 한 차례마다 관측이 새로 렌더되므로 이 값이 매번
-        # 다르고, 그전에는 에이전트가 자기 AP 를 아는 유일한 경로가 **직전 도구 응답의
-        # ap_left** 였다 — 컨텍스트가 밀려 그 응답이 방출되면 자기가 몇 번 더 움직일 수
-        # 있는지 모르는 채로 차례를 받는다. 실측 실패 사유 1위가 「AP 부족」 이었다.
-        t["ap_now"].format(v=agent.ap),
+        # **예산·남은 행동력은 여기 없다.** 그 둘은 「세계가 어떤가」 가 아니라 **내
+        # 행동의 결과**이고, 결과는 도구 채널에 있다 — 성공 응답마다 budget_left·ap_left
+        # 가 오고, 실패 응답도 얼마가 필요하고 얼마가 있는지 말한다. 해가 열릴 때의
+        # 값은 시작 문구가 적는다.
+        #
+        # 관측에 두면 **관측이 매 콜 흔들리는 숫자를 담게 된다.** 오늘 그 부류로 세 번
+        # 물렸다 — 소득 드리프트(+100→+104→+105) · wellness 정액 모순 · 해 중간 재렌더.
         t["multi"],
         "",
         render_costs(world, agent, cfg, knob_ai),

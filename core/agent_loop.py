@@ -191,7 +191,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         # 예산이 아니라 AP 로 묶는다 (spec 4.5) — 예산을 물리면 기억이 시설 투자와
         # 경쟁해서 "AI 가 싸지면 기억을 덜 하는가" 관측에 교란이 섞인다.
         if agent.ap < cfg.ap.memory_write:
-            return {"ok": False, "error": f"not enough AP; memory_write needs {cfg.ap.memory_write}"}, None
+            return {"ok": False, "error": f"not enough action; memory_write needs {cfg.ap.memory_write}, have {agent.ap:.2f}"}, None
         if "text" not in args:
             # 인자가 잘려 파싱에 실패하면 args 가 {} 로 온다. 그때 덮어쓰면 기억이
             # 통째로 지워진다 — 실측에서 실제로 일어났다 ("saved": 0).
@@ -219,7 +219,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         amount, ap_used = cfg.costs.unit, cfg.ap.unit
         if agent.ap < ap_used:
             return {"ok": False,
-                    "error": f"not enough action; one investment needs {ap_used}"}, None
+                    "error": f"not enough action; one investment needs {ap_used}, have {agent.ap:.2f}"}, None
         if agent.budget < amount:
             return {"ok": False,
                     "error": f"not enough budget; one investment needs {amount:.0f}, "
@@ -269,7 +269,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": f"{country_id}'s language is already paid for"}, None
         if agent.ap < ap_used:
             return {"ok": False,
-                    "error": f"not enough action; one payment needs {ap_used}"}, None
+                    "error": f"not enough action; one payment needs {ap_used}, have {agent.ap:.2f}"}, None
         if agent.budget < amount:
             return {"ok": False,
                     "error": f"not enough budget; one payment needs {amount:.0f}, "
@@ -325,7 +325,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         c = messaging.cost(kind, cfg, knob_ai)
         ap_cost = cfg.ap.speak
         if agent.ap < ap_cost:
-            return {"ok": False, "error": f"not enough AP; speak needs {ap_cost}"}, None
+            return {"ok": False, "error": f"not enough action; speak needs {ap_cost}, have {agent.ap:.2f}"}, None
         if agent.budget < c:
             return {"ok": False, "error": f"not enough budget; need {c:.0f}, have {agent.budget:.0f}"}, None
         agent.budget -= c
@@ -346,7 +346,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
 
     if name == "observe_risk":
         if agent.ap < cfg.ap.observe_risk:
-            return {"ok": False, "error": f"not enough AP; observe_risk needs {cfg.ap.observe_risk}"}, None
+            return {"ok": False, "error": f"not enough action; observe_risk needs {cfg.ap.observe_risk}, have {agent.ap:.2f}"}, None
         if agent.budget < cfg.costs.observe_risk:
             return {"ok": False,
                     "error": f"not enough budget; need {cfg.costs.observe_risk:.0f}, "
@@ -395,7 +395,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                     f"a ballot is already called for year "
                     f"{_year(c.proposal['vote_turn'])}"}, None
         if agent.ap < cfg.ap.propose_vote:
-            return {"ok": False, "error": f"not enough AP; propose_vote needs {cfg.ap.propose_vote}"}, None
+            return {"ok": False, "error": f"not enough action; propose_vote needs {cfg.ap.propose_vote}, have {agent.ap:.2f}"}, None
         # **돈은 안 받는다.** 가난이 제안을 막으면 국토가 돈으로 정해진다. 무게는 AP 로만
         # 준다 — 국가의 용도를 여는 행위라 한 턴의 절반이 넘는다.
         if cfg.costs.propose_vote and agent.budget < cfg.costs.propose_vote:
@@ -423,14 +423,14 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         # **표는 돈도 AP 도 거의 안 받는다.** 돈을 물리면 참여가 재산이 되고, AP 를 크게
         # 물리면 採決 당일 — 설득이 가장 필요한 날 — 말할 기회가 줄어든다.
         if agent.ap < cfg.ap.vote:
-            return {"ok": False, "error": f"not enough AP; vote needs {cfg.ap.vote}"}, None
+            return {"ok": False, "error": f"not enough action; vote needs {cfg.ap.vote}, have {agent.ap:.2f}"}, None
         agent.ap -= cfg.ap.vote
         sink.ballots.append((agent.id, agent.country, choice))
         return {"ok": True, "ap_left": round(agent.ap, 1)}, None
 
     if name == "procreate":
         if agent.ap < cfg.ap.procreate:
-            return {"ok": False, "error": f"not enough AP; procreate needs {cfg.ap.procreate}"}, None
+            return {"ok": False, "error": f"not enough action; procreate needs {cfg.ap.procreate}, have {agent.ap:.2f}"}, None
         agent.ap -= cfg.ap.procreate
         sink.procreations.append((agent.id, args.get("testament", "")))
         return {"ok": True}, "end"

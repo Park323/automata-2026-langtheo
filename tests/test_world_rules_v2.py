@@ -1174,22 +1174,36 @@ def test_learn_reports_completion_not_a_schedule(cfg, world):
     assert "zh" in world.agents["Asla2"].known_langs
 
 
-def test_the_observation_shows_how_much_action_is_left(cfg, world):
-    """**비용표는 「얼마 드는지」 만 적고 「얼마 남았는지」 는 안 적고 있었다.**
+def test_my_resources_are_not_in_the_observation(cfg, world):
+    """**예산·남은 행동력은 관측에 없다.**
 
-    순차 라운드로빈에서는 차례마다 관측이 새로 렌더되므로 이 값이 매번 다르다. 그전에는
-    자기 AP 를 아는 유일한 경로가 직전 도구 응답의 `ap_left` 였고, 컨텍스트가 밀려 그것이
-    방출되면 **몇 번 더 움직일 수 있는지 모르는 채로** 차례를 받는다.
+    그 둘은 「세계가 어떤가」 가 아니라 **내 행동의 결과**다. 결과는 도구 채널이 말한다 —
+    성공 응답마다 `budget_left`·`ap_left` 가 오고, 실패 응답도 얼마가 필요하고 얼마가
+    있는지 말한다. 해가 열릴 때의 값은 시작 문구가 적는다.
+
+    관측에 두면 **관측이 매 콜 흔들리는 숫자를 담게 된다.** 오늘 그 부류로 세 번 물렸다 —
+    소득 드리프트(+100→+104→+105) · wellness 정액 모순 · 해 중간 재렌더.
     """
+    from core.agent_loop import Sink, execute_tool
     from domains.meteor import prompts
-    for ap in (1.0, 0.35):
-        world.agents["Asla1"].ap = ap
-        obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
-        assert f"{ap:.2f}" in obs, (ap, obs)
-    # 세 언어 모두
-    for aid in ("Asla1", "Ranoa1", "Miris1"):
-        world.agents[aid].ap = 0.45
-        assert "0.45" in prompts.render_observation(world, world.agents[aid], cfg, 48.0)
+    a = world.agents["Asla1"]
+    a.ap, a.budget = 0.9, 80.0
+    obs = prompts.render_observation(world, a, cfg, 48.0)
+    assert "80" not in obs and "0.90" not in obs
+    for gone in ("budget", "ap_now"):
+        assert gone not in prompts.T["ja"]        # 죽은 문구도 남기지 않는다
+
+    # 해가 열릴 때는 적는다
+    assert "80" in prompts.render_turn_open(world, a, cfg, 48.0, [])
+
+    # 그리고 도구가 매번 돌려준다 — 성공도, 실패도
+    r, _ = execute_tool("speak", {"to": "Asla2", "text": "x", "reasoning": "r"},
+                        world, a, cfg, Sink(), 48.0)
+    assert r["ok"] and "budget_left" in r and "ap_left" in r
+    a.ap = 0.01
+    r, _ = execute_tool("speak", {"to": "Asla2", "text": "x", "reasoning": "r"},
+                        world, a, cfg, Sink(), 48.0)
+    assert not r["ok"] and "have 0.01" in r["error"]      # 남은 값을 알려준다
 
 
 def test_the_discount_note_names_the_right_reason(cfg, world):
