@@ -439,8 +439,19 @@ def _proposal_line(world, c, t) -> str:
 
 def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
                      inbox: list[dict] | None = None,
-                     income_this_turn: float | None = None) -> str:
-    """**턴을 여는 한 마디 + 이번에 도착한 것.** 이것만 대화에 쌓인다.
+                     income_this_turn: float | None = None,
+                     opening: bool = True) -> str:
+    """**해를 여는 한 마디 + 이번에 도착한 것.** 이것만 대화에 쌓인다.
+
+    `opening=False` 는 **같은 해의 두 번째 이후 차례**다 — 도착분만 적는다. 순차
+    라운드로빈은 한 해에 여러 번 차례가 오고 그 사이에 메시지가 도착하므로, 해 오프닝을
+    매번 다시 붙이면 **같은 해가 여러 번 열린 것처럼** 보인다. 실측에서 그랬다:
+
+        到了 42 年。你 5 岁。今年的收入是 +100，手上的预算是 100。
+        到了 42 年。你 5 岁。今年的收入是 +100，手上的预算是 97。   ← 같은 해다
+
+    게다가 안의 예산이 흔들리고(100 → 97) 이미 받은 소득을 다시 말한다.
+    `ovh15` 에서 135 에이전트-해 중 **49건(36%)** 이 오프닝을 두 번 이상 받았다.
 
     관측(지금 그러한 것)은 system 으로 옮겼다 — 매 콜 새로 만들므로 낡은 사본이 남지
     않는다. 그전에는 관측 전체가 매 턴 user 로 쌓여서, 한 요청 안에 **예산이 네 개**
@@ -450,6 +461,9 @@ def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
     이므로 반드시 쌓여야 한다 — state 처럼 갈아치우면 누가 무슨 말을 했는지 잊는다.
     """
     t = T[agent.native_lang]
+    if not opening:
+        # 같은 해의 재방문 — 도착분만. 온 것이 없으면 부를 이유가 없다.
+        return render_inbox(inbox, agent.native_lang) if inbox else ""
     # **소득은 「그 해에 일어난 일」 이다.** 관측(지금 그러한 것)에 두면 매 호출 다시
     # 계산돼 턴 안에서 값이 흔들린다 — 실측에서 한 해 안에 +100 → +104 → +105 로
     # 올라갔다 (남들이 national 에 넣어 배수가 커졌다). 게다가 **이미 받은 돈**인데

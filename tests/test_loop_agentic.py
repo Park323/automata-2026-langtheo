@@ -287,3 +287,37 @@ def test_growing_older_accumulates_in_the_conversation():
     # 관측에는 없다 — 그리고 죽은 문구도 남기지 않는다
     assert "歳" not in prompts.render_observation(world, a, cfg, 48.0)
     assert "age" not in prompts.T["ja"]
+
+
+def test_a_mid_year_arrival_does_not_reopen_the_year():
+    """**같은 해가 여러 번 열린 것처럼 보이고 있었다.**
+
+    순차 라운드로빈은 한 해에 여러 번 차례가 오고 그 사이에 메시지가 도착한다. 그때마다
+    해 오프닝을 다시 붙이면 실측처럼 된다:
+
+        到了 42 年。你 5 岁。今年的收入是 +100，手上的预算是 100。
+        到了 42 年。你 5 岁。今年的收入是 +100，手上的预算是 97。   ← 같은 해다
+
+    안의 예산이 흔들리고(100 → 97) 이미 받은 소득을 다시 말한다. `ovh15` 에서 135
+    에이전트-해 중 **49건(36%)** 이 오프닝을 두 번 이상 받았다.
+
+    재방문에는 **도착분만** 적는다.
+    """
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 1
+    a = world.agents["Asla1"]
+    a.budget = 100.0
+    box = [{"msg_id": 3, "from": "Asla2", "label": None, "text": "MARK", "original": None}]
+
+    first = prompts.render_turn_open(world, a, cfg, 48.0, box, opening=True)
+    later = prompts.render_turn_open(world, a, cfg, 48.0, box, opening=False)
+
+    assert "になりました" in first and "MARK" in first
+    assert "になりました" not in later and "MARK" in later      # 해를 다시 열지 않는다
+    assert "100" not in later                                 # 소득·예산도 다시 말하지 않는다
+
+    # 재방문에 온 것이 없으면 아무 말도 하지 않는다 (루프가 부르지도 않는다)
+    assert prompts.render_turn_open(world, a, cfg, 48.0, [], opening=False) == ""
+    # 병렬 경로는 한 해에 한 번뿐이므로 기본값이 True 여야 한다
+    assert "になりました" in prompts.render_turn_open(world, a, cfg, 48.0, box)

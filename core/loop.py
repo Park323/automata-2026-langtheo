@@ -893,7 +893,10 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
             # user 를 쌓을 이유가 없어졌다 (델타 렌더가 필요 없어진 이유다).
             fresh = aid not in first_seen
             first_seen.add(aid)
-            obs = render_obs(world, agent, cfg, knob_ai, inbox) if (fresh or inbox) else None
+            # **해 오프닝은 그 해 첫 차례에만.** 재방문에 다시 붙이면 같은 해가 여러 번
+            # 열린 것처럼 보이고, 안의 예산이 흔들린다 (실측 100 → 97).
+            obs = (render_obs(world, agent, cfg, knob_ai, inbox, opening=fresh)
+                   if (fresh or inbox) else None)
             sp = (system_prompt(agent, world, cfg, knob_ai) if callable(system_prompt)
                   else system_prompt)
             sink = Sink()
