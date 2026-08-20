@@ -416,7 +416,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         })
         # 전부 내가 몰랐던 것이다. "당신만의 것" 은 도구 설명에 이미 있다.
         return {"ok": True,
-                "turns_until_impact": seen, "typical_error": round(err, 1),
+                "years_until_impact": seen, "typical_error": round(err, 1),
                 "interceptor_needs": thr_seen,
                 "interceptor_typical_error_pct": round(rel * 100, 1),
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None

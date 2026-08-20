@@ -126,3 +126,24 @@ def test_roster_reveals_no_state(world_cfg):
     world.countries["Ranoa"].progress = 777.0
     obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0, [])
     assert "12345" not in obs and "777" not in obs
+
+
+def test_the_agent_never_hears_the_word_turn():
+    """**「턴」 과 「년」 이 섞여 있었다.** 나이는 「3 ターン」, 연도는 「42 年」, 시작
+    문구는 *"{y} 年になりました。この**ターン**を…"* 로 한 문장에 둘이 다 있었다.
+
+    세계는 해가 지나가는 곳이다. 「턴」 은 우리가 루프를 부르는 말이지 그 세계의 말이
+    아니다 — 에이전트에게는 한 번도 보이지 않아야 한다.
+    """
+    from core import tools
+    from domains.meteor import prompts
+    BANNED = {"ja": ("ターン",), "zh": ("回合",),
+              "fr": (" tour", " tours", "ce tour")}
+    for lang, words in BANNED.items():
+        blob = prompts.SYSTEM[lang] + "\n" + "\n".join(
+            str(v) for v in prompts.T[lang].values())
+        for w in words:
+            assert w not in blob, (lang, w)
+    for t in tools.TOOLS:
+        d = t["function"]["description"]
+        assert "turn" not in d.replace("end_turn", ""), t["function"]["name"]
