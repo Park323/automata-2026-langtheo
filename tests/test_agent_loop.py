@@ -179,7 +179,7 @@ def test_learn_is_paid_in_instalments(cfg, world):
     # **응답은 내가 몰랐던 것만 담는다** — 요청한 국가·액수는 되돌려주지 않는다.
     res = next(r for r in _results(client) if "progress" in r)
     assert res["progress"] == 250 and res["remaining"] == 350
-    assert res["can_read_next_turn"] is False
+    assert res["complete"] is False        # 일정이 아니라 사실만
     assert "charged" not in res and "toward" not in res    # 잘리지 않았으므로 조용하다
 
 
