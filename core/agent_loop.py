@@ -341,7 +341,16 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         return {"ok": True, **_clamped(asked, amount),
                 "progress": round(done, 1), "required": need,
                 "remaining": round(max(0.0, need - done), 1),
-                "can_read_next_turn": done >= need,
+                # **일정을 말하지 않는다 — 다 냈는지만 적는다.**
+                #
+                # `can_read_next_turn` 이었는데, 순차 라운드로빈이 학습을 **차례마다**
+                # 반영하게 되면서(_settle_step) 거짓이 됐다. 다 낸 순간부터 그 턴에 바로
+                # 쓸 수 있는데 "다음 턴부터" 라고 말하면, **막 배운 말을 그 턴에 안 쓰게
+                # 만든다** — 하필 학습이 살아나기를 바라는 지점이다.
+                #
+                # 병렬 경로는 여전히 턴 끝 정산이라 다음 턴부터다. execute_tool 은 어느
+                # 루프인지 모르므로, 언제부터인지는 관측의 「읽을 수 있는 언어」 가 답한다.
+                "complete": done >= need,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "speak":
