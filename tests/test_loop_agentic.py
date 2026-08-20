@@ -41,7 +41,7 @@ def _run(cfg, clients, translator=None, knob_ai=48, seed=1, parallel=True, seque
         return c
 
     return run_agentic(cfg, random.Random(seed), client_for, translator, knob_ai,
-                       prompts.render_observation, prompts.system_for, parallel=parallel,
+                       prompts.render_turn_open, prompts.system_for, parallel=parallel,
                        sequential=sequential)
 
 
@@ -203,3 +203,73 @@ def test_delta_keeps_the_two_resources_that_change_within_a_turn():
     assert "137" in delta and "0.35" in delta
     # 골격은 여전히 빠져 있다
     assert prompts.render_costs(world, agent, cfg, 48) not in delta
+
+
+# ── 상태는 system, 사건은 대화 (8/20) ───────────────────────────────────────
+
+def test_state_lives_in_system_and_never_piles_up_in_the_conversation():
+    """**관측이 매 턴 user 로 쌓이고 있었다.** 한 요청 안에 예산이 네 개(100·177·196·215),
+    비용표가 네 번 있었다 — 낭비이면서 모순이고, 그 부피가 context_limit 을 밀어
+    **대화 이력을 방출시켰다.** 상태를 쌓느라 대화를 버린 것이다.
+
+    이제 경계가 하나다: **지금 그러한 것은 system, 일어난 일은 대화.**
+    """
+    cfg = _cfg(3)
+    end = assistant_msg(tool_call("end_turn", "e", reasoning="r"))
+    ids = [f"{c}{i}" for c in ("Asla", "Ranoa", "Miris") for i in (1, 2, 3)]
+    clients = {a: StubClient([end] * 4) for a in ids}
+    res = run_agentic(cfg, random.Random(1), lambda a: clients[a],
+                      StubClient([{"role": "assistant", "content": "t",
+                                   "tool_calls": []}] * 30),
+                      48.0, prompts.render_turn_open, prompts.system_for,
+                      parallel=False)
+    convo = res.world.agents["Asla1"].convo
+    users = [m["content"] for m in convo if m["role"] == "user"]
+    assert len(users) == 3                       # 턴마다 한 마디
+    for u in users:
+        assert "予算" not in u                    # 상태가 대화에 없다
+        assert "行動の費用" not in u               # 비용표도 없다
+        assert "になりました" in u                 # 턴을 여는 한 마디는 있다
+
+
+def test_arrived_messages_stay_in_the_conversation():
+    """도착한 메시지는 **사건**이라 쌓여야 한다. 그것만이 에이전트 컨텍스트 안의 유일한
+    대화 기록이다 — 상태처럼 갈아치우면 누가 무슨 말을 했는지 잊는다."""
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 2
+    a = world.agents["Asla1"]
+    box = [{"msg_id": 7, "from": "Ranoa1", "label": "[AI translation]",
+            "text": "MARK_ARRIVED", "original": None}]
+    txt = prompts.render_turn_open(world, a, cfg, 48.0, box)
+    assert "MARK_ARRIVED" in txt and "Ranoa1" in txt
+    # 그리고 관측(system)에는 없다 — 두 군데 있으면 어긋날 수 있다
+    assert "MARK_ARRIVED" not in prompts.system_for(a, world, cfg, 48.0)
+
+
+def test_system_without_a_world_is_just_the_rules():
+    """문구 검사용. 규칙만 돌려준다."""
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    a = world.agents["Asla1"]
+    assert "予算" not in prompts.system_for(a)
+    assert "予算" in prompts.system_for(a, world, cfg, 48.0)
+
+
+def test_an_empty_inbox_says_nothing_at_all():
+    """**「도착한 메시지: 없음」 을 붙이면 아무 일도 없었다는 사실이 매 턴 쌓인다.**
+
+    없는 것을 굳이 적지 않는다 (`prompt_audit` 0절). 안 적혀 있으면 안 온 것이다.
+    """
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 3
+    a = world.agents["Asla1"]
+    empty = prompts.render_turn_open(world, a, cfg, 48.0, [])
+    assert empty.count("\n") == 0                     # 한 줄뿐이다
+    for none_word in ("なし", "没有", "aucun", "Aucun"):
+        assert none_word not in empty
+    got = prompts.render_turn_open(world, a, cfg, 48.0,
+                                   [{"msg_id": 1, "from": "Ranoa1", "label": None,
+                                     "text": "MARK", "original": None}])
+    assert "MARK" in got and got.startswith(empty)    # 머리말은 같다

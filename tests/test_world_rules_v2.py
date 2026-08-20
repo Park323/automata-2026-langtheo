@@ -448,7 +448,7 @@ def test_readings_are_normal_around_the_truth(cfg, world):
     for _ in range(400):
         a.ap = 1.0
         r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, sink, 48.0)
-        seen.append(r["turns_until_impact"])
+        seen.append(r["years_until_impact"])
     truth = cfg.world.total_turns - world.turn
     assert statistics.mean(seen) == pytest.approx(truth, abs=0.15 * r["typical_error"])
     assert statistics.pstdev(seen) == pytest.approx(r["typical_error"], rel=0.25)
@@ -466,7 +466,7 @@ def test_each_reading_is_fresh_but_costs(cfg, world):
     for _ in range(5):
         a.ap = 1.0
         r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, sink, 48.0)
-        seen.append(r["turns_until_impact"])
+        seen.append(r["years_until_impact"])
     assert len(set(seen)) > 1, "매번 같으면 새 관측이 아니다"
     assert a.budget == 1000.0 - 5 * cfg.costs.observe_risk
     assert [o["nth"] for o in sink.observations] == [0, 1, 2, 3, 4]
@@ -478,7 +478,7 @@ def test_reading_is_private(cfg, world):
     world.turn = 10
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 1000.0
     r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, Sink(), 48.0)
-    assert set(r) == {"ok", "turns_until_impact", "typical_error", "interceptor_needs",
+    assert set(r) == {"ok", "years_until_impact", "typical_error", "interceptor_needs",
                       "interceptor_typical_error_pct", "budget_left", "ap_left"}
     # "당신만의 것" 은 **도구 설명**에 있다 — 응답마다 되풀이할 규칙이 아니다
     from core.tools import TOOLS
@@ -653,8 +653,8 @@ def test_procreate_also_announces_the_pair(cfg, world):
     assert d["born"] == "Asla4" and d["born"] in world.agents
 
 
-def test_round_trip_takes_two_turns_is_stated(cfg, world):
-    """**도착만 알려주고 답신까지 한 턴 더라는 건 안 알려줬다.**
+def test_round_trip_takes_two_years_is_stated(cfg, world):
+    """**도착만 알려주고 답신까지 한 해 더라는 건 안 알려줬다.**
 
     그래서 같은 말을 반복해서 보내는 일이 잦았다 — 답이 안 오니 안 갔다고 여긴 것이다.
     """
@@ -662,11 +662,11 @@ def test_round_trip_takes_two_turns_is_stated(cfg, world):
     from domains.meteor import prompts
     d = next(t["function"]["description"] for t in tools.TOOLS
              if t["function"]["name"] == "speak")
-    assert "round trip takes two turns" in d
+    assert "round trip takes two years" in d
     assert "does not make it arrive sooner" in d
 
-    marks = {"ja": "返事が来るのはさらに次のターン", "zh": "回信要再下一回合",
-             "fr": "une réponse n'arrive qu'au tour d'après"}
+    marks = {"ja": "返事が来るのはさらにその翌年", "zh": "回信要再过一年",
+             "fr": "une réponse n'arrive que l'année d'après"}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
         assert marks[a.native_lang] in prompts.render_observation(world, a, cfg, 48.0)
@@ -1185,3 +1185,38 @@ def test_the_observation_shows_how_much_action_is_left(cfg, world):
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         world.agents[aid].ap = 0.45
         assert "0.45" in prompts.render_observation(world, world.agents[aid], cfg, 48.0)
+
+
+def test_the_discount_note_names_the_right_reason(cfg, world):
+    """**금액만 보고 문구를 골라서 부모 할인을 「자국에 구사자가 있다」 로 적었다.**
+
+    300 은 두 갈래로 나온다 — 국내 구사자 때문일 수도, 부모 때문일 수도 있다. 문구가
+    「割引あり」 처럼 뭉개져 있던 동안에는 그 거짓이 눈에 띄지 않았다. 사유를 적기로 한
+    순간 드러났다.
+
+    그리고 「先輩」 같은 말은 쓸 수 없다 — **실측에서 국내 구사자가 배우는 사람보다 어린
+    경우가 13%**(805짝 중 108건)다. 나이 관계는 이 세계에 없다.
+    """
+    from domains.meteor import prompts
+    t = prompts.T["ja"]
+    a = world.agents["Asla2"]                       # Asla1 이 zh 를 안다 (씨앗)
+
+    a.parent_langs = {"fr"}
+    obs = prompts.system_for(a, world, cfg, 48.0)
+    zh = next(l for l in obs.splitlines() if "Ranoa の言語を学ぶ" in l)
+    fr = next(l for l in obs.splitlines() if "Miris の言語を学ぶ" in l)
+    assert t["c_cheap"].strip() in zh                # 국내 구사자
+    assert t["c_disc"].strip() in fr                 # 부모
+    assert t["c_cheap"].strip() not in fr            # 서로 섞이지 않는다
+
+    a.parent_langs = {"zh"}                          # 둘 다 걸리면 1/4
+    obs = prompts.system_for(a, world, cfg, 48.0)
+    zh = next(l for l in obs.splitlines() if "Ranoa の言語を学ぶ" in l)
+    assert t["c_both"].strip() in zh and "150" in zh
+
+    a.parent_langs = set()                           # 정가에는 아무 문구도 없다
+    obs = prompts.system_for(a, world, cfg, 48.0)
+    fr = next(l for l in obs.splitlines() if "Miris の言語を学ぶ" in l)
+    assert "600" in fr
+    for k in ("c_cheap", "c_disc", "c_both"):
+        assert t[k].strip() not in fr

@@ -38,7 +38,7 @@ def _run(cfg, turns, seed=3, resume_from=None, checkpoint_to=None):
 
     return loop.run_agentic(
         cfg, random.Random(seed), client_for, StubClient(_script()), 24.0,
-        prompts.render_observation, prompts.system_for, parallel=False,
+        prompts.render_turn_open, prompts.system_for, parallel=False,
         sim_turns=turns, resume_from=resume_from, checkpoint_to=checkpoint_to)
 
 

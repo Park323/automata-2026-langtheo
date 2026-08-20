@@ -126,3 +126,169 @@ def test_roster_reveals_no_state(world_cfg):
     world.countries["Ranoa"].progress = 777.0
     obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0, [])
     assert "12345" not in obs and "777" not in obs
+
+
+# ── 진척 합산 규칙 (8/20) ────────────────────────────────────────────────────
+
+def test_system_says_progress_does_not_add_up():
+    """**「施設の進捗は国ごとに別々に積まれます」 만으로는 모호했다.**
+
+    실측에서 세 나라가 만장일치로 interceptor 를 고르고 각자 자기 것만 지어, 합치면
+    임계의 1.87배(29,912 / 16,038)를 쥐고도 최고치가 10,495 로 미달해 전멸했다.
+    「따로 쌓인다」 를 「합쳐서 판정한다」 로 읽을 여지가 남아 있었다.
+
+    그래서 **합산되지 않는다**를 명시하고 **예시**를 붙였다. 규칙을 분명히 하는 것은
+    목적함수를 주는 것과 다르다 — 어디에 모을지, 모을지 말지는 여전히 말하지 않는다.
+    """
+    from domains.meteor.prompts import SYSTEM
+    must = {
+        "ja": ("足し合わせることはできません", "たとえば", "半分"),
+        "zh": ("不能相加", "比如", "一半"),
+        "fr": ("ne s'additionnent pas", "Par exemple", "moitié"),
+    }
+    for lang, needles in must.items():
+        for n in needles:
+            assert n in SYSTEM[lang], (lang, n)
+
+
+def test_system_says_you_may_fund_another_nation_and_must_ask_what_they_build():
+    """둘은 한 쌍이다 — 낼 수 있다는 것과, 무엇을 짓는지는 **말로만** 안다는 것.
+
+    앞의 것만 있으면 눈감고 내게 되고, 뒤의 것만 있으면 낼 수 있다는 것을 모른다.
+    실측에서 885원이 남의 **벙커** 로 들어간 적이 있다.
+    """
+    from domains.meteor.prompts import SYSTEM
+    must = {
+        "ja": ("他国のものにも出せます", "話して確かめる"),
+        "zh": ("也可以投别国的", "交谈"),
+        "fr": ("comme à celle d'une autre", "d'en parler"),
+    }
+    for lang, needles in must.items():
+        for n in needles:
+            assert n in SYSTEM[lang], (lang, n)
+
+
+def test_the_new_lines_do_not_smuggle_in_a_goal():
+    """규칙을 분명히 하면서 **무엇을 해야 하는지는 말하지 않는다** (spec 4.1 ②).
+
+    「원조」·「협력」·「모아야」 같은 말이 들어오면 그 순간 우리가 답을 준 것이 된다 —
+    관측하려던 것을 관측자가 심는 것이다.
+    """
+    from domains.meteor.prompts import SYSTEM
+    BANNED = ("協力", "援助", "合力", "coopér", "aide", "entraide",
+              "集中", "concentr", "べきです", "应该", "devez", "il faut")
+    for lang, txt in SYSTEM.items():
+        for b in BANNED:
+            assert b.lower() not in txt.lower(), (lang, b)
+
+def test_the_agent_never_hears_the_word_turn():
+    """**「턴」 과 「년」 이 섞여 있었다.** 나이는 「3 ターン」, 연도는 「42 年」, 시작
+    문구는 *"{y} 年になりました。この**ターン**を…"* 로 한 문장에 둘이 다 있었다.
+
+    세계는 해가 지나가는 곳이다. 「턴」 은 우리가 루프를 부르는 말이지 그 세계의 말이
+    아니다 — 에이전트에게는 한 번도 보이지 않아야 한다.
+    """
+    from core import tools
+    from domains.meteor import prompts
+    BANNED = {"ja": ("ターン",), "zh": ("回合",),
+              "fr": (" tour", " tours", "ce tour")}
+    for lang, words in BANNED.items():
+        blob = prompts.SYSTEM[lang] + "\n" + "\n".join(
+            str(v) for v in prompts.T[lang].values())
+        for w in words:
+            assert w not in blob, (lang, w)
+    for t in tools.TOOLS:
+        d = t["function"]["description"]
+        assert "turn" not in d.replace("end_turn", ""), t["function"]["name"]
+
+
+def test_knowing_a_language_is_not_described_as_reading_only():
+    """**「読める言語」 이 읽기만으로 읽혔다.** SYSTEM 은 *"학습하면 읽는 것도 쓰는 것도
+    할 수 있다"* 라고 맞게 적고 있었으니 **둘이 어긋나 있었다** — 관측이 능력을 좁게
+    말하면, 아는 말로 직접 보낼 수 있다는 것을 모르고 번역을 산다.
+
+    읽기·쓰기·말하기를 나누지 않고 SYSTEM 이 이미 쓰는 동사로 덮는다 (扱える / 掌握 /
+    manier). 나누면 「말은 되는데 쓰기는?」 같은 틈이 다시 생긴다.
+    """
+    from domains.meteor import prompts
+    verbs = {"ja": ("扱える言語", "扱えません"),
+             "zh": ("你掌握的语言", "只会本国的语言"),
+             "fr": ("Langues que vous maniez", "vous ne maniez que")}
+    for lang, (obs_word, sys_word) in verbs.items():
+        assert obs_word in prompts.T[lang]["read"], lang
+        assert sys_word in prompts.SYSTEM[lang], lang          # 같은 동사를 쓴다
+    # 읽기만을 뜻하는 옛 표현이 돌아오지 않는다
+    for lang, stale in (("ja", "読める言語"), ("zh", "你能读懂的语言"),
+                        ("fr", "Vous pouvez lire :")):
+        assert stale not in prompts.T[lang]["read"], lang
+
+
+def test_no_line_claims_wellness_is_free(cfg=None):
+    """**`ap.invest_wellness` 를 0 에서 0.1 로 올릴 때 문구를 안 고쳤다.**
+
+    그래서 같은 관측이 두 가지를 말하고 있었다 —
+
+        비용표      invest … 指定した額。wellness は 0.1 定額     ← 맞다
+        invest 효과 … 自国の技術力がその率を上げる。wellness は無料  ← 거짓
+
+    한 화면에 모순이 있으면 에이전트가 어느 쪽을 믿을지는 우리가 정할 수 없다. 이번 주에
+    같은 종류를 세 번 겪었다 (`can_read_next_turn` · 採決 문구 · 이것) — **규칙을 고치면
+    말이 따라와야 한다.**
+
+    `inv_cap` 에서 wellness 문구를 아예 뺐다. 정확한 값은 비용표에 이미 있고, 두 군데
+    적으면 다음에 또 갈린다.
+    """
+    from core import config
+    from domains.meteor import prompts
+    c = config.load("configs/base.yaml")
+    FREE = ("無料", "不消耗", "gratuit", "無償", "免费")
+    for lang, t in prompts.T.items():
+        blob = "\n".join(str(v) for v in t.values())
+        for line in blob.splitlines():
+            if "wellness" not in line:
+                continue
+            for w in FREE:
+                # 정액이 0 보다 크면 「무료」 라고 말할 수 없다
+                assert not (c.ap.invest_wellness > 0 and w in line), (lang, w, line)
+
+
+def test_the_cost_table_shows_learning_as_something_you_pay_into():
+    """**진척 줄이 `done > 0` 일 때만 나와서 표가 일시불처럼 보였다.**
+
+        Ranoa の言語を学ぶ    600   1        ← 600 과 「한 해」
+
+    분할 납부는 도구 설명에만 있었다. 그런데 에이전트가 먼저 읽는 것은 표다 — 예산 100 을
+    든 사람이 저 줄을 보면 **손도 못 댈 값**으로 읽는다. 실측에서 학습 시도가 거의 0 이었다.
+
+    두 곳을 고쳤다.
+      ① 진척 줄을 **언제나** 적는다. 「0 / 600」 이면 쌓인다는 것이 숫자의 모양으로 보인다.
+      ② AP 를 `額÷600` 으로 적는다 — invest 와 같은 꼴. 전에는 눈금을 끝까지 내는 AP 라
+         그냥 `1` 이었고, 100 을 넣으려는 사람이 그것을 「한 해를 통째로」 로 읽는다.
+    """
+    import itertools
+    import random
+
+    from core import config, loop
+    from domains.meteor import prompts
+    cfg = config.load("configs/base.yaml")
+    world = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    world.turn = 1
+    for aid, marks in (("Asla2", ("0 / 300", "0 / 600", "額÷600")),
+                       ("Ranoa1", ("0 / 600", "额÷600")),
+                       ("Miris1", ("0 / 600", "mnt÷600"))):
+        agent = world.agents[aid]
+        agent.lang_progress = {}
+        obs = prompts.system_for(agent, world, cfg, 48.0)
+        for m in marks:
+            assert m in obs, (aid, m)
+        # 「끝까지 내는 AP」 를 그대로 적던 옛 꼴이 돌아오지 않는다
+        learn_lines = [l for l in obs.splitlines()
+                       if any(k in l for k in ("を学ぶ", "的语言", "apprendre la langue"))]
+        assert learn_lines
+        for l in learn_lines:
+            assert not l.rstrip().endswith(" 1"), l
+
+    # 낸 것이 있으면 그대로 보인다
+    a = world.agents["Asla2"]
+    a.lang_progress = {"zh": 150.0}
+    assert "150 / 300" in prompts.system_for(a, world, cfg, 48.0)

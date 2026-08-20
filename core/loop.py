@@ -624,8 +624,10 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
 
     def run_one(aid):
         agent = world.agents[aid]
-        # system_prompt 는 문자열이거나 (agent)->str 콜러블. 후자는 모국어 프롬프트용
-        sp = system_prompt(agent) if callable(system_prompt) else system_prompt
+        # **system 은 매 콜 새로 만든다** — 규칙 + 지금 그러한 것. 상태가 대화에 쌓이면
+        # 낡은 사본이 남아 모순이 되고(예산이 여러 개), 그 부피가 대화를 방출시킨다.
+        sp = (system_prompt(agent, world, cfg, knob_ai) if callable(system_prompt)
+              else system_prompt)
         try:
             return aid, run_agent_turn(world, agent, cfg, client_for(aid), sinks[aid],
                                        knob_ai, sp, user_prompts[aid])
@@ -884,9 +886,14 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
                 continue
             active = True
             inbox = _dequeue_inbox_pop(world, aid)      # 이 차례 도착분 (같은 턴 포함)
-            obs = render_obs(world, agent, cfg, knob_ai, inbox, delta=(aid in first_seen))
+            # 턴을 여는 한 마디 + 이번 차례에 도착한 것. **첫 차례이거나 새로 온 것이
+            # 있을 때만** 붙인다 — 관측은 system 이 매 콜 새로 담으므로, 차례마다
+            # user 를 쌓을 이유가 없어졌다 (델타 렌더가 필요 없어진 이유다).
+            fresh = aid not in first_seen
             first_seen.add(aid)
-            sp = system_prompt(agent) if callable(system_prompt) else system_prompt
+            obs = render_obs(world, agent, cfg, knob_ai, inbox) if (fresh or inbox) else None
+            sp = (system_prompt(agent, world, cfg, knob_ai) if callable(system_prompt)
+                  else system_prompt)
             sink = Sink()
             try:
                 done = agent_loop.run_agent_step(world, agent, cfg, client_for(aid), sink,
