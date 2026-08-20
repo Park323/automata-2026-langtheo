@@ -150,17 +150,44 @@ def report(run: pathlib.Path) -> dict:
 
 
 def _ceiling(rows: list[dict]) -> float:
-    """`evict` 가 허용하는 호출당 프롬프트 토큰의 천장.
+    """`evict` 가 허용하는 호출당 **실측** 프롬프트 토큰의 천장.
 
-    evict 는 `convo + 도구스키마 ≤ context_limit` 만 지킨다. system 은 convo 에 없고 매
-    호출 앞에 붙으므로 천장 밖이다. 따라서 천장은 `system + context_limit` 이다.
+    두 단계다.
+
+      ① evict 는 `convo + 도구스키마 ≤ context_limit` 만 지킨다. system 은 convo 에
+         없고 매 호출 앞에 붙으므로 천장 밖이다 — 추정 단위의 천장은
+         `system + context_limit`.
+
+      ② **evict 는 추정 토큰으로 세고 과금은 실측 토큰으로 한다.** 두 자가 다르므로
+         환산해야 한다. 같은 호출의 (실측 / 추정) 중앙값을 비율로 쓴다. CJK 에서 이
+         비율이 1 에서 벗어나므로 무시할 수 없다 — 호출별로 0.82~1.06 이었다.
+
+    처음 판에서는 `rows` 의 첫 system 을 집어 쓰다가, 그것이 **어느 호출의 것인지 고르지
+    않아** 짧은 것에 걸리면 천장을 낮게 잡았다. 지금은 에이전트 호출만 보고 중앙값을 쓴다.
     """
+    import statistics
+
     from core import agent_loop, config
     cfg = config.load("configs/base.yaml")
-    sysmsg = next((m for r in rows for m in r.get("request", {}).get("messages", [])
-                   if m.get("role") == "system"), None)
-    sys_tok = agent_loop.estimate_tokens([sysmsg]) if sysmsg else 0
-    return sys_tok + cfg.llm.context_limit
+    ratios, syss = [], []
+    for r in rows:
+        if r.get("kind") != "agent" or not r.get("response"):
+            continue
+        msgs = r.get("request", {}).get("messages") or []
+        sysm = [m for m in msgs if m.get("role") == "system"]
+        convo = [m for m in msgs if m.get("role") != "system"]
+        if not sysm:
+            continue
+        st = agent_loop.estimate_tokens(sysm)
+        est = st + agent_loop.estimate_tokens(convo) + \
+            agent_loop.tool_schema_tokens(r["request"].get("tools") or [])
+        real = (r["response"].get("usage") or {}).get("prompt_tokens") or 0
+        if est and real:
+            ratios.append(real / est)
+            syss.append(st)
+    if not ratios:
+        return float(cfg.llm.context_limit)
+    return statistics.median(ratios) * (statistics.median(syss) + cfg.llm.context_limit)
 
 
 def _prompt_share(rows: list[dict]) -> float:
