@@ -1144,3 +1144,44 @@ def test_the_observation_never_describes_the_old_ballot(cfg, world):
     obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
     for w in ("interceptor", "bunker", "abstain"):
         assert w in obs
+
+
+def test_learn_reports_completion_not_a_schedule(cfg, world):
+    """**`can_read_next_turn` 은 순차 라운드로빈에서 거짓이 됐다.**
+
+    `_settle_step` 이 학습을 차례마다 반영하므로, 다 낸 순간부터 그 턴에 바로 쓸 수
+    있다. "다음 턴부터" 라고 말하면 막 배운 말을 그 턴에 안 쓰게 만든다 — 하필 학습이
+    살아나기를 바라는 지점이다. 병렬 경로는 여전히 턴 끝이므로, **언제부터인지는
+    응답이 말하지 않고** 관측의 「읽을 수 있는 언어」 가 답한다.
+    """
+    from core.agent_loop import Sink, execute_tool
+    a = world.agents["Asla2"]; a.ap, a.budget = 1.0, 10_000.0
+    sink = Sink()
+    r, _ = execute_tool("learn", {"country": "Ranoa", "amount": 300, "reasoning": "r"},
+                        world, a, cfg, sink, 48.0)
+    assert r["complete"] is True and r["remaining"] == 0.0
+    assert not any("turn" in k for k in r)        # 일정을 말하는 필드가 없다
+
+    # 그리고 순차 정산은 실제로 같은 턴에 반영한다
+    res = loop.RunResult(world=world)
+    loop._settle_step(world, cfg, random.Random(0), sink, None, 48.0,
+                      itertools.count(900), res, {}, [], [])
+    assert "zh" in world.agents["Asla2"].known_langs
+
+
+def test_the_observation_shows_how_much_action_is_left(cfg, world):
+    """**비용표는 「얼마 드는지」 만 적고 「얼마 남았는지」 는 안 적고 있었다.**
+
+    순차 라운드로빈에서는 차례마다 관측이 새로 렌더되므로 이 값이 매번 다르다. 그전에는
+    자기 AP 를 아는 유일한 경로가 직전 도구 응답의 `ap_left` 였고, 컨텍스트가 밀려 그것이
+    방출되면 **몇 번 더 움직일 수 있는지 모르는 채로** 차례를 받는다.
+    """
+    from domains.meteor import prompts
+    for ap in (1.0, 0.35):
+        world.agents["Asla1"].ap = ap
+        obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
+        assert f"{ap:.2f}" in obs, (ap, obs)
+    # 세 언어 모두
+    for aid in ("Asla1", "Ranoa1", "Miris1"):
+        world.agents[aid].ap = 0.45
+        assert "0.45" in prompts.render_observation(world, world.agents[aid], cfg, 48.0)

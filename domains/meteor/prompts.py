@@ -83,6 +83,7 @@ T = {
         c_ballot="  vote",  c_ballot_note="採決で何を建てるかを選ぶ",
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
         income="今ターンの収入: +{v:.0f}",
+        ap_now="残り行動力: {v:.2f}",
         multi="予算が許す限り複数の行動ができます。メッセージは1ターンに3件まで。",
         costs_hdr="行動の費用", col_money="お金", col_ap="行動力",
         ap_hdr="行動力は毎ターン 1.0 に戻り、繰り越せません。何を諦めるかがここで決まります。",
@@ -134,6 +135,7 @@ T = {
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
         income="本回合收入: +{v:.0f}",
+        ap_now="剩余行动力: {v:.2f}",
         multi="只要预算允许，你可以采取多项行动。每回合最多 3 条消息。",
         costs_hdr="行动费用", col_money="钱", col_ap="行动力",
         ap_hdr="行动力每回合恢复为 1.0，不能结转。放弃什么，在这里决定。",
@@ -186,6 +188,7 @@ T = {
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
         income="Revenu ce tour : +{v:.0f}",
+        ap_now="Action restante : {v:.2f}",
         multi="Vous pouvez agir plusieurs fois si le budget le permet. Jusqu'à 3 messages par tour.",
         costs_hdr="Coûts des actions", col_money="argent", col_ap="action",
         ap_hdr="L'action revient à 1.0 chaque tour et ne se reporte pas. Ce que vous renoncez se décide ici.",
@@ -383,12 +386,35 @@ def _proposal_line(world, c, t) -> str:
 
 def render_observation(world, agent, cfg, knob_ai: float,
                        inbox: list[dict] | None = None,
-                       income_this_turn: float | None = None) -> str:
-    """The observation block of spec 4.1, in the agent's own language."""
+                       income_this_turn: float | None = None,
+                       delta: bool = False) -> str:
+    """The observation block of spec 4.1, in the agent's own language.
+
+    delta=True (순차 라운드로빈의 **같은 턴 재방문**): 안 변하는 골격(비용표·투자옵션
+    설명·roster·규칙)은 그 턴 첫 차례의 풀 관측에 이미 있으므로 반복하지 않는다. 매 차례
+    풀 관측을 다시 쌓으면 context_limit 에 부딪혀 대화 이력이 방출되고, 그것이 투표 후
+    소통을 죽였다 (issue #22). **정보 범위는 풀과 동일** — 타국 내부는 여전히 안 준다.
+    """
     lang = agent.native_lang
     t = T[lang]
     c = world.countries[agent.country]
     land = t["undecided"] if c.land is None else c.land   # 토큰은 영어 그대로
+    if delta:
+        # 재방문 — 바뀌는 것만: 예산·자국 진척·(열린)제안 + 새 도착 메시지.
+        # year/you/land/골격은 그 턴 첫 차례 풀 관측에 있으므로 반복하지 않는다.
+        parts = [
+            t["budget"].format(b=agent.budget),
+            # **남은 행동력.** 예산을 넣는 이유가 그대로 여기에도 적용된다 — 차례마다
+            # 달라지고, 그전에는 자기 AP 를 아는 유일한 경로가 직전 도구 응답의 `ap_left`
+            # 였다. 컨텍스트가 밀려 그 응답이 방출되면 몇 번 더 움직일 수 있는지 모르는
+            # 채로 차례를 받는다 — 하필 이 델타가 막으려는 상황이다.
+            t["ap_now"].format(v=agent.ap),
+            t["prog"].format(v=c.progress),
+            _proposal_line(world, c, t),
+            "",
+            render_inbox(inbox or [], lang),
+        ]
+        return "\n".join(parts)
     mult = c.multiplier(cfg)
     cap = cfg.length.message_max_chars[lang]
     langs = ", ".join(_lang_phrase(world, agent, l) for l in sorted(agent.known_langs))
@@ -410,6 +436,12 @@ def render_observation(world, agent, cfg, knob_ai: float,
         "  " + _roster(world, agent, t),
         "",
         t["income"].format(v=income),
+        # **남은 행동력.** 비용표는 "얼마 드는지" 만 적고 "얼마 남았는지" 는 안 적고
+        # 있었다. 순차 라운드로빈에서는 한 차례마다 관측이 새로 렌더되므로 이 값이 매번
+        # 다르고, 그전에는 에이전트가 자기 AP 를 아는 유일한 경로가 **직전 도구 응답의
+        # ap_left** 였다 — 컨텍스트가 밀려 그 응답이 방출되면 자기가 몇 번 더 움직일 수
+        # 있는지 모르는 채로 차례를 받는다. 실측 실패 사유 1위가 「AP 부족」 이었다.
+        t["ap_now"].format(v=agent.ap),
         t["multi"],
         "",
         render_costs(world, agent, cfg, knob_ai),
