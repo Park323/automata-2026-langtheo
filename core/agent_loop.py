@@ -392,7 +392,8 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         c = world.countries[agent.country]
         if c.proposal is not None:
             return {"ok": False, "error":
-                    f"a ballot is already called for turn {c.proposal['vote_turn']}"}, None
+                    f"a ballot is already called for year "
+                    f"{_year(c.proposal['vote_turn'])}"}, None
         if agent.ap < cfg.ap.propose_vote:
             return {"ok": False, "error": f"not enough AP; propose_vote needs {cfg.ap.propose_vote}"}, None
         # **돈은 안 받는다.** 가난이 제안을 막으면 국토가 돈으로 정해진다. 무게는 AP 로만
@@ -413,7 +414,8 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": "your nation has no open proposal"}, None
         if world.turn != c.proposal["vote_turn"]:
             return {"ok": False, "error":
-                    f"the ballot is on turn {c.proposal['vote_turn']}, not now"}, None
+                    f"the ballot is in year {_year(c.proposal['vote_turn'])}, "
+                    f"not now"}, None
         choice = args.get("choice")
         if choice not in ("interceptor", "bunker", "abstain"):
             return {"ok": False, "error":
@@ -504,6 +506,20 @@ def evict(convo: list[dict], limit_tokens: int, tool_tokens: int = 0) -> tuple[l
 def under_pressure(agent, cfg) -> bool:
     """직전 호출의 실측 토큰이 경고 임계를 넘었나."""
     return agent.last_prompt_tokens >= cfg.llm.context_limit * cfg.llm.warn_ratio
+
+
+def _year(turn: int) -> int:
+    """턴 번호를 **연도**로. 에이전트에게 「턴」 은 존재하지 않는다.
+
+    실패 메시지가 `a ballot is already called for turn 5` 라고 말하고 있었다 — 세계는
+    46년인데 내부 인덱스를 흘린다. 문구를 세 언어 다 「년」 으로 통일하면서 **에러
+    메시지는 훑지 않았다** (테스트도 SYSTEM·T·도구 설명만 봤다).
+
+    `FIRST_YEAR` 는 도메인에 있고 여기는 세계 공용이라 지연 임포트한다 — `T` 를
+    가져오는 것과 같은 방식이다.
+    """
+    from domains.meteor.prompts import FIRST_YEAR
+    return FIRST_YEAR + turn - 1
 
 
 def loop_vote_delay() -> int:

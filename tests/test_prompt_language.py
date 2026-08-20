@@ -15,6 +15,8 @@
 """
 from __future__ import annotations
 
+import pathlib
+
 import itertools
 import re
 
@@ -441,3 +443,41 @@ def test_the_lifespan_line_follows_the_config():
     import pytest
     with pytest.raises(TypeError):
         prompts.system_for(a)
+
+
+def test_no_error_message_says_turn():
+    """**문구를 「년」 으로 통일했지만 실패 메시지는 훑지 않았다.**
+
+    1턴 실측에서 에이전트가 이것을 봤다 — `a ballot is already called for turn 5`.
+    세계는 46년인데 내부 인덱스를 흘린다. 앞의 테스트(`..._never_hears_the_word_turn`)는
+    SYSTEM·T·도구 설명만 봤고 **에러 메시지는 그 그물 밖이었다.**
+
+    에러는 도구 채널이라 영어로 두지만(도구 설명과 같다), **「턴」 은 이 세계에 없는
+    단위**다.
+    """
+    import itertools
+    import random
+    import re
+
+    from core import config, loop
+    from core.agent_loop import Sink, execute_tool
+    from domains.meteor.prompts import FIRST_YEAR
+    c = config.load("configs/base.yaml")
+    world = loop.init_world(c, itertools.count(1), random.Random(1))
+    world.turn = 10
+    world.countries["Ranoa"].proposal = {"by": "Ranoa1", "opened_turn": 10, "vote_turn": 14}
+
+    a = world.agents["Ranoa2"]; a.ap, a.budget = 1.0, 100.0
+    for name, args in (("propose_vote", {"reasoning": "r"}),
+                       ("vote", {"choice": "bunker", "reasoning": "r"})):
+        r, _ = execute_tool(name, args, world, a, c, Sink(), 48.0)
+        assert not r["ok"], name
+        assert "turn" not in r["error"], (name, r["error"])
+        assert str(FIRST_YEAR + 14 - 1) in r["error"], (name, r["error"])
+
+    # 그물을 넓힌다 — 소스의 error 문자열에 「turn」 이 다시 들어오면 잡는다
+    src = pathlib.Path("core/agent_loop.py").read_text(encoding="utf-8")
+    for line in src.splitlines():
+        if '"error"' not in line and "error\":" not in line:
+            continue
+        assert not re.search(r"\bturn\b", line.replace("end_turn", "")), line

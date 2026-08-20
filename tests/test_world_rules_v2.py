@@ -98,7 +98,10 @@ def test_ballot_only_counts_on_the_ballot_turn(cfg, world):
     world.turn = 12                                    # 아직 유예 중
     res, _ = execute_tool("vote", {"choice": "bunker", "reasoning": "r"},
                           world, a, cfg, Sink(), 48.0)
-    assert not res["ok"] and "14" in res["error"]
+    # **연도로 말한다.** 「turn 14」 라고 말하고 있었다 — 세계는 55년인데 내부 인덱스다.
+    from domains.meteor.prompts import FIRST_YEAR
+    assert not res["ok"] and str(FIRST_YEAR + 14 - 1) in res["error"]
+    assert "turn" not in res["error"]
 
 
 def test_one_vote_decides_when_nobody_else_shows_up(cfg, world):
