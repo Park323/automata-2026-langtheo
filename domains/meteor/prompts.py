@@ -116,6 +116,7 @@ T = {
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n                          （省くと自国）",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
         rtt="送ったメッセージは翌年に届きます。返事が来るのはさらにその翌年です。",
+        rtt_same="送ったメッセージは、相手が次に動くときに届きます。同じ年のうちに返事が来ることもあります。",
         in_hdr="今届いたメッセージ:", ev_hdr="起きたこと:",
         in_fail="  通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
         in_fail_plain="  通知 — {to} 宛のメッセージは届きませんでした",
@@ -175,6 +176,7 @@ T = {
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
         rtt="你发出的消息在第二年送达。对方的回信要再过一年才会到。",
+        rtt_same="你发出的消息，会在对方下次行动时送达。回信也可能在同一年内到来。",
         in_hdr="刚送达的消息:", ev_hdr="发生的事:",
         in_fail="  通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
         in_fail_plain="  通知 — 你发给 {to} 的消息未能送达",
@@ -238,6 +240,7 @@ T = {
                           "             la vôtre ou une autre (sans `to`, la vôtre)",
         cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
         rtt="Un message part et arrive l'année suivante ; une réponse n'arrive que l'année d'après.",
+        rtt_same="Votre message arrive quand le destinataire agit la fois suivante ; une réponse peut venir dans la même année.",
         in_hdr="Messages qui viennent d'arriver :", ev_hdr="Ce qui est arrivé :",
         in_fail="  Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",
         in_fail_plain="  Avis — votre message à {to} n'a pas pu être délivré",
@@ -281,7 +284,8 @@ def typical_lifespan(cfg) -> float:
     return lam * math.gamma(1 + 1 / k)
 
 
-def system_for(agent, world=None, cfg=None, knob_ai: float | None = None) -> str:
+def system_for(agent, world=None, cfg=None, knob_ai: float | None = None,
+               same_year: bool = False) -> str:
     """에이전트의 모국어 SYSTEM — **세계 규칙 + 지금 그러한 것.**
 
     `world` 를 주면 관측을 이어 붙인다. 그것이 **매 콜 새로 만들어지는 이유**다:
@@ -301,7 +305,8 @@ def system_for(agent, world=None, cfg=None, knob_ai: float | None = None) -> str
     txt = SYSTEM[agent.native_lang].format(life=typical_lifespan(cfg))
     if world is None:
         return txt
-    return txt + "\n\n" + render_observation(world, agent, cfg, knob_ai or 0.0)
+    return txt + "\n\n" + render_observation(world, agent, cfg, knob_ai or 0.0,
+                                             same_year=same_year)
 
 
 def _nation_of_lang(world, lang: str) -> str:
@@ -416,6 +421,16 @@ def is_event(m: dict) -> bool:
     return any(k in m for k in _EVENT_KEYS)
 
 
+def render_arrivals(agent, inbox: list[dict]) -> str:
+    """**사람이 나에게 한 말.** 사건과 갈라서 자기 자리를 갖는다.
+
+    온 것이 없으면 빈 문자열이다 — 「도착: 없음」 을 적으면 아무 일도 없었다는 사실이
+    매 해 대화에 쌓인다 (0절: 없는 것을 굳이 적지 않는다).
+    """
+    rows = [m for m in (inbox or []) if not is_event(m)]
+    return render_inbox(rows, agent.native_lang) if rows else ""
+
+
 def render_events(agent, inbox: list[dict]) -> str:
     """**세계의 사건.** 해 오프닝과 섞지 않고 자기 자리를 갖는다.
 
@@ -449,6 +464,20 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
     """
     t = T[lang]
     out = [hdr if hdr is not None else t["in_hdr"]]
+    seen: set[str] = set()      # 같은 줄이 여러 번 오면 한 번만 (아래 _add)
+
+    def _add(line: str) -> None:
+        """**같은 말을 두 번 하지 않는다.**
+
+        「自国の技術力が上がりました」 가 한 해에 세 번 붙은 적이 있다 — 세 사람이 각각
+        national 에 넣어 통지가 세 번 갔다. 세 번 적어도 한 번보다 더 알려주는 것이
+        없고(얼마나 올랐는지는 SECRET 이다) 대화만 부푼다.
+
+        진척처럼 **값이 다르면 다른 줄**이라 접히지 않는다.
+        """
+        if line not in seen:
+            seen.add(line)
+            out.append(line)
     for m in inbox:
         if m.get("delivery_failed_to"):        # sender's failure notice (spec 5.1)
             # **원인을 섞지 않는다.** 엔진 장애를 「상대가 그 언어를 읽지 못한다」 로
@@ -456,40 +485,40 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
             # 이 실험의 핵심 변수를 에이전트의 머릿속에서 오염시킨다.
             key = ("in_fail" if m.get("delivery_failed_reason", "unreadable") == "unreadable"
                    else "in_fail_plain")
-            out.append(t[key].format(to=m["delivery_failed_to"]))
+            _add(t[key].format(to=m["delivery_failed_to"]))
             continue
         if m.get("unreadable"):
-            out.append(t["in_unread"].format(frm=m["from"]))
+            _add(t["in_unread"].format(frm=m["from"]))
             continue
         if m.get("died"):                      # 같은 나라 사람의 부고 (+ 후임)
-            out.append(t["died"].format(who=m["died"], born=m.get("born") or "?",
+            _add(t["died"].format(who=m["died"], born=m.get("born") or "?",
                                         age=m.get("age") if m.get("age") is not None else "?"))
             continue
         if m.get("prog_up") is not None:       # 자국 진척이 늘었다 (PUBLIC · 일괄)
-            out.append(t["prog_up"].format(gain=m["prog_up"], now=m["now"]))
+            _add(t["prog_up"].format(gain=m["prog_up"], now=m["now"]))
             continue
         if m.get("cap_up"):                    # 자국 기술력이 올랐다 (PUBLIC)
-            out.append(t["cap_up"])
+            _add(t["cap_up"])
             continue
         if m.get("ballot"):                    # 採決 결과 (PUBLIC)
             b = m["ballot"]
             if b == "changed":
-                out.append(t["ballot_new"].format(land=m["land"], lost=m["lost"]))
+                _add(t["ballot_new"].format(land=m["land"], lost=m["lost"]))
             elif b == "kept":
-                out.append(t["ballot_kept"].format(land=m["land"]))
+                _add(t["ballot_kept"].format(land=m["land"]))
             else:
-                out.append(t["ballot_none"].format(land=m["land"] or t["undecided"]))
+                _add(t["ballot_none"].format(land=m["land"] or t["undecided"]))
             continue
         if m.get("outcome"):                   # 요격기 완성 · 운석 (GLOBAL)
-            out.append(t["outcome_win" if m["outcome"] == "win" else "outcome_lose"])
+            _add(t["outcome_win" if m["outcome"] == "win" else "outcome_lose"])
             continue
         if m.get("fac_gain") is not None:      # 자국 출자 — 액수까지
-            out.append(t["fac_gain"].format(amt=m["amount"], to=m["to"],
+            _add(t["fac_gain"].format(amt=m["amount"], to=m["to"],
                                             gain=m["fac_gain"]))
             continue
         if m.get("fac_moved") is not None:     # **타국 출자 — 늘었는지 여부만**
             # 액수를 주면 E[gain]/amount 로 상대국 생산배수가 새어 나온다 (loop f-2).
-            out.append(t["fac_moved" if m["fac_moved"] else "fac_still"]
+            _add(t["fac_moved" if m["fac_moved"] else "fac_still"]
                        .format(amt=m["amount"], to=m["to"]))
             continue
         # **두 라벨 모두 수신자 언어로.** 「번역을 안 거쳤는데 뜻이 통했다」 도, 「이건
@@ -500,8 +529,8 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
         label = (t["lbl_direct"] if raw == "[direct]"
                  else t["lbl_ai"] if raw == "[AI translation]"
                  else (f" {raw}" if raw else ""))
-        out.append(t["in_from"].format(frm=m["from"], label=label))
-        out.append(f'      "{m.get("text", "")}"')
+        _add(t["in_from"].format(frm=m["from"], label=label))
+        _add(f'      "{m.get("text", "")}"')
     return "\n".join(out)
 
 
@@ -541,11 +570,10 @@ def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
     이므로 반드시 쌓여야 한다 — state 처럼 갈아치우면 누가 무슨 말을 했는지 잊는다.
     """
     t = T[agent.native_lang]
-    # **사건은 여기 없다.** `render_events` 가 따로 담고, 루프가 그것을 먼저 붙인다.
-    said = [m for m in (inbox or []) if not is_event(m)]
+    # **사건도 도착분도 여기 없다.** 각각 `render_events`·`render_arrivals` 가 담고,
+    # 루프가 순서를 정한다 — 그래야 「새해가 밝았다」 가 그 해의 사건보다 앞에 온다.
     if not opening:
-        # 같은 해의 재방문 — 도착분만. 온 것이 없으면 부를 이유가 없다.
-        return render_inbox(said, agent.native_lang) if said else ""
+        return ""
     # **소득은 「그 해에 일어난 일」 이다.** 관측(지금 그러한 것)에 두면 매 호출 다시
     # 계산돼 턴 안에서 값이 흔들린다 — 실측에서 한 해 안에 +100 → +104 → +105 로
     # 올라갔다 (남들이 national 에 넣어 배수가 커졌다). 게다가 **이미 받은 돈**인데
@@ -560,18 +588,19 @@ def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
     # 덮여서 그 감각이 생기지 않는다. 수명 곡선은 여전히 비공개다 (4.1).
     head = t["open"].format(y=FIRST_YEAR + world.turn - 1, age=agent.age,
                             inc=inc, b=agent.budget)
-    if not said:
-        # **온 것이 없으면 아무 말도 하지 않는다.** 「도착한 메시지: 없음」 을 붙이면
-        # 아무 일도 없었다는 사실이 매 해 대화에 쌓인다. 없는 것을 굳이 적지 않는 것이
-        # 0절의 원칙이고, 안 적혀 있으면 안 온 것이다.
-        return head
-    return f"{head}\n\n{render_inbox(said, agent.native_lang)}"
+    return head
 
 
 def render_observation(world, agent, cfg, knob_ai: float,
                        inbox: list[dict] | None = None,
-                       income_this_turn: float | None = None) -> str:
+                       income_this_turn: float | None = None,
+                       same_year: bool = False) -> str:
     """spec 4.1 의 관측 — **지금 세계가 어떤가.** 에이전트의 모국어로.
+
+    `same_year` 는 **순차 라운드로빈**이다 — 메시지가 같은 해에 도착한다. 그 문구가
+    「翌年に届きます」 로 남아 있었고 에이전트가 그 거짓을 믿고 계획했다 (실측 근거:
+    「メッセージ送付は翌年43年に届く」). 같은 해에 답이 올 수 있다는 것은 **큰 차이**라,
+    모르면 한 해 안의 대화를 시도하지 않는다.
 
     내 예산·남은 행동력은 여기 없다. 그 둘은 세계의 모습이 아니라 **내 행동의 결과**이고,
     결과는 도구 채널이 말한다. `delta=` 인자도 없앴다 — 관측이 system 으로 가서 누적되지
@@ -586,8 +615,8 @@ def render_observation(world, agent, cfg, knob_ai: float,
     langs = ", ".join(_lang_phrase(world, agent, l) for l in sorted(agent.known_langs))
 
     parts = [
-        t["year"].format(y=FIRST_YEAR + world.turn - 1),
-        "",
+        # **연도는 여기 없다.** 해 시작 문구가 「42 年になりました」 라고 말하고, 그것이
+        # 대화에 쌓여 해가 지나가는 것이 보인다. 관측에 또 적으면 같은 사실이 두 군데다.
         t["you"].format(id=agent.id, nation=agent.country),
         t["read"].format(langs=langs),
         "",
@@ -617,7 +646,7 @@ def render_observation(world, agent, cfg, knob_ai: float,
           for k, v in sorted(agent.facility_invested.items()) if v > 0],
         "",
         t["cap"].format(cap=cap),
-        t["rtt"],
+        t["rtt_same" if same_year else "rtt"],
         "",
     ]
     parts += [t["mem_hdr"], ("  " + agent.memory) if agent.memory else t["mem_none"]]

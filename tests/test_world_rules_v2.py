@@ -388,12 +388,13 @@ def test_observation_has_no_separate_testament_block(cfg, world):
 # ── 관측의 새 항목 ──────────────────────────────────────────────────────────────
 
 def test_year_starts_at_42(cfg, world):
-    """1 로 시작하면 '첫 해라서 아직 괜찮다' 같은 편향이 붙는다."""
+    """연도는 **해 시작 문구**가 말한다. 관측에는 없다 — 같은 사실이 두 군데면 어긋난다."""
     from domains.meteor import prompts
     world.turn = 1
-    assert "42" in prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
-    world.turn = 10
-    assert "51" in prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
+    a = world.agents["Asla1"]
+    assert "42" in prompts.render_turn_open(world, a, cfg, 48.0, [])
+    obs = prompts.render_observation(world, a, cfg, 48.0)
+    assert "42" not in obs and prompts.T["ja"]["year"].split(":")[0] not in obs
 
 
 def test_threshold_is_no_longer_free(cfg, world):
@@ -668,26 +669,38 @@ def test_procreate_also_announces_the_pair(cfg, world):
     assert d["born"] == "Asla4" and d["born"] in world.agents
 
 
-def test_round_trip_takes_two_years_is_stated(cfg, world):
-    """**도착만 알려주고 답신까지 한 해 더라는 건 안 알려줬다.**
+def test_the_delivery_rule_matches_the_loop_that_is_running(cfg, world):
+    """**문구가 거짓이었다.** 순차 라운드로빈은 메시지를 **같은 해**에 배달하는데
+    (`deliver_turn = world.turn`) 관측은 「翌年に届きます」 라고 적고 도구 설명은
+    「a round trip takes two years」 라고 했다.
 
-    그래서 같은 말을 반복해서 보내는 일이 잦았다 — 답이 안 오니 안 갔다고 여긴 것이다.
+    에이전트가 그 거짓을 믿고 계획했다 — 실측 근거: 「メッセージ送付は翌年43年に届く」.
+    같은 해에 답이 올 수 있다는 것은 **큰 차이**라, 모르면 한 해 안의 대화를 시도하지
+    않는다. 이번 주에 「규칙을 고치고 말을 두었다」 를 다섯 번째로 겪은 자리다.
+
+    도구 설명은 **두 경로에서 다 참인** 말로 바꿨다 — 「상대가 다음에 행동할 때 도착한다」.
     """
     from core import tools
     from domains.meteor import prompts
     d = next(t["function"]["description"] for t in tools.TOOLS
              if t["function"]["name"] == "speak")
-    assert "round trip takes two years" in d
+    assert "next year" not in d and "two years" not in d
+    assert "when that person next acts" in d
     assert "does not make it arrive sooner" in d
 
-    marks = {"ja": "返事が来るのはさらにその翌年", "zh": "回信要再过一年",
-             "fr": "une réponse n'arrive que l'année d'après"}
+    a = world.agents["Asla1"]
+    par = prompts.render_observation(world, a, cfg, 48.0)
+    seq = prompts.render_observation(world, a, cfg, 48.0, same_year=True)
+    assert "翌年に届きます" in par                   # 병렬은 다음 해가 맞다
+    assert "翌年に届きます" not in seq
+    assert "同じ年のうちに返事" in seq               # 순차는 같은 해에 올 수 있다
+
+    marks = {"ja": "同じ年のうちに", "zh": "同一年内", "fr": "la même année"}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
-        a = world.agents[aid]
-        assert marks[a.native_lang] in prompts.render_observation(world, a, cfg, 48.0)
+        ag = world.agents[aid]
+        txt = prompts.render_observation(world, ag, cfg, 48.0, same_year=True)
+        assert marks[ag.native_lang] in txt, ag.native_lang
 
-
-# ── 초기화 (8/17) ────────────────────────────────────────────────────────────
 
 def test_one_speaker_per_nation_at_the_start(cfg):
     """나라마다 **한 명**이 이웃 나라 말을 이미 안다 (순환).

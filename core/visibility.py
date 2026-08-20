@@ -67,11 +67,15 @@ FACTS: dict[str, tuple[Vis, str]] = {
     "fac_gain":          (Vis.PRIVATE, "내 출자가 진척을 얼마 올렸나 (타국이면 여부만)"),
     "delivery_failed":   (Vis.PRIVATE, "내가 보낸 말이 닿지 않았다"),
     "message":           (Vis.PRIVATE, "주고받은 말. **보낸 이와 받는 이만**"),
+    "income":            (Vis.PRIVATE, "이 해에 내가 받은 수입. 나라 사람 모두가 같은 값을 "
+                                       "받지만 **누구에게도 통지되지 않는다** — 내 해 시작 "
+                                       "문구에만 적힌다. 그 값에서 국가 배수를 읽을 수 "
+                                       "있는 것은 PUBLIC 파생이고, 그건 그래도 된다"),
 
     # ── PUBLIC — 그 나라 안 ────────────────────────────────────────────────
     "land":              (Vis.PUBLIC, "자국 국토"),
     "progress":          (Vis.PUBLIC, "자국 진척"),
-    "income":            (Vis.PUBLIC, "자국 수입 (생산배수가 반영된 값)"),
+
     "proposal":          (Vis.PUBLIC, "열린 採決과 採決일"),
     "ballot_result":     (Vis.PUBLIC, "採決 결과와 **그때 사라진 진척**. 국토를 정하는 것은 "
                                       "그 나라 사람들이고, 그 대가도 그들이 함께 안다"),

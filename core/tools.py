@@ -56,9 +56,9 @@ def _build(reasoning_arg: bool) -> list[dict]:
       return _fn(name, desc, props, req, reasoning and reasoning_arg)
   return [
     fn("speak",
-        "Send a message to one recipient. It arrives the next year, and a reply "
-        "can only arrive the year after that — a round trip takes two years. "
-        "Sending the same thing again before then does not make it arrive sooner.",
+        "Send a message to one recipient. It arrives when that person next acts, and "
+        "their reply reaches you when you next act after that. Sending the same thing "
+        "again before then does not make it arrive sooner.",
         {"to": {"type": "string", "description": "recipient id (e.g. Ranoa2)"},
          "route": _ROUTE, "text": _TEXT,
          "translate_instruction": _TR_INSTR},

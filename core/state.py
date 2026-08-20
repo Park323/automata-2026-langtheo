@@ -26,6 +26,12 @@ class Agent:
     convo: list = field(default_factory=list)
     last_prompt_tokens: int = 0   # 직전 호출의 실측 프롬프트 토큰 (압박 판정에 쓴다)
     budget_start: float = 0.0     # 이번 턴 **결정 시점**의 예산. x̂ 의 분모 (spec 8.4)
+    # **이 해에 실제로 받은 수입.** 해 시작 문구가 이 값을 적는다.
+    #
+    # 전에는 문구가 렌더 시점에 다시 계산했다 — 순차 라운드로빈은 나중에 차례가 온 사람의
+    # 오프닝이 남들이 national 에 넣은 **뒤**에 만들어지므로, 실제로 100 을 받았는데
+    # 「+102」 라고 적혔다. 소득은 턴 시작에 한꺼번에 주어지는 그 해의 사실이다.
+    income_this_year: float = 0.0
     wellness_spent: float = 0.0   # 생애 누적 wellness 출자. 본인에게는 비공개
     # 언어별 학습 진척 {lang: 누적 지불액}. 한 번에 다 낼 필요가 없고, 진척은
     # 관측에 그대로 보인다 (별도 관측 없이 투명). 완료 판정은 **그 순간의** 학습가로

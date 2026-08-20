@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import random
 import threading
@@ -181,7 +182,11 @@ def main() -> None:
                           client_for=lambda aid: agent_client, translator=translator,
                           knob_ai=knob, render_obs=prompts.render_turn_open,
                           render_events=prompts.render_events,
-                          system_prompt=prompts.system_for, sequential=args.sequential,
+                          render_arrivals=prompts.render_arrivals,
+                          # 순차면 메시지가 **같은 해**에 도착한다 — 문구가 그것을
+                          # 말해야 한다 (「翌年に届く」 를 믿고 계획하던 것을 고침)
+                          system_prompt=functools.partial(
+                              prompts.system_for, same_year=args.sequential), sequential=args.sequential,
                           on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)),
                           sim_turns=args.turns,
                           resume_from=ckpt if resuming else None,

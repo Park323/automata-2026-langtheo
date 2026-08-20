@@ -603,11 +603,17 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
 def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
                      counter: "itertools.count", client_for, translator, knob_ai: float,
                      render_obs, system_prompt, msg_ids, is_last: bool = False,
-                     parallel: bool = True, on_turn_end=None, render_events=None) -> None:
+                     parallel: bool = True, on_turn_end=None, render_events=None,
+                     render_arrivals=None) -> None:
     """한 턴 (에이전트). spec 3.1 순서를 지키되 3단계는 9명 병렬, 5단계는 정렬 정산."""
     # 1. 소득 + AP 리셋
     for a in world.agents.values():
-        a.budget += cfg.income.per_turn * world.countries[a.country].multiplier(cfg)
+        inc = cfg.income.per_turn * world.countries[a.country].multiplier(cfg)
+        a.budget += inc
+        # **받은 값을 적어 둔다.** 해 시작 문구가 렌더 때 다시 계산하면, 순차에서 나중에
+        # 차례가 온 사람은 남들이 national 에 넣은 뒤의 값을 보게 된다 — 실제로 100 을
+        # 받았는데 「+102」 라고 적혔다.
+        a.income_this_year = inc
         a.ap = cfg.turn.action_points
         # ★ x̂ 의 분모. "그 눈금을 감당할 수 있었는데도 안 배웠다" 를 세려면 **결정
         #   시점의** 예산이 필요하다. 턴 끝 예산으로 대신하면 다른 데 써버린 사람이
@@ -619,9 +625,14 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
     snapshot_uids = {world.agents[aid].uid for aid in snapshot_ids}
     inboxes = {aid: _dequeue_inbox(world, aid) for aid in snapshot_ids}
     world.inbox_queue = [e for e in world.inbox_queue if e["deliver_turn"] > world.turn]
-    for aid in inboxes:
-        _push_events(world.agents[aid], inboxes[aid], render_events)   # 사건이 먼저
-    user_prompts = {aid: render_obs(world, world.agents[aid], cfg, knob_ai, inboxes[aid])
+    for aid in inboxes:                     # 새해가 먼저, 그 다음 사건
+        _push(world.agents[aid],
+              render_obs(world, world.agents[aid], cfg, knob_ai, None,
+                         income_this_turn=world.agents[aid].income_this_year,
+                         opening=True))
+        _push_events(world.agents[aid], inboxes[aid], render_events)
+    user_prompts = {aid: (render_arrivals(world.agents[aid], inboxes[aid])
+                          if render_arrivals else None)
                     for aid in snapshot_ids}
 
     # 3. 정책 호출 — 병렬. 각자 자기 Sink 에만 쓴다 (공유 상태 미변경 → 스레드 안전)
@@ -729,6 +740,16 @@ def _queue_obituaries(world: World, result: RunResult, msg_ids) -> None:
                         "born": d.get("born"), "age": d.get("age")}})
 
 
+def _push(agent, text: str | None) -> None:
+    """대화에 한 항목을 붙인다. **빈 것은 붙이지 않는다.**
+
+    빈 `user` 가 실제로 들어간 적이 있다 — 사건만 온 차례에 도착분 렌더가 빈 문자열을
+    돌려주는데 그것을 그대로 append 했다.
+    """
+    if text:
+        agent.convo.append({"role": "user", "content": text})
+
+
 def _push_events(agent, inbox: list[dict], render_events) -> None:
     """**세계의 사건을 자기 자리에 놓는다.** 해 오프닝과 섞지 않는다.
 
@@ -738,11 +759,8 @@ def _push_events(agent, inbox: list[dict], render_events) -> None:
     **대화에서 사건이 앞에 온다** — 해 끝에 죽은 사람 소식이 다음 해가 열리기 전에
     놓인다. 모델은 대화를 볼 때만 무엇을 알게 되므로, 그 순서가 곧 「그 시점」 이다.
     """
-    if render_events is None:
-        return
-    txt = render_events(agent, inbox)
-    if txt:
-        agent.convo.append({"role": "user", "content": txt})
+    if render_events is not None:
+        _push(agent, render_events(agent, inbox))
 
 
 def _has_inbox(world: World, aid: str) -> bool:
@@ -776,7 +794,8 @@ def _dequeue_inbox_pop(world: World, aid: str) -> list[dict]:
 
 def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
                  knob_ai: float, msg_ids: "itertools.count", result: RunResult,
-                 turn_facility: dict, ballots_acc: list, proc_acc: list) -> None:
+                 turn_facility: dict, ballots_acc: list, proc_acc: list,
+                 said_this_year: set | None = None) -> None:
     """한 차례(sink)를 세계에 **즉시** 반영. 개표·procreate·부고는 턴 끝에서 (누적만)."""
     # 학습 — 즉시 반영 + 완료 즉시 판정 (그 순간의 학습가로)
     for rec in sink.learns:
@@ -855,6 +874,14 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
     for cid in sorted(capped):
         # 수입·시설 전환율·관측 정확도가 다 여기 걸려 있어 국민 전원의 일이다.
         # **얼마나 올랐는지는 담지 않는다** — 배수 함수는 SECRET 이다.
+        #
+        # 그래서 **해마다 한 번만** 말한다. 값이 없는 사실이라 두 번 적어도 더 알려주는
+        # 것이 없다 — 실측에서 「자국의 기술력이 올랐습니다」 가 한 해에 세 번 붙었다.
+        # 진척은 값이 달라지므로 차례마다 말한다.
+        if said_this_year is not None:
+            if ("cap", cid) in said_this_year:
+                continue
+            said_this_year.add(("cap", cid))
         _notify(world, "capital_change", {"cap_up": True}, world.turn, nation=cid)
     # 메시지 — 번역 후 **같은 턴** 배달
     for sent in sink.messages:
@@ -943,12 +970,18 @@ def _roundrobin_tally(world: World, cfg, result: RunResult, ballots_acc: list) -
 def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult,
                         counter: "itertools.count", client_for, translator, knob_ai: float,
                         render_obs, system_prompt, msg_ids, is_last: bool = False,
-                        on_turn_end=None, render_events=None) -> None:
+                        on_turn_end=None, render_events=None,
+                        render_arrivals=None) -> None:
     """한 턴 — 순차 라운드로빈. 임의 순서로 한 명씩 한 차례(1콜)씩, AP 남은 사람끼리
     전원 소진까지 돈다. 차례마다 관측을 새로 렌더하고 액션을 즉시 반영한다 (issue #20)."""
     # 1. 소득 + AP 리셋
     for a in world.agents.values():
-        a.budget += cfg.income.per_turn * world.countries[a.country].multiplier(cfg)
+        inc = cfg.income.per_turn * world.countries[a.country].multiplier(cfg)
+        a.budget += inc
+        # **받은 값을 적어 둔다.** 해 시작 문구가 렌더 때 다시 계산하면, 순차에서 나중에
+        # 차례가 온 사람은 남들이 national 에 넣은 뒤의 값을 보게 된다 — 실제로 100 을
+        # 받았는데 「+102」 라고 적혔다.
+        a.income_this_year = inc
         a.ap = cfg.turn.action_points
         a.budget_start = a.budget                       # x̂ 분모 (결정 시점 예산)
     snapshot_ids = sorted(world.agents.keys())
@@ -957,6 +990,7 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
     rng.shuffle(order)                                  # 임의 순서 (시드로 결정론)
 
     turn_facility: dict = {}
+    said_this_year: set = set()      # 값 없는 사실은 해마다 한 번만 (capital_change)
     ballots_acc: list = []
     proc_acc: list = []
     accs = {aid: agent_loop._StepAcc() for aid in snapshot_ids}
@@ -1008,9 +1042,19 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
             first_seen.add(aid)
             # **해 오프닝은 그 해 첫 차례에만.** 재방문에 다시 붙이면 같은 해가 여러 번
             # 열린 것처럼 보이고, 안의 예산이 흔들린다 (실측 100 → 97).
-            _push_events(agent, inbox, render_events)      # 사건이 먼저
-            obs = (render_obs(world, agent, cfg, knob_ai, inbox, opening=fresh)
-                   if (fresh or inbox) else None)
+            # **새해가 밝은 것이 그 해의 사건보다 앞에 온다.**
+            #
+            # 전에는 사건을 먼저 붙여서, 나중에 차례가 온 사람은 이런 대화를 받았다:
+            #     user: 起きたこと: 自国の技術力が上がりました。
+            #     user: 42 年になりました。…
+            # 그 기술력 상승은 42년에 일어난 일이다. 해는 모두에게 같은 때 밝는다 —
+            # 소득도 AP 도 턴 시작에 한꺼번에 주어진다.
+            if fresh:
+                _push(agent, render_obs(world, agent, cfg, knob_ai, None,
+                                        income_this_turn=agent.income_this_year,
+                                        opening=True))
+            _push_events(agent, inbox, render_events)
+            obs = render_arrivals(agent, inbox) if render_arrivals else None
             sp = (system_prompt(agent, world, cfg, knob_ai) if callable(system_prompt)
                   else system_prompt)
             sink = Sink()
@@ -1021,7 +1065,7 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
                 e.add_note(f"[agent {aid} · turn {world.turn} · age {agent.age}]")
                 raise
             _settle_step(world, cfg, rng, sink, translator, knob_ai, msg_ids, result,
-                         turn_facility, ballots_acc, proc_acc)
+                         turn_facility, ballots_acc, proc_acc, said_this_year)
             if done is not None:
                 ended[aid] = done
 
@@ -1052,7 +1096,8 @@ def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
                 render_obs, system_prompt, parallel: bool = True, sequential: bool = False,
                 on_turn_end=None, sim_turns: int | None = None,
                 resume_from: "Path | None" = None,
-                checkpoint_to: "Path | None" = None, render_events=None) -> RunResult:
+                checkpoint_to: "Path | None" = None, render_events=None,
+                render_arrivals=None) -> RunResult:
     """LLM(또는 StubClient) 에이전트로 total_turns 턴을 돌린다.
 
     client_for(aid) : 에이전트별 클라이언트 (병렬이라 상태 있는 Stub 은 에이전트마다 별개여야).
@@ -1081,13 +1126,15 @@ def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
             run_turn_roundrobin(world, cfg, rng, result, counter, client_for, translator,
                                 knob_ai, render_obs, system_prompt, msg_ids,
                                 is_last=(t == cfg.world.total_turns), on_turn_end=on_turn_end,
-                                render_events=render_events)
+                                render_events=render_events,
+                                render_arrivals=render_arrivals)
         else:
             run_turn_agentic(world, cfg, rng, result, counter, client_for, translator, knob_ai,
                              render_obs, system_prompt, msg_ids,
                              is_last=(t == cfg.world.total_turns),
                              parallel=parallel, on_turn_end=on_turn_end,
-                             render_events=render_events)
+                             render_events=render_events,
+                             render_arrivals=render_arrivals)
         if checkpoint_to is not None:
             # 매 턴 적는다. 한 턴이 12~40초인데 체크포인트는 밀리초라 값이 싸다.
             # `itertools.count` 는 현재 값을 못 읽으므로 하나 꺼내 보고 **그 값부터

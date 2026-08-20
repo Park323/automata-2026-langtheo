@@ -726,7 +726,7 @@ def run_agent_step(world, agent, cfg, client, sink: Sink, knob_ai: float,
         # 안 그러면 한계에 부딪히고 있다는 사실이 전달되지 않는다.
         user_prompt = warn if user_prompt is None else warn + "\n\n" + user_prompt
         st.pressured = True
-    if user_prompt is not None:
+    if user_prompt:      # **빈 것도 붙이지 않는다** — `is not None` 이면 "" 가 통과한다
         agent.convo.append({"role": "user", "content": user_prompt})
     tool_list = tools_for(cfg)
     tool_tokens = _TOOL_TOKENS if tool_list is TOOLS else _TOOL_TOKENS_NR
@@ -749,11 +749,13 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     # 압박 경고는 관측 **앞**에 붙인다. 사실 통지이지 지시가 아니다 (spec 4.5).
     if under_pressure(agent, cfg):
         from domains.meteor.prompts import T          # 도메인 문구 (모국어)
-        user_prompt = T[agent.native_lang]["warn"] + "\n\n" + user_prompt
+        warn = T[agent.native_lang]["warn"]
+        user_prompt = warn if not user_prompt else warn + "\n\n" + user_prompt
         pressured = True
     else:
         pressured = False
-    agent.convo.append({"role": "user", "content": user_prompt})
+    if user_prompt:      # **빈 것도 붙이지 않는다** — None 과 "" 를 같이 막는다
+        agent.convo.append({"role": "user", "content": user_prompt})
     messages = [{"role": "system", "content": system_prompt}, *agent.convo]
     actions: list[dict] = []
     reasonings: list[dict] = []   # spec 4.2 — 행동마다의 근거. 지표 4 를 여기서 역추적한다

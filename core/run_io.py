@@ -217,6 +217,7 @@ class RunWriter:
                 "lambda": round(a.lam, 4), "known_langs": sorted(a.known_langs),
                 "parent_langs": sorted(a.parent_langs), "budget": round(a.budget, 4),
                 "budget_start": round(a.budget_start, 4),
+                "income_this_year": round(a.income_this_year, 4),
                 "wellness_spent": round(a.wellness_spent, 4),
                 "born_turn": a.born_turn, "born_by": a.born_by, "alive": a.alive,
                 "uid": a.uid, "native_lang": a.native_lang,
