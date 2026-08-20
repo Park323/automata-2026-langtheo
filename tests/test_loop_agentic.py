@@ -371,3 +371,59 @@ def test_a_stopped_agent_is_not_woken_when_it_cannot_act():
     # 수신 슬롯이 바뀌었으면(사망·교체) 받을 것이 아니다
     world.inbox_queue[0]["to_uid"] = 9999
     assert _has_inbox(world, "Asla2") is False
+
+
+def test_world_events_get_their_own_context_entry():
+    """**세계의 사건은 해 오프닝과 섞이지 않는다.**
+
+    죽음·출자 결과·전달 실패는 「올해가 시작됐다」 와 성질이 다르다. 오프닝에 묶으면
+    **새해 인사에 부고가 딸려 오고**, 무엇이 언제 일어났는지가 한 덩어리로 뭉개진다.
+
+    대화에서 사건이 **앞**에 온다 — 해 끝에 죽은 사람 소식이 다음 해가 열리기 전에
+    놓인다. 모델은 대화를 볼 때만 무엇을 알게 되므로, 그 순서가 곧 「그 시점」 이다.
+
+    머리말도 다르다. 「도착한 메시지」 는 사람이 나에게 한 말이고, 사건은 세계가 나에게
+    알리는 것이다 — 부고를 「메시지」 라고 부르면 누가 보낸 것처럼 읽힌다.
+    """
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 2
+    a = world.agents["Asla2"]
+    a.budget = 137.0
+    box = [{"died": "Asla1", "born": "Asla4", "age": 14},
+           {"fac_gain": 61, "amount": 200.0, "to": "Asla"},
+           {"from": "Ranoa1", "label": None, "text": "SAID", "original": None}]
+
+    ev = prompts.render_events(a, box)
+    open_ = prompts.render_turn_open(world, a, cfg, 48.0, box, opening=True)
+
+    assert "Asla1" in ev and "61" in ev and "SAID" not in ev
+    assert "起きたこと" in ev and "になりました" not in ev      # 해를 열지 않는다
+    assert "SAID" in open_ and "Asla1" not in open_           # 사건은 여기 없다
+    assert prompts.T["ja"]["in_hdr"] not in ev                # 머리말이 다르다
+
+    # 사건만 있으면 오프닝에는 도착분이 안 붙는다
+    only_ev = prompts.render_turn_open(world, a, cfg, 48.0, box[:2], opening=True)
+    assert "になりました" in only_ev and prompts.T["ja"]["in_hdr"] not in only_ev
+    # 재방문에 사건만 왔으면 오프닝은 빈 문자열 — 루프가 사건만 붙인다
+    assert prompts.render_turn_open(world, a, cfg, 48.0, box[:2], opening=False) == ""
+
+
+def test_the_event_entry_lands_before_the_year_opens():
+    """루프가 **사건을 먼저** 붙인다. 부고가 「43년이 되었습니다」 뒤에 오면 순서가
+    거꾸로다 — 그 죽음은 42년 끝에 일어난 일이다."""
+    from core.loop import _push_events
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    a = world.agents["Asla2"]
+    a.convo = []
+    _push_events(a, [{"died": "Asla1", "born": "Asla4", "age": 14}], prompts.render_events)
+    assert len(a.convo) == 1 and a.convo[0]["role"] == "user"
+    assert "Asla1" in a.convo[0]["content"]
+
+    # 사건이 없으면 아무것도 붙이지 않는다
+    _push_events(a, [{"from": "X", "text": "y"}], prompts.render_events)
+    assert len(a.convo) == 1
+    # 렌더러를 안 주면 아무 일도 하지 않는다 (옛 경로 호환)
+    _push_events(a, [{"died": "Z"}], None)
+    assert len(a.convo) == 1

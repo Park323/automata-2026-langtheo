@@ -601,7 +601,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
 def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
                      counter: "itertools.count", client_for, translator, knob_ai: float,
                      render_obs, system_prompt, msg_ids, is_last: bool = False,
-                     parallel: bool = True, on_turn_end=None) -> None:
+                     parallel: bool = True, on_turn_end=None, render_events=None) -> None:
     """한 턴 (에이전트). spec 3.1 순서를 지키되 3단계는 9명 병렬, 5단계는 정렬 정산."""
     # 1. 소득 + AP 리셋
     for a in world.agents.values():
@@ -617,6 +617,8 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
     snapshot_uids = {world.agents[aid].uid for aid in snapshot_ids}
     inboxes = {aid: _dequeue_inbox(world, aid) for aid in snapshot_ids}
     world.inbox_queue = [e for e in world.inbox_queue if e["deliver_turn"] > world.turn]
+    for aid in inboxes:
+        _push_events(world.agents[aid], inboxes[aid], render_events)   # 사건이 먼저
     user_prompts = {aid: render_obs(world, world.agents[aid], cfg, knob_ai, inboxes[aid])
                     for aid in snapshot_ids}
 
@@ -688,6 +690,22 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
 
 
 # ── 순차 라운드로빈 (spec — 한 턴 안에서 서로 반영·대화. issue #20) ──────────────
+
+def _push_events(agent, inbox: list[dict], render_events) -> None:
+    """**세계의 사건을 자기 자리에 놓는다.** 해 오프닝과 섞지 않는다.
+
+    죽음·출자 결과·전달 실패는 「올해가 시작됐다」 와 성질이 다르다. 오프닝에 묶으면
+    새해 인사에 부고가 딸려 오고, 무엇이 언제 일어났는지가 한 덩어리로 뭉개진다.
+
+    **대화에서 사건이 앞에 온다** — 해 끝에 죽은 사람 소식이 다음 해가 열리기 전에
+    놓인다. 모델은 대화를 볼 때만 무엇을 알게 되므로, 그 순서가 곧 「그 시점」 이다.
+    """
+    if render_events is None:
+        return
+    txt = render_events(agent, inbox)
+    if txt:
+        agent.convo.append({"role": "user", "content": txt})
+
 
 def _has_inbox(world: World, aid: str) -> bool:
     """이 차례에 받을 것이 있나. **꺼내지 않고 본다** (깨울지 판단하는 데만 쓴다)."""
@@ -862,7 +880,7 @@ def _roundrobin_tally(world: World, cfg, result: RunResult, ballots_acc: list) -
 def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult,
                         counter: "itertools.count", client_for, translator, knob_ai: float,
                         render_obs, system_prompt, msg_ids, is_last: bool = False,
-                        on_turn_end=None) -> None:
+                        on_turn_end=None, render_events=None) -> None:
     """한 턴 — 순차 라운드로빈. 임의 순서로 한 명씩 한 차례(1콜)씩, AP 남은 사람끼리
     전원 소진까지 돈다. 차례마다 관측을 새로 렌더하고 액션을 즉시 반영한다 (issue #20)."""
     # 1. 소득 + AP 리셋
@@ -927,6 +945,7 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
             first_seen.add(aid)
             # **해 오프닝은 그 해 첫 차례에만.** 재방문에 다시 붙이면 같은 해가 여러 번
             # 열린 것처럼 보이고, 안의 예산이 흔들린다 (실측 100 → 97).
+            _push_events(agent, inbox, render_events)      # 사건이 먼저
             obs = (render_obs(world, agent, cfg, knob_ai, inbox, opening=fresh)
                    if (fresh or inbox) else None)
             sp = (system_prompt(agent, world, cfg, knob_ai) if callable(system_prompt)
@@ -979,7 +998,7 @@ def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
                 render_obs, system_prompt, parallel: bool = True, sequential: bool = False,
                 on_turn_end=None, sim_turns: int | None = None,
                 resume_from: "Path | None" = None,
-                checkpoint_to: "Path | None" = None) -> RunResult:
+                checkpoint_to: "Path | None" = None, render_events=None) -> RunResult:
     """LLM(또는 StubClient) 에이전트로 total_turns 턴을 돌린다.
 
     client_for(aid) : 에이전트별 클라이언트 (병렬이라 상태 있는 Stub 은 에이전트마다 별개여야).
@@ -1007,12 +1026,14 @@ def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
         if sequential:
             run_turn_roundrobin(world, cfg, rng, result, counter, client_for, translator,
                                 knob_ai, render_obs, system_prompt, msg_ids,
-                                is_last=(t == cfg.world.total_turns), on_turn_end=on_turn_end)
+                                is_last=(t == cfg.world.total_turns), on_turn_end=on_turn_end,
+                                render_events=render_events)
         else:
             run_turn_agentic(world, cfg, rng, result, counter, client_for, translator, knob_ai,
                              render_obs, system_prompt, msg_ids,
                              is_last=(t == cfg.world.total_turns),
-                             parallel=parallel, on_turn_end=on_turn_end)
+                             parallel=parallel, on_turn_end=on_turn_end,
+                             render_events=render_events)
         if checkpoint_to is not None:
             # 매 턴 적는다. 한 턴이 12~40초인데 체크포인트는 밀리초라 값이 싸다.
             # `itertools.count` 는 현재 값을 못 읽으므로 하나 꺼내 보고 **그 값부터

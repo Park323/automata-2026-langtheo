@@ -116,7 +116,7 @@ T = {
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n                          （省くと自国）",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
         rtt="送ったメッセージは翌年に届きます。返事が来るのはさらにその翌年です。",
-        in_hdr="今届いたメッセージ:",
+        in_hdr="今届いたメッセージ:", ev_hdr="起きたこと:",
         in_fail="  通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
         in_fail_plain="  通知 — {to} 宛のメッセージは届きませんでした",
         in_unread="  {frm} より — 読めないメッセージが届きました",
@@ -168,7 +168,7 @@ T = {
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
         rtt="你发出的消息在第二年送达。对方的回信要再过一年才会到。",
-        in_hdr="刚送达的消息:",
+        in_hdr="刚送达的消息:", ev_hdr="发生的事:",
         in_fail="  通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
         in_fail_plain="  通知 — 你发给 {to} 的消息未能送达",
         in_unread="  来自 {frm} — 送到一条你读不懂的消息",
@@ -224,7 +224,7 @@ T = {
                           "             la vôtre ou une autre (sans `to`, la vôtre)",
         cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
         rtt="Un message part et arrive l'année suivante ; une réponse n'arrive que l'année d'après.",
-        in_hdr="Messages qui viennent d'arriver :",
+        in_hdr="Messages qui viennent d'arriver :", ev_hdr="Ce qui est arrivé :",
         in_fail="  Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",
         in_fail_plain="  Avis — votre message à {to} n'a pas pu être délivré",
         in_unread="  de {frm} — un message illisible est arrivé",
@@ -381,7 +381,36 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
     return "\n".join(lines)
 
 
-def render_inbox(inbox: list[dict], lang: str) -> str:
+# **세계의 사건**을 가르는 키. 사람이 나에게 한 말이 아니라, 세계가 나에게 알리는 것.
+_EVENT_KEYS = ("died", "fac_gain", "fac_moved", "delivery_failed_to")
+
+
+def is_event(m: dict) -> bool:
+    """세계의 사건인가, 사람의 말인가.
+
+    `unreadable`(읽을 수 없는 메시지가 왔다)은 **말** 쪽이다 — 누군가 나에게 말을 걸었고
+    그것이 닿았다는 사실이다. 내용을 못 읽는 것과 사건인 것은 다르다.
+    """
+    return any(k in m for k in _EVENT_KEYS)
+
+
+def render_events(agent, inbox: list[dict]) -> str:
+    """**세계의 사건.** 해 오프닝과 섞지 않고 자기 자리를 갖는다.
+
+    죽음·출자 결과·전달 실패는 「올해가 시작됐다」 와 성질이 다르다. 오프닝에 묶으면
+    새해 인사에 부고가 딸려 오고, 무엇이 언제 일어났는지가 한 덩어리로 뭉개진다.
+
+    사건이 대화에서 **앞**에 놓인다 — 해 끝에 일어난 일이 다음 해가 열리기 전에 온다.
+    """
+    rows = [m for m in (inbox or []) if is_event(m)]
+    if not rows:
+        return ""
+    # **머리말이 다르다.** 「도착한 메시지」 는 사람이 나에게 한 말이고, 이쪽은 세계가
+    # 나에게 알리는 것이다 — 부고를 「메시지」 라고 부르면 누가 보낸 것처럼 읽힌다.
+    return render_inbox(rows, agent.native_lang, hdr=T[agent.native_lang]["ev_hdr"])
+
+
+def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
     """**방금 도착한 것.** 「올해 온 것」 이 아니다.
 
     머리말이 `今年届いたメッセージ` 였다. 한 해에 여러 번 차례가 오고 그때마다 새로 온
@@ -397,7 +426,7 @@ def render_inbox(inbox: list[dict], lang: str) -> str:
     로그(`messages.jsonl`)에는 그대로 남으므로 사후 조인은 그대로 된다.
     """
     t = T[lang]
-    out = [t["in_hdr"]]
+    out = [hdr if hdr is not None else t["in_hdr"]]
     for m in inbox:
         if m.get("delivery_failed_to"):        # sender's failure notice (spec 5.1)
             # **원인을 섞지 않는다.** 엔진 장애를 「상대가 그 언어를 읽지 못한다」 로
@@ -472,9 +501,11 @@ def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
     이므로 반드시 쌓여야 한다 — state 처럼 갈아치우면 누가 무슨 말을 했는지 잊는다.
     """
     t = T[agent.native_lang]
+    # **사건은 여기 없다.** `render_events` 가 따로 담고, 루프가 그것을 먼저 붙인다.
+    said = [m for m in (inbox or []) if not is_event(m)]
     if not opening:
         # 같은 해의 재방문 — 도착분만. 온 것이 없으면 부를 이유가 없다.
-        return render_inbox(inbox, agent.native_lang) if inbox else ""
+        return render_inbox(said, agent.native_lang) if said else ""
     # **소득은 「그 해에 일어난 일」 이다.** 관측(지금 그러한 것)에 두면 매 호출 다시
     # 계산돼 턴 안에서 값이 흔들린다 — 실측에서 한 해 안에 +100 → +104 → +105 로
     # 올라갔다 (남들이 national 에 넣어 배수가 커졌다). 게다가 **이미 받은 돈**인데
@@ -489,12 +520,12 @@ def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
     # 덮여서 그 감각이 생기지 않는다. 수명 곡선은 여전히 비공개다 (4.1).
     head = t["open"].format(y=FIRST_YEAR + world.turn - 1, age=agent.age,
                             inc=inc, b=agent.budget)
-    if not inbox:
+    if not said:
         # **온 것이 없으면 아무 말도 하지 않는다.** 「도착한 메시지: 없음」 을 붙이면
-        # 아무 일도 없었다는 사실이 매 턴 대화에 쌓인다. 없는 것을 굳이 적지 않는 것이
+        # 아무 일도 없었다는 사실이 매 해 대화에 쌓인다. 없는 것을 굳이 적지 않는 것이
         # 0절의 원칙이고, 안 적혀 있으면 안 온 것이다.
         return head
-    return f"{head}\n\n{render_inbox(inbox, agent.native_lang)}"
+    return f"{head}\n\n{render_inbox(said, agent.native_lang)}"
 
 
 def render_observation(world, agent, cfg, knob_ai: float,
