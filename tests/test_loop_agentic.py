@@ -254,3 +254,22 @@ def test_system_without_a_world_is_just_the_rules():
     a = world.agents["Asla1"]
     assert "予算" not in prompts.system_for(a)
     assert "予算" in prompts.system_for(a, world, cfg, 48.0)
+
+
+def test_an_empty_inbox_says_nothing_at_all():
+    """**「도착한 메시지: 없음」 을 붙이면 아무 일도 없었다는 사실이 매 턴 쌓인다.**
+
+    없는 것을 굳이 적지 않는다 (`prompt_audit` 0절). 안 적혀 있으면 안 온 것이다.
+    """
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 3
+    a = world.agents["Asla1"]
+    empty = prompts.render_turn_open(world, a, cfg, 48.0, [])
+    assert empty.count("\n") == 0                     # 한 줄뿐이다
+    for none_word in ("なし", "没有", "aucun", "Aucun"):
+        assert none_word not in empty
+    got = prompts.render_turn_open(world, a, cfg, 48.0,
+                                   [{"msg_id": 1, "from": "Ranoa1", "label": None,
+                                     "text": "MARK", "original": None}])
+    assert "MARK" in got and got.startswith(empty)    # 머리말은 같다
