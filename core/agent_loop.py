@@ -351,8 +351,27 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
 
     if name == "speak":
         to = args.get("to")
+        # **빠뜨린 것과 틀린 것을 가른다.** 둘 다 `unknown recipient: None` 이었다.
+        #
+        # 그 문구는 「내가 부른 사람이 없다」 로 읽힌다 — 「`to` 를 안 적었다」 가 아니다.
+        # 그래서 모델이 고칠 데를 찾지 못하고 같은 실수를 되풀이했다. 20턴 런의 앞 8턴에서
+        # **speak 50건 중 18건(36%)** 이 이것이었고 **17건이 한 사람(Miris1)** 이다 —
+        # 매 해 두 번씩, 여덟 해 내리.
+        #
+        # 실패한 호출과 그 오류는 대화에 남으므로, 문구가 고칠 데를 말하지 않으면 그
+        # 오답이 다음 호출의 본보기가 된다. `repeat_guard` 도 못 막는다 — 본문이 매번
+        # 달라서 (도구, 인자) 가 같지 않다.
+        #
+        # 모델은 받는 사람을 **본문 안에서** 부르고 있었다 (`"Bonjour Ranoa1 ! …"`).
+        # 사람에게는 그게 편지의 자연스러운 모양이라, 문구가 그 오해를 직접 집어야 한다.
+        if to is None:
+            return {"ok": False, "error":
+                    "speak needs `to`, the recipient id (e.g. Ranoa2). Naming them "
+                    "inside the text does not send it to them"}, None
         if to not in world.agents:
-            return {"ok": False, "error": f"unknown recipient: {to}"}, None
+            return {"ok": False, "error":
+                    f"unknown recipient: {to}. Use an id from the list of people in "
+                    f"your observation"}, None
         if to == agent.id:
             return {"ok": False, "error": "you cannot send a message to yourself"}, None
         recipient = world.agents[to]

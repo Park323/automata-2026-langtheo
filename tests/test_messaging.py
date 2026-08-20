@@ -239,3 +239,43 @@ def test_both_labels_are_shown_in_the_recipient_language(cfg):
         assert direct in out and ai in out, lang
         assert "[AI translation]" not in out      # 영어가 새지 않는다
         assert out.count(direct) == 1             # 국내 메시지에는 안 붙는다
+
+
+def test_a_missing_recipient_says_which_field_is_missing(cfg):
+    """**빠뜨린 것과 틀린 것이 같은 말을 하고 있었다.**
+
+    둘 다 `unknown recipient: None` 이었다. 그 문구는 「내가 부른 사람이 없다」 로 읽히지
+    「`to` 를 안 적었다」 로 읽히지 않는다. 그래서 모델이 고칠 데를 찾지 못했다.
+
+    20턴 런의 앞 8턴에서 **speak 50건 중 18건(36%)** 이 이것이었고 **17건이 한
+    사람(Miris1)** 이다 — 매 해 두 번씩 여덟 해 내리. 받는 사람을 본문 안에서 부르고
+    있었다 (`"Bonjour Ranoa1 ! …"`). 사람에게는 그게 편지의 자연스러운 모양이라, 문구가
+    그 오해를 직접 집어야 한다.
+
+    실패한 호출과 오류는 대화에 남으므로, 문구가 고칠 데를 말하지 않으면 그 오답이 다음
+    호출의 본보기가 된다. `repeat_guard` 는 못 막는다 — 본문이 매번 달라 (도구, 인자) 가
+    같지 않다.
+    """
+    import itertools
+    import random
+
+    from core.agent_loop import Sink, execute_tool
+    from core.loop import init_world
+    world = init_world(cfg, itertools.count(1), random.Random(1))
+    a = world.agents["Miris1"]
+    a.ap, a.budget = 1.0, 1000.0
+
+    r, _ = execute_tool("speak", {"route": "ai", "text": "Bonjour Ranoa1 !"},
+                        world, a, cfg, Sink(), 48.0)
+    assert not r["ok"]
+    assert "`to`" in r["error"]                       # 어느 칸인지 말한다
+    assert "inside the text does not send it" in r["error"]   # 오해를 집는다
+    assert "unknown recipient" not in r["error"]      # 다른 실패와 섞이지 않는다
+
+    r, _ = execute_tool("speak", {"to": "Ranoa9", "text": "x"},
+                        world, a, cfg, Sink(), 48.0)
+    assert not r["ok"] and "unknown recipient: Ranoa9" in r["error"]
+    assert "list of people" in r["error"]             # 어디를 보라고 말한다
+
+    # 둘 다 **돈도 AP 도 물리지 않는다** — 검증이 과금보다 먼저다
+    assert a.ap == 1.0 and a.budget == 1000.0
