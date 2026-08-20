@@ -78,7 +78,7 @@ Le corps de vos messages doit être rédigé en français. Gardez les noms d'opt
 # 산문만 번역한다. 도구 토큰은 영어 그대로 둔다.
 T = {
     "ja": dict(
-        you="あなたは {id}（{nation} の人）です。", read="読める言語: {langs}",
+        you="あなたは {id}（{nation} の人）です。", read="扱える言語: {langs}",
         budget="予算: {b:.0f}", age="年齢: {a} 歳",
         land="自国の国土: {v}", undecided="未定",
         prog="自国の進捗: {v:.0f}", thresh="  interceptor の完成に要る進捗: {v:.0f}",
@@ -131,7 +131,7 @@ T = {
         own="あなたの言語", other="{nation} の言語",
     ),
     "zh": dict(
-        you="你是 {id}（{nation} 人）。", read="你能读懂的语言: {langs}",
+        you="你是 {id}（{nation} 人）。", read="你掌握的语言: {langs}",
         budget="预算: {b:.0f}", age="年龄: {a} 岁",
         land="本国国土: {v}", undecided="未定",
         prog="本国进度: {v:.0f}", thresh="  建成 interceptor 所需的进度: {v:.0f}",
@@ -184,7 +184,7 @@ T = {
         own="你自己的语言", other="{nation} 的语言",
     ),
     "fr": dict(
-        you="Vous êtes {id}, de {nation}.", read="Vous pouvez lire : {langs}",
+        you="Vous êtes {id}, de {nation}.", read="Langues que vous maniez : {langs}",
         budget="Budget : {b:.0f}", age="Âge : {a} ans",
         land="Territoire de votre nation : {v}", undecided="indéterminé",
         prog="Progression de votre nation : {v:.0f}",

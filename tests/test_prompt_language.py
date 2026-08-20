@@ -200,3 +200,24 @@ def test_the_agent_never_hears_the_word_turn():
     for t in tools.TOOLS:
         d = t["function"]["description"]
         assert "turn" not in d.replace("end_turn", ""), t["function"]["name"]
+
+
+def test_knowing_a_language_is_not_described_as_reading_only():
+    """**「読める言語」 이 읽기만으로 읽혔다.** SYSTEM 은 *"학습하면 읽는 것도 쓰는 것도
+    할 수 있다"* 라고 맞게 적고 있었으니 **둘이 어긋나 있었다** — 관측이 능력을 좁게
+    말하면, 아는 말로 직접 보낼 수 있다는 것을 모르고 번역을 산다.
+
+    읽기·쓰기·말하기를 나누지 않고 SYSTEM 이 이미 쓰는 동사로 덮는다 (扱える / 掌握 /
+    manier). 나누면 「말은 되는데 쓰기는?」 같은 틈이 다시 생긴다.
+    """
+    from domains.meteor import prompts
+    verbs = {"ja": ("扱える言語", "扱えません"),
+             "zh": ("你掌握的语言", "只会本国的语言"),
+             "fr": ("Langues que vous maniez", "vous ne maniez que")}
+    for lang, (obs_word, sys_word) in verbs.items():
+        assert obs_word in prompts.T[lang]["read"], lang
+        assert sys_word in prompts.SYSTEM[lang], lang          # 같은 동사를 쓴다
+    # 읽기만을 뜻하는 옛 표현이 돌아오지 않는다
+    for lang, stale in (("ja", "読める言語"), ("zh", "你能读懂的语言"),
+                        ("fr", "Vous pouvez lire :")):
+        assert stale not in prompts.T[lang]["read"], lang
