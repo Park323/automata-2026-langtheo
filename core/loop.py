@@ -14,7 +14,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from core import messaging, survival
+from core import messaging, survival, visibility
 from core import agent_loop
 from core.agent_loop import Sink, run_agent_turn
 from core.policy import PROCREATE_AGE, dummy_policy
@@ -478,8 +478,8 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         # 보내면 엔진 장애를 언어 사실로 심게 된다.
         if p["inbox"] is not None:
             p["inbox"]["msg_id"] = gid      # 전역 id — understood 의 조인 키 (spec 6.1)
-            world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["to"],
-                                      "to_uid": to_uid, "msg": p["inbox"]})
+            # 주고받은 말 — **보낸 이와 받는 이만** (visibility: message PRIVATE)
+            _notify(world, "message", p["inbox"], world.turn + 1, actor=sent["to"])
         result.messages_log.append({"turn": world.turn, "msg_id": gid,
                                     "from": sent["from"], "to": sent["to"],
                                     "action": sent.get("kind", "speak"),
@@ -487,18 +487,13 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                                     "meta": p["meta"]})
         if p["sender_notice"]:
             su = world.agents[sent["from"]].uid if sent["from"] in world.agents else None
-            world.inbox_queue.append({"deliver_turn": world.turn + 1, "to": sent["from"],
-                                      "to_uid": su, "msg": {"from": None, "text": None,
-                                      "label": None, "original": None, "msg_id": next(msg_ids),
-                                      "delivery_failed_to": sent["to"],
-                                      # 언어 때문인지 엔진 장애인지 — 원인을 섞으면
-                                      # 거짓을 심는다
-                                      "delivery_failed_reason":
-                                          p["sender_notice"].get("reason"),
-                                      # 어느 메시지가 실패한 것인지. 통지에 자기 id 만
-                                      # 붙어서 원본과 이어붙일 수 없었다 — 같은 상대에게
-                                      # 두 번 보낸 턴이면 어느 쪽인지 알 수 없다
-                                      "ref_msg_id": gid}})
+            # 내가 보낸 말이 닿지 않았다 — **나만 안다** (visibility: delivery_failed)
+            _notify(world, "delivery_failed",
+                    {"from": None, "text": None, "label": None, "original": None,
+                     "msg_id": next(msg_ids), "delivery_failed_to": sent["to"],
+                     # 언어 때문인지 엔진 장애인지 — 원인을 섞으면 거짓을 심는다
+                     "delivery_failed_reason": p["sender_notice"].get("reason")},
+                    world.turn + 1, actor=sent["from"])
 
     # f. 투표 기록 (정식 집계는 이후 과제)
     # ★ 투표는 로그만 남고 아무 일도 하지 않았다. 국토는 첫 시설 투자로
@@ -586,9 +581,8 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
             msg["fac_gain"] = g["gain"]              # 자국은 그대로 (진척 델타로 어차피 보인다)
         else:
             msg["fac_moved"] = g["gain"] > 0         # 타국은 늘었는지 여부만
-        world.inbox_queue.append({
-            "deliver_turn": world.turn + 1, "to": g["agent"],
-            "to_uid": world.agents[g["agent"]].uid, "msg": msg})
+        # 내 출자가 얼마를 올렸나 — **나만 안다** (visibility: fac_gain PRIVATE)
+        _notify(world, "fac_gain", msg, world.turn + 1, actor=g["agent"])
 
     # g. procreate (예산 환급까지 반영된 뒤라 자식 예산이 정확)
     procreated: set = set()
@@ -669,18 +663,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
     # 7. 생사 판정 (마지막 턴 생략)
     if not is_last:
         _death_birth(world, cfg, rng, snapshot_ids, procreated, counter, result)
-        # 부고는 **같은 나라 사람에게만.** 그 자리에 태어난 신규(같은 id)에게는 보내지
-        # 않는다 — 자기 부고를 받게 된다. 타국의 인구 구성은 여전히 메시지로만 안다.
-        for d in result.deaths_log:
-            if d["turn"] != world.turn:
-                continue
-            for aid, a in sorted(world.agents.items()):
-                if a.country != d["country"] or aid == d["who"]:
-                    continue
-                world.inbox_queue.append({
-                    "deliver_turn": world.turn + 1, "to": aid, "to_uid": a.uid,
-                    "msg": {"msg_id": next(msg_ids), "died": d["who"],
-                            "born": d.get("born"), "age": d.get("age")}})
+        _queue_obituaries(world, result, msg_ids)
 
     result.acted.append(snapshot_uids)
     result.alive_counts.append(sum(1 for a in world.agents.values() if a.alive))
@@ -690,6 +673,53 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
 
 
 # ── 순차 라운드로빈 (spec — 한 턴 안에서 서로 반영·대화. issue #20) ──────────────
+
+def _notify(world: World, fact: str, msg: dict, deliver_turn: int,
+            actor: str | None = None, nation: str | None = None) -> int:
+    """**공개 등급이 정한 사람들에게** 알린다. 넣은 사람 수를 돌려준다.
+
+    청중을 호출부가 정하지 않는다 — `visibility.FACTS` 의 한 줄이 정한다. 그 줄이
+    없으면 `KeyError` 로 막힌다.
+
+    `to_uid` 를 함께 넣는 이유 — 그 사이에 죽고 교체됐으면 그 자리에 온 아이는 **다른
+    사람**이므로(3.2) 받을 것이 아니다. `_dequeue_inbox_pop` 이 uid 로 걸러 폐기한다.
+    """
+    n = 0
+    for aid in visibility.audience(world, fact, actor=actor, nation=nation):
+        world.inbox_queue.append({"deliver_turn": deliver_turn, "to": aid,
+                                  "to_uid": world.agents[aid].uid, "msg": dict(msg)})
+        n += 1
+    return n
+
+
+def _queue_obituaries(world: World, result: RunResult, msg_ids) -> None:
+    """부고를 **공개 등급이 정한 사람들**에게 보낸다 (`visibility.FACTS["obituary"]`).
+
+    청중을 여기서 즉흥으로 정하지 않는다 — 전에는 같은 나라를 훑는 루프가 두 곳에 복사돼
+    있었고(병렬·순차), 등급을 바꾸려면 두 곳을 같이 고쳐야 했다.
+
+    **8/20 에 PUBLIC → GLOBAL 로 올렸다.** `roster` 가 이미 교체를 드러내므로(누가
+    사라지고 누가 왔는지 명단으로 보인다) 새로 새는 것은 **나이**뿐이고, 그것이 수명을
+    배우는 유일한 경로다 — 곡선은 여전히 SECRET 이고 평균만 SYSTEM 에 있다.
+
+    죽은 사람 자신에게는 보내지 않는다. 그 자리에 태어난 아이는 **다른 사람**이라(3.2)
+    uid 로 걸러진다.
+    """
+    for d in result.deaths_log:
+        if d["turn"] != world.turn:
+            continue
+        mid = next(msg_ids)                   # **한 사건에 하나의 id.** 사람마다 다른
+                                              # 번호를 주면 같은 죽음이 여럿처럼 남는다
+        for aid in visibility.audience(world, "obituary",
+                                       actor=d["who"], nation=d["country"]):
+            if aid == d["who"]:
+                continue                      # 자기 부고를 받지 않는다
+            world.inbox_queue.append({
+                "deliver_turn": world.turn + 1, "to": aid,
+                "to_uid": world.agents[aid].uid,
+                "msg": {"msg_id": mid, "died": d["who"],
+                        "born": d.get("born"), "age": d.get("age")}})
+
 
 def _push_events(agent, inbox: list[dict], render_events) -> None:
     """**세계의 사건을 자기 자리에 놓는다.** 해 오프닝과 섞지 않는다.
@@ -790,8 +820,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
                 note["fac_gain"] = gain                     # 자국은 그대로
             else:
                 note["fac_moved"] = gain > 0                # 타국은 늘었는지 여부만
-            world.inbox_queue.append({"deliver_turn": world.turn, "to": agent_id,
-                                      "to_uid": world.agents[agent_id].uid, "msg": note})
+            _notify(world, "fac_gain", note, world.turn, actor=agent_id)
     # wellness / national
     for aid, amount in sink.wellness:
         if aid in world.agents:
@@ -817,8 +846,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
             raise
         if p["inbox"] is not None:
             p["inbox"]["msg_id"] = gid
-            world.inbox_queue.append({"deliver_turn": world.turn, "to": sent["to"],
-                                      "to_uid": to_uid, "msg": p["inbox"]})
+            _notify(world, "message", p["inbox"], world.turn, actor=sent["to"])
         result.messages_log.append({"turn": world.turn, "msg_id": gid,
                                     "from": sent["from"], "to": sent["to"],
                                     "action": sent.get("kind", "speak"),
@@ -826,12 +854,11 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
                                     "meta": p["meta"]})
         if p["sender_notice"]:
             su = world.agents[sent["from"]].uid if sent["from"] in world.agents else None
-            world.inbox_queue.append({"deliver_turn": world.turn, "to": sent["from"],
-                                      "to_uid": su, "msg": {"from": None, "text": None,
-                                      "label": None, "original": None, "msg_id": next(msg_ids),
-                                      "delivery_failed_to": sent["to"],
-                                      "delivery_failed_reason": p["sender_notice"].get("reason"),
-                                      "ref_msg_id": gid}})
+            _notify(world, "delivery_failed",
+                    {"from": None, "text": None, "label": None, "original": None,
+                     "msg_id": next(msg_ids), "delivery_failed_to": sent["to"],
+                     "delivery_failed_reason": p["sender_notice"].get("reason"),
+                     "ref_msg_id": gid}, world.turn, actor=sent["from"])
     # 투표 — 소집은 즉시 열고, ballot 은 누적(턴 끝 개표)
     for by, country in sink.votes:
         c = world.countries.get(country)
@@ -976,16 +1003,7 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
 
     if not is_last:
         _death_birth(world, cfg, rng, snapshot_ids, procreated, counter, result)
-        for d in result.deaths_log:
-            if d["turn"] != world.turn:
-                continue
-            for aid, a in sorted(world.agents.items()):
-                if a.country != d["country"] or aid == d["who"]:
-                    continue
-                world.inbox_queue.append({
-                    "deliver_turn": world.turn + 1, "to": aid, "to_uid": a.uid,
-                    "msg": {"msg_id": next(msg_ids), "died": d["who"],
-                            "born": d.get("born"), "age": d.get("age")}})
+        _queue_obituaries(world, result, msg_ids)
 
     result.acted.append(snapshot_uids)
     result.alive_counts.append(sum(1 for a in world.agents.values() if a.alive))

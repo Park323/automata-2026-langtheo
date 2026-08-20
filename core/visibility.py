@@ -1,0 +1,120 @@
+"""무엇을 누가 알 수 있는가. spec 4.1 을 **코드로** 옮긴 표.
+
+에이전트에게는 이 파일의 어느 것도 보이지 않는다. 우리가 뒤에서 context 를 나눠 주는
+규칙일 뿐이다.
+
+    SECRET   아무도 모른다 — **행위자조차** 모른다
+    PRIVATE  행위자만 안다
+    PUBLIC   그 나라 안에서 공유된다
+    GLOBAL   전 세계가 공유한다
+
+## 왜 표로 만드는가
+
+지금까지 **「누가 아는가」 가 호출부마다 흩어져 있었다.** 부고는 같은 나라를 훑는 루프로,
+출자 결과는 출자자 한 명에게, 메시지는 수신자에게 — 각각 다른 곳에서 각각의 방식으로
+청중을 정했다. 그러면 두 가지가 안 된다.
+
+  ① **대조할 수 없다.** spec 4.1 의 은닉 목록과 코드가 어긋났는지 눈으로 봐야 한다.
+     실제로 어긋난 것을 두 번 발견했다 — 타국 출자의 진척 증가분(액수를 쌓으면 상대국
+     생산배수가 복원됐다)과 「wellness 는 수명을 늘린다」(λ 곡선을 말로 알려줬다).
+  ② **새 사건을 추가할 때 청중을 다시 발명한다.** 그때마다 은닉이 새어 나갈 자리가 생긴다.
+
+이제 사건은 등급을 **선언**하고, 청중은 `audience()` 하나가 정한다.
+"""
+from __future__ import annotations
+
+from enum import Enum
+
+
+class Vis(Enum):
+    """공개 등급. 값은 넓이 순서라 비교할 수 있다 (`SECRET < PRIVATE < ...`)."""
+
+    SECRET = 0
+    PRIVATE = 1
+    PUBLIC = 2
+    GLOBAL = 3
+
+    def __lt__(self, other):
+        return self.value < other.value
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 세계가 만들어 내는 모든 사실의 등급.
+#
+# **이 표에 없는 것을 에이전트에게 보내면 테스트가 실패한다.** 새 사건을 만들면 여기에
+# 한 줄을 적어야 하고, 그 줄이 곧 「왜 이 사람들만 아는가」 의 근거다.
+# ─────────────────────────────────────────────────────────────────────────────
+
+FACTS: dict[str, tuple[Vis, str]] = {
+    # ── SECRET — 아무도 모른다. 행위자조차 ──────────────────────────────────
+    "success_prob":      (Vis.SECRET, "돈이 진척으로 바뀌는 확률. 알려주면 기대값 계산이 된다"),
+    "lifespan_lambda":   (Vis.SECRET, "개인의 수명 척도 λ. **본인도 모른다** (4.1)"),
+    "hazard_curve":      (Vis.SECRET, "나이→사망확률. 평균만 SYSTEM 에 적고 모양은 숨긴다"),
+    "wellness_gain":     (Vis.SECRET, "wellness 가 λ 를 얼마 올렸나. 본인도 모른다"),
+    "threshold_truth":   (Vis.SECRET, "요격기 임계의 진값. observe_risk 는 흐린 값만 준다"),
+    "impact_turn_truth": (Vis.SECRET, "운석까지 남은 진짜 해수. 같다"),
+    "growth_fn":         (Vis.SECRET, "생산배수 함수. 수입에서 추론할 뿐"),
+    "inner_reasoning":   (Vis.SECRET, "타인의 내심. 로그에는 남지만 세계에는 없다"),
+    "other_nation_state":(Vis.SECRET, "타국의 진척·예산·국토·언어 능력. **소통으로만** 안다"),
+
+    # ── PRIVATE — 행위자만 ─────────────────────────────────────────────────
+    "budget":            (Vis.PRIVATE, "내 예산"),
+    "action_left":       (Vis.PRIVATE, "내 남은 행동력"),
+    "lang_progress":     (Vis.PRIVATE, "내 언어 학습 진척"),
+    "facility_invested": (Vis.PRIVATE, "내가 어느 나라에 얼마를 냈나"),
+    "memory":            (Vis.PRIVATE, "내 메모"),
+    "risk_reading":      (Vis.PRIVATE, "내가 observe_risk 로 읽은 값. 남에게 알리려면 말해야 한다"),
+    "fac_gain":          (Vis.PRIVATE, "내 출자가 진척을 얼마 올렸나 (타국이면 여부만)"),
+    "delivery_failed":   (Vis.PRIVATE, "내가 보낸 말이 닿지 않았다"),
+    "message":           (Vis.PRIVATE, "주고받은 말. **보낸 이와 받는 이만**"),
+
+    # ── PUBLIC — 그 나라 안 ────────────────────────────────────────────────
+    "land":              (Vis.PUBLIC, "자국 국토"),
+    "progress":          (Vis.PUBLIC, "자국 진척"),
+    "income":            (Vis.PUBLIC, "자국 수입 (생산배수가 반영된 값)"),
+    "proposal":          (Vis.PUBLIC, "열린 採決과 採決일"),
+    "ballot_result":     (Vis.PUBLIC, "採決 결과. 국토를 정하는 것은 그 나라 사람들이다"),
+    "domestic_speaker":  (Vis.PUBLIC, "국내에 그 말을 하는 사람이 있는가. 학습가 할인으로 드러난다"),
+
+    # ── GLOBAL — 전 세계 ───────────────────────────────────────────────────
+    "year":              (Vis.GLOBAL, "올해"),
+    "roster":            (Vis.GLOBAL, "누가 있는가. 없으면 서로를 부를 수 없다"),
+    "rules":             (Vis.GLOBAL, "세계 규칙 (SYSTEM)"),
+    "obituary":          (Vis.GLOBAL, "누가 몇 살에 죽고 누가 그 자리에 왔나 — 8/20 에 "
+                                      "PUBLIC 에서 올렸다. roster 가 이미 교체를 드러내므로 "
+                                      "새로 새는 것은 **나이**뿐이고, 그것이 수명을 배우는 "
+                                      "유일한 경로다 (곡선은 여전히 SECRET)"),
+    "outcome":           (Vis.GLOBAL, "요격기 완성·운석 충돌. 모두가 겪는다"),
+}
+
+
+def level(fact: str) -> Vis:
+    """등급을 읽는다. **표에 없으면 거절한다** — 청중을 즉흥으로 정하지 않게."""
+    if fact not in FACTS:
+        raise KeyError(
+            f"공개 등급이 선언되지 않은 사실: {fact!r}. core/visibility.py 의 FACTS 에 "
+            f"한 줄을 적으세요 — 그 줄이 「왜 이 사람들만 아는가」 의 근거입니다.")
+    return FACTS[fact][0]
+
+
+def audience(world, fact: str, actor: str | None = None,
+             nation: str | None = None) -> list[str]:
+    """이 사실을 알 수 있는 **살아 있는** 사람들. 정렬해 돌려준다 (결정론).
+
+    `actor` 는 PRIVATE 의 임자, `nation` 은 PUBLIC 의 범위다. PUBLIC 인데 `nation` 이
+    없으면 `actor` 의 나라로 본다.
+
+    죽은 사람·교체된 슬롯은 알 수 없다 — 그 자리에 온 아이는 다른 사람이다 (3.2).
+    """
+    vis = level(fact)
+    if vis is Vis.SECRET:
+        return []
+    if vis is Vis.PRIVATE:
+        return [actor] if actor and actor in world.agents else []
+    if vis is Vis.PUBLIC:
+        home = nation or (world.agents[actor].country if actor in world.agents else None)
+        if home is None:
+            return []
+        return sorted(a.id for a in world.agents.values()
+                      if a.alive and a.country == home)
+    return sorted(a.id for a in world.agents.values() if a.alive)
