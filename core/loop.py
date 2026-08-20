@@ -544,7 +544,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         c = world.countries[cid]
         if c.proposal is None or c.proposal["vote_turn"] != world.turn:
             continue
-        cast = ballots_by.get(cid, [])
+        cast = _one_vote_each(ballots_by.get(cid, []))
         counts = {k: sum(1 for _, ch in cast if ch == k)
                   for k in ("interceptor", "bunker", "abstain")}
         top = max(counts["interceptor"], counts["bunker"])
@@ -941,6 +941,22 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         proc_acc.append((aid, testament))
 
 
+def _one_vote_each(cast: list) -> list:
+    """(사람, 선택) 목록에서 **사람마다 한 표만** 남긴다. 처음 던진 것이 그 사람의 표다.
+
+    도구가 이미 두 번째를 거절하므로 여기까지 오지 않는 것이 정상이다. 그래도 둔다 —
+    막지 않았을 때 실제로 두 표가 집계됐고(3해 실측), 집계는 **국토를 정하는 자리**라
+    한 경로가 새면 나라의 용도가 한 사람 손에 두 번 실린다.
+    """
+    seen, out = set(), []
+    for by, choice in cast:
+        if by in seen:
+            continue
+        seen.add(by)
+        out.append((by, choice))
+    return out
+
+
 def _roundrobin_tally(world: World, cfg, result: RunResult, ballots_acc: list) -> None:
     """턴 끝 개표 — 최다득표(interceptor/bunker/abstain). _settle_agentic 과 같은 규칙."""
     ballots_by: dict[str, list] = defaultdict(list)
@@ -950,7 +966,7 @@ def _roundrobin_tally(world: World, cfg, result: RunResult, ballots_acc: list) -
         c = world.countries[cid]
         if c.proposal is None or c.proposal["vote_turn"] != world.turn:
             continue
-        cast = ballots_by.get(cid, [])
+        cast = _one_vote_each(ballots_by.get(cid, []))
         counts = {k: sum(1 for _, ch in cast if ch == k)
                   for k in ("interceptor", "bunker", "abstain")}
         tie = counts["interceptor"] == counts["bunker"]

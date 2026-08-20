@@ -87,7 +87,7 @@ T = {
         year="今年: {y} 年",
         open="{y} 年になりました。あなたは {age} 歳。今年の収入は +{inc:.0f}、手元の予算は {b:.0f} です。\nこの年を執り行ってください。",
         prop="  採決が {vt} 年に開かれます（{by} が召集）。何を建てるかをそこで決めます",
-        prop_today="  ★ 今年が採決の年です。vote で interceptor / bunker / abstain を選べます",
+        prop_today="  ★ 今年が採決の年です（{by} が召集）。vote で interceptor / bunker / abstain を選べます",
         prop_none="  採決は開かれていません。何を建てるかは投票でしか決まりません",
         c_ballot="  vote",  c_ballot_note="採決で何を建てるかを選ぶ",
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
@@ -146,7 +146,7 @@ T = {
         prog="本国进度: {v:.0f}", thresh="  建成 interceptor 所需的进度: {v:.0f}",
         year="今年: {y} 年",
         prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
-        prop_today="  ★ 今年就是表决之年。可以用 vote 选 interceptor / bunker / abstain",
+        prop_today="  ★ 今年就是表决之年（由 {by} 召集）。可以用 vote 选 interceptor / bunker / abstain",
         prop_none="  没有正在进行的表决。要建什么只能由投票决定",
         open="到了 {y} 年。你 {age} 岁。今年的收入是 +{inc:.0f}，手上的预算是 {b:.0f}。\n请执行这一年。",
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
@@ -207,7 +207,7 @@ T = {
         thresh="  Progression requise pour achever un interceptor : {v:.0f}",
         year="Année : {y}",
         prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
-        prop_today="  ★ Le scrutin a lieu cette année. Choisissez avec vote : interceptor / bunker / abstain",
+        prop_today="  ★ Le scrutin a lieu cette année (convoqué par {by}). Choisissez avec vote : interceptor / bunker / abstain",
         prop_none="  Aucun scrutin en cours. Ce qu'on bâtit ne se décide que par un vote",
         open="L'an {y} est arrivé. Vous avez {age} ans. Le revenu de cette année est de +{inc:.0f} ; votre budget est de {b:.0f}.\nMenez cette année.",
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
@@ -547,11 +547,17 @@ def _proposal_line(world, c, t) -> str:
     p = c.proposal
     if p is None:
         return t["prop_none"]
-    # 소집에는 내용이 없다 — 무엇을 지을지는 採決에서 정해진다
-    line = t["prop"].format(by=p["by"], vt=FIRST_YEAR + p["vote_turn"] - 1)
+    # **採決일에는 예정 줄을 걷어낸다.** 둘 다 내보내면 그날 관측이
+    #
+    #     表决将在 44 年举行（由 Ranoa3 召集）。建什么在那时决定
+    #     ★ 今年就是表决之年。可以用 vote 选 …
+    #
+    # 이렇게 나와서, 「44년에 열린다」 와 「올해가 그 해다」 를 겹쳐 읽어야 했다. 유예를
+    # 한 해로 줄이면서 이 겹침이 제안 수명의 **3분의 1** 이 됐다 (전에는 5분의 1).
     if world.turn == p["vote_turn"]:
-        line += "\n" + t["prop_today"]
-    return line
+        return t["prop_today"].format(by=p["by"])
+    # 소집에는 내용이 없다 — 무엇을 지을지는 採決에서 정해진다
+    return t["prop"].format(by=p["by"], vt=FIRST_YEAR + p["vote_turn"] - 1)
 
 
 def render_turn_open(world, agent, cfg, knob_ai: float | None = None,

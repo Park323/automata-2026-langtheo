@@ -230,6 +230,10 @@ class RunWriter:
                 "lang_progress": {k: round(v, 2) for k, v in (a.lang_progress or {}).items()},
                 "facility_invested": {k: round(v, 2)
                                       for k, v in (a.facility_invested or {}).items()},
+                # **이 사람이 표를 던진 採決의 해.** vote 이벤트로도 복원되지만, 두 표가
+                # 둘 다 집계된 적이 있어(3해 실측) 「한 사람 한 표」 를 상태에서 바로
+                # 대조할 수 있게 남긴다.
+                "voted_turn": a.voted_turn,
             })
         for m in result.messages_log:
             if m.get("turn") == turn and not m.get("_written"):

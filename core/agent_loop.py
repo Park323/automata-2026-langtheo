@@ -455,11 +455,15 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         if choice not in ("interceptor", "bunker", "abstain"):
             return {"ok": False, "error":
                     "choice must be interceptor, bunker or abstain"}, None
+        # **한 사람은 한 표다.** 막지 않았을 때 두 표가 둘 다 집계됐다 (3해 실측).
+        if agent.voted_turn == world.turn:
+            return {"ok": False, "error": "you have already voted in this ballot"}, None
         # **표는 돈도 AP 도 거의 안 받는다.** 돈을 물리면 참여가 재산이 되고, AP 를 크게
         # 물리면 採決 당일 — 설득이 가장 필요한 날 — 말할 기회가 줄어든다.
         if not _afford(agent.ap, cfg.ap.vote):
             return {"ok": False, "error": f"not enough action; vote needs {cfg.ap.vote}, have {agent.ap:.2f}"}, None
         _spend(agent, cfg.ap.vote)
+        agent.voted_turn = world.turn
         sink.ballots.append((agent.id, agent.country, choice))
         return {"ok": True, "ap_left": round(agent.ap, 1)}, None
 

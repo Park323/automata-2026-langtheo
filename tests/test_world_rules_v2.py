@@ -1392,3 +1392,59 @@ def test_a_language_you_already_read_is_not_on_the_learning_table(cfg, world):
 
     # **말을 걸 때는 여전히 나온다** — 아는 말이라 반드시 닿는다는 사실은 남아야 한다
     assert "Miris" in sysmsg
+
+
+def test_one_person_gets_one_vote(cfg, world):
+    """**한 사람이 두 번 던졌고 두 표가 다 집계됐다.**
+
+    3해 실측에서 Ranoa1 이 같은 採決에 두 번 `vote` 를 불렀고, 세 사람 나라에서
+    interceptor **3표**가 나왔다 — 실제로 던진 사람은 둘이고 Ranoa2 는 던지지 않았다.
+    국토를 정하는 자리에서 한 사람이 나라의 용도를 두 번 밀 수 있었던 것이다.
+
+    두 겹으로 막는다. 도구가 두 번째를 거절하고, 집계가 사람마다 한 표만 센다 — 순차
+    라운드로빈은 한 해에 같은 사람을 두 번 방문할 수 있다 (메일로 깨우는 경로).
+    """
+    a = world.agents["Ranoa1"]
+    _call(world, cfg, "Ranoa1")
+    # **採決일을 제안에서 읽는다** — 숫자를 여기 적으면 VOTE_DELAY 를 고칠 때 낡는다
+    world.turn = world.countries["Ranoa"].proposal["vote_turn"]
+    a.ap = 1.0
+
+    r = _do(world, cfg, a, "vote", {"choice": "interceptor"})
+    assert r["ok"] and a.voted_turn == world.turn
+    r = _do(world, cfg, a, "vote", {"choice": "bunker"})
+    assert not r["ok"] and "already voted" in r["error"]
+
+    # 그리고 집계는 새는 경로가 있어도 한 표만 센다
+    assert loop._one_vote_each(
+        [("Ranoa1", "interceptor"), ("Ranoa1", "interceptor"),
+         ("Ranoa3", "bunker")]) == [("Ranoa1", "interceptor"), ("Ranoa3", "bunker")]
+
+
+def test_the_ballot_day_says_only_that_it_is_today(cfg, world):
+    """**예정과 「오늘이다」 를 겹쳐 내보내고 있었다.**
+
+        表决将在 44 年举行（由 Ranoa3 召集）。建什么在那时决定
+        ★ 今年就是表决之年。可以用 vote 选 …
+
+    유예를 한 해로 줄이면서 이 겹침이 제안 수명의 3분의 1 이 됐다. 그날은 「오늘이다」
+    한 줄만 내보내고, 소집자는 그 줄이 데려간다.
+    """
+    from domains.meteor import prompts
+    _call(world, cfg, "Ranoa1")
+    p = world.countries["Ranoa"].proposal
+
+    def prop_lines(w):
+        obs = prompts.system_for(world.agents["Ranoa2"], world, cfg, 48.0)
+        # 비용표에도 「表决」 이 있다 — 제안 블록만 본다
+        return [l for l in obs.splitlines() if "表决将在" in l or "★" in l]
+
+    year = str(prompts.FIRST_YEAR + p["vote_turn"] - 1)
+    world.turn = p["opened_turn"]                    # 소집한 해 — 예정만
+    (line,) = prop_lines(world)
+    assert year in line and "★" not in line
+
+    world.turn = p["vote_turn"]                      # 採決일 — 「오늘」 만
+    (line,) = prop_lines(world)
+    assert "★" in line and "Ranoa1" in line
+    assert year not in line                          # 예정 줄이 겹치지 않는다
