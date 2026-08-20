@@ -742,18 +742,25 @@ def _turn_log(agent, st: "_StepAcc", ended_by: str, t_turn: float) -> dict:
 
 
 def run_agent_step(world, agent, cfg, client, sink: Sink, knob_ai: float,
-                   system_prompt: str, user_prompt: str, st: "_StepAcc") -> str | None:
-    """순차 라운드로빈의 **한 차례**. 신선한 관측을 convo 에 붙이고 `_agent_one_call` 1회.
+                   system_prompt: str, user_prompt: str | None, st: "_StepAcc") -> str | None:
+    """순차 라운드로빈의 **한 차례**. `_agent_one_call` 1회.
 
     `st` 는 이 에이전트의 **이번 턴 누적**이라 차례를 거듭해도 유지된다(스텝·행동·근거를
-    모아 턴당 로그 하나로). 압박 경고는 관측 앞에 붙인다(사실 통지). 반환은 종료 사유
-    또는 None(계속) — `_agent_one_call` 과 같다.
+    모아 턴당 로그 하나로). 반환은 종료 사유 또는 None(계속).
+
+    `user_prompt` 가 None 이면 **아무것도 붙이지 않는다.** 지금 그러한 것은 system 이 매
+    콜 새로 담으므로, 차례마다 user 를 쌓을 이유가 없다 — 붙일 것은 턴을 여는 한 마디와
+    새로 도착한 메시지뿐이다.
     """
     if under_pressure(agent, cfg):
         from domains.meteor.prompts import T          # 도메인 문구 (모국어)
-        user_prompt = T[agent.native_lang]["warn"] + "\n\n" + user_prompt
+        warn = T[agent.native_lang]["warn"]
+        # 압박 경고는 사실 통지다. 붙일 메시지가 없으면 경고만으로 한 줄을 만든다 —
+        # 안 그러면 한계에 부딪히고 있다는 사실이 전달되지 않는다.
+        user_prompt = warn if user_prompt is None else warn + "\n\n" + user_prompt
         st.pressured = True
-    agent.convo.append({"role": "user", "content": user_prompt})
+    if user_prompt is not None:
+        agent.convo.append({"role": "user", "content": user_prompt})
     tool_list = tools_for(cfg)
     tool_tokens = _TOOL_TOKENS if tool_list is TOOLS else _TOOL_TOKENS_NR
     return _agent_one_call(world, agent, cfg, client, sink, knob_ai,

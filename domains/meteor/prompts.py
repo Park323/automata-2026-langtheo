@@ -77,6 +77,7 @@ T = {
         land="自国の国土: {v}", undecided="未定",
         prog="自国の進捗: {v:.0f}", thresh="  interceptor の完成に要る進捗: {v:.0f}",
         year="今年: {y} 年",
+        open="{y} 年になりました。このターンを執り行ってください。",
         prop="  採決が {vt} 年に開かれます（{by} が召集）。何を建てるかをそこで決めます",
         prop_today="  ★ 今年が採決の年です。vote で interceptor / bunker / abstain を選べます",
         prop_none="  採決は開かれていません。国土は投票でしか決まりません",
@@ -132,6 +133,7 @@ T = {
         prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
         prop_today="  ★ 今年就是表决之年。可以用 vote 选 interceptor / bunker / abstain",
         prop_none="  没有正在进行的表决。国土只能由投票决定",
+        open="到了 {y} 年。请执行这一回合。",
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
         income="本回合收入: +{v:.0f}",
@@ -185,6 +187,7 @@ T = {
         prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
         prop_today="  ★ Le scrutin a lieu cette année. Choisissez avec vote : interceptor / bunker / abstain",
         prop_none="  Aucun scrutin en cours. Le territoire ne se décide que par un vote",
+        open="L'an {y} est arrivé. Menez ce tour.",
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
         income="Revenu ce tour : +{v:.0f}",
@@ -234,9 +237,24 @@ T = {
 }
 
 
-def system_for(agent) -> str:
-    """에이전트의 모국어 SYSTEM. loop 에 이 함수를 넘긴다."""
-    return SYSTEM[agent.native_lang]
+def system_for(agent, world=None, cfg=None, knob_ai: float | None = None) -> str:
+    """에이전트의 모국어 SYSTEM — **세계 규칙 + 지금 그러한 것.**
+
+    `world` 를 주면 관측을 이어 붙인다. 그것이 **매 콜 새로 만들어지는 이유**다:
+
+        규칙   변하지 않는다 — 어차피 매 요청에 실려 간다 (Chat Completions 는 stateless)
+        상태   매번 달라진다 — 그래서 **갈아치워야 하고, 쌓이면 안 된다**
+
+    그전에는 관측 전체가 매 턴 `user` 로 쌓였다. 한 요청 안에 **예산이 네 개** 있었고
+    (100 · 177 · 196 · 215), 비용표가 네 번 있었다. 낭비이면서 모순이고, 그 부피가
+    context_limit 을 밀어 **대화 이력을 방출시켰다** — 즉 상태를 쌓느라 대화를 버렸다.
+
+    `world` 없이 부르면 규칙만 돌려준다 (문구 검사용).
+    """
+    txt = SYSTEM[agent.native_lang]
+    if world is None or cfg is None:
+        return txt
+    return txt + "\n\n" + render_observation(world, agent, cfg, knob_ai or 0.0)
 
 
 def _nation_of_lang(world, lang: str) -> str:
@@ -384,6 +402,23 @@ def _proposal_line(world, c, t) -> str:
     return line
 
 
+def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
+                     inbox: list[dict] | None = None) -> str:
+    """**턴을 여는 한 마디 + 이번에 도착한 것.** 이것만 대화에 쌓인다.
+
+    관측(지금 그러한 것)은 system 으로 옮겼다 — 매 콜 새로 만들므로 낡은 사본이 남지
+    않는다. 그전에는 관측 전체가 매 턴 user 로 쌓여서, 한 요청 안에 **예산이 네 개**
+    있었다 (100 · 177 · 196 · 215). 낭비이면서 모순이다.
+
+    도착한 메시지는 여기 남는다. 그것만이 **에이전트 컨텍스트 안의 유일한 대화 기록**
+    이므로 반드시 쌓여야 한다 — state 처럼 갈아치우면 누가 무슨 말을 했는지 잊는다.
+    """
+    t = T[agent.native_lang]
+    head = t["open"].format(y=FIRST_YEAR + world.turn - 1)
+    box = render_inbox(inbox or [], agent.native_lang)
+    return f"{head}\n\n{box}" if box.strip() else head
+
+
 def render_observation(world, agent, cfg, knob_ai: float,
                        inbox: list[dict] | None = None,
                        income_this_turn: float | None = None,
@@ -402,6 +437,8 @@ def render_observation(world, agent, cfg, knob_ai: float,
     if delta:
         # 재방문 — 바뀌는 것만: 예산·자국 진척·(열린)제안 + 새 도착 메시지.
         # year/you/land/골격은 그 턴 첫 차례 풀 관측에 있으므로 반복하지 않는다.
+        # delta 는 이제 쓰이지 않는다 — 관측 자체가 system 으로 가서 누적되지 않는다.
+        # 인자를 남겨두는 것은 옛 런을 다시 채점할 때를 위해서다.
         parts = [
             t["budget"].format(b=agent.budget),
             # **남은 행동력.** 예산을 넣는 이유가 그대로 여기에도 적용된다 — 차례마다
@@ -458,6 +495,7 @@ def render_observation(world, agent, cfg, knob_ai: float,
         t["rtt"],
         "",
     ]
-    parts += [t["mem_hdr"], ("  " + agent.memory) if agent.memory else t["mem_none"], ""]
-    parts.append(render_inbox(inbox or [], lang))
+    parts += [t["mem_hdr"], ("  " + agent.memory) if agent.memory else t["mem_none"]]
+    # **도착한 메시지는 여기 없다.** 그건 사건이라 대화에 쌓여야 하고,
+    # render_turn_open 이 담는다. 관측은 「지금 그러한 것」 만 적는다.
     return "\n".join(parts)
