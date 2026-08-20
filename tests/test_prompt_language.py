@@ -481,3 +481,29 @@ def test_no_error_message_says_turn():
         if '"error"' not in line and "error\":" not in line:
             continue
         assert not re.search(r"\bturn\b", line.replace("end_turn", "")), line
+
+
+def test_the_inbox_shows_no_message_ids():
+    """**`[N]` 은 에이전트에게 잡음이었다.**
+
+    `msg_id` 는 우리 채점의 조인 키(`judge.py` · `messages.jsonl`)이고, 에이전트 쪽에는
+    **그것을 쓸 도구가 없다** — `speak` 의 `reply_to` 를 없앤 뒤로 남을 이유가 사라졌다.
+    번호를 보여주면 「번호로 답할 수 있다」 는 **없는 기능을 암시**한다.
+
+    로그에는 그대로 남으므로 사후 조인은 그대로 된다.
+    """
+    from core import tools
+    from domains.meteor import prompts
+    # 어느 도구도 id 를 인자로 받지 않는다
+    for t in tools.TOOLS:
+        for k in t["function"]["parameters"]["properties"]:
+            assert "msg" not in k and "reply" not in k, (t["function"]["name"], k)
+
+    box = [{"msg_id": 7, "from": "Ranoa1", "label": None, "text": "MARK", "original": None},
+           {"msg_id": 8, "from": "Miris1", "unreadable": True},
+           {"msg_id": 9, "delivery_failed_to": "Asla2"}]
+    for lang in ("ja", "zh", "fr"):
+        out = prompts.render_inbox(box, lang)
+        assert "MARK" in out and "Ranoa1" in out
+        for n in ("[7]", "[8]", "[9]", "7", "8", "9"):
+            assert n not in out, (lang, n, out)

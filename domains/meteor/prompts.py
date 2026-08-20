@@ -116,11 +116,11 @@ T = {
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n                          （省くと自国）",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
         rtt="送ったメッセージは翌年に届きます。返事が来るのはさらにその翌年です。",
-        in_none="今年届いたメッセージ: なし", in_hdr="今年届いたメッセージ:",
-        in_fail="  [{id}] 通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
-        in_fail_plain="  [{id}] 通知 — {to} 宛のメッセージは届きませんでした",
-        in_unread="  [{id}] {frm} より — 読めないメッセージが届きました",
-        in_from="  [{id}] {frm} より{label}", lbl_direct=" ［通訳なしで通じた］",
+        in_hdr="今届いたメッセージ:",
+        in_fail="  通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
+        in_fail_plain="  通知 — {to} 宛のメッセージは届きませんでした",
+        in_unread="  {frm} より — 読めないメッセージが届きました",
+        in_from="  {frm} より{label}", lbl_direct=" ［通訳なしで通じた］",
         lbl_ai=" ［送り主が AI に訳させたメッセージです］",
         died="  {who} が {age} 歳で亡くなり、{born} が生まれました。",
         fac_gain="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
@@ -168,11 +168,11 @@ T = {
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
         rtt="你发出的消息在第二年送达。对方的回信要再过一年才会到。",
-        in_none="今年送达的消息: 无", in_hdr="今年送达的消息:",
-        in_fail="  [{id}] 通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
-        in_fail_plain="  [{id}] 通知 — 你发给 {to} 的消息未能送达",
-        in_unread="  [{id}] 来自 {frm} — 送到一条你读不懂的消息",
-        in_from="  [{id}] 来自 {frm}{label}", lbl_direct="［无需翻译就能听懂］",
+        in_hdr="刚送达的消息:",
+        in_fail="  通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
+        in_fail_plain="  通知 — 你发给 {to} 的消息未能送达",
+        in_unread="  来自 {frm} — 送到一条你读不懂的消息",
+        in_from="  来自 {frm}{label}", lbl_direct="［无需翻译就能听懂］",
         lbl_ai="［这是发信人用 AI 译过来的消息］",
         died="  {who} 在 {age} 岁去世，{born} 出生了。",
         fac_gain="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
@@ -224,11 +224,11 @@ T = {
                           "             la vôtre ou une autre (sans `to`, la vôtre)",
         cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
         rtt="Un message part et arrive l'année suivante ; une réponse n'arrive que l'année d'après.",
-        in_none="Messages arrivés cette année : aucun", in_hdr="Messages arrivés cette année :",
-        in_fail="  [{id}] Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",
-        in_fail_plain="  [{id}] Avis — votre message à {to} n'a pas pu être délivré",
-        in_unread="  [{id}] de {frm} — un message illisible est arrivé",
-        in_from="  [{id}] de {frm}{label}", lbl_direct=" [compris sans traduction]",
+        in_hdr="Messages qui viennent d'arriver :",
+        in_fail="  Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",
+        in_fail_plain="  Avis — votre message à {to} n'a pas pu être délivré",
+        in_unread="  de {frm} — un message illisible est arrivé",
+        in_from="  de {frm}{label}", lbl_direct=" [compris sans traduction]",
         lbl_ai=" [message que l'expéditeur a fait traduire par une IA]",
         died="  {who} est mort à {age} ans ; {born} est né.",
         fac_gain="  Votre versement de {amt:.0f} à facility l'an dernier a fait progresser {to} de {gain:.0f}.",
@@ -382,22 +382,33 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
 
 
 def render_inbox(inbox: list[dict], lang: str) -> str:
+    """**방금 도착한 것.** 「올해 온 것」 이 아니다.
+
+    머리말이 `今年届いたメッセージ` 였다. 한 해에 여러 번 차례가 오고 그때마다 새로 온
+    것만 담기는데, 그렇게 적으면 **「올해 올 것이 다 왔다」** 로 읽힌다. 실제로는 이
+    차례에 막 도착한 것뿐이고, 같은 해에 더 올 수 있다.
+
+    빈 채로 부르지 않는다 — 온 것이 없으면 `render_turn_open` 이 아예 붙이지 않는다.
+    「도착: 없음」 을 적으면 아무 일도 없었다는 사실이 대화에 쌓인다.
+
+    **`[N]` 도 붙이지 않는다.** `msg_id` 는 우리 채점의 조인 키(`judge.py`)이고, 에이전트
+    쪽에는 **그것을 쓸 도구가 없다** — `speak` 의 `reply_to` 를 없앤 뒤로 잡음이다.
+    번호를 보여주면 「번호로 답할 수 있다」 는 없는 기능을 암시하게 된다.
+    로그(`messages.jsonl`)에는 그대로 남으므로 사후 조인은 그대로 된다.
+    """
     t = T[lang]
-    if not inbox:
-        return t["in_none"]
     out = [t["in_hdr"]]
-    for i, m in enumerate(inbox, 1):
-        mid = m.get("msg_id", i)
+    for m in inbox:
         if m.get("delivery_failed_to"):        # sender's failure notice (spec 5.1)
             # **원인을 섞지 않는다.** 엔진 장애를 「상대가 그 언어를 읽지 못한다」 로
             # 통지하고 있었다 — 상대의 언어 능력과 무관한 일을 언어 사실로 심는 것이고,
             # 이 실험의 핵심 변수를 에이전트의 머릿속에서 오염시킨다.
             key = ("in_fail" if m.get("delivery_failed_reason", "unreadable") == "unreadable"
                    else "in_fail_plain")
-            out.append(t[key].format(id=mid, to=m["delivery_failed_to"]))
+            out.append(t[key].format(to=m["delivery_failed_to"]))
             continue
         if m.get("unreadable"):
-            out.append(t["in_unread"].format(id=mid, frm=m["from"]))
+            out.append(t["in_unread"].format(frm=m["from"]))
             continue
         if m.get("died"):                      # 같은 나라 사람의 부고 (+ 후임)
             out.append(t["died"].format(who=m["died"], born=m.get("born") or "?",
@@ -420,7 +431,7 @@ def render_inbox(inbox: list[dict], lang: str) -> str:
         label = (t["lbl_direct"] if raw == "[direct]"
                  else t["lbl_ai"] if raw == "[AI translation]"
                  else (f" {raw}" if raw else ""))
-        out.append(t["in_from"].format(id=mid, frm=m["from"], label=label))
+        out.append(t["in_from"].format(frm=m["from"], label=label))
         out.append(f'      "{m.get("text", "")}"')
     return "\n".join(out)
 

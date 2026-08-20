@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import itertools
+import json
 import random
 from pathlib import Path
 
@@ -321,3 +322,52 @@ def test_a_mid_year_arrival_does_not_reopen_the_year():
     assert prompts.render_turn_open(world, a, cfg, 48.0, [], opening=False) == ""
     # 병렬 경로는 한 해에 한 번뿐이므로 기본값이 True 여야 한다
     assert "になりました" in prompts.render_turn_open(world, a, cfg, 48.0, box)
+
+
+def test_an_ended_agent_wakes_when_mail_arrives():
+    """**끝냈다고 했는데 그 뒤에 말이 오면 다시 깨운다.**
+
+    `end_turn` 은 「지금 더 할 일이 없다」 는 판단이다. 그 뒤에 도착한 메시지는 **그
+    판단의 근거를 무너뜨리는 새 정보**다 — 누가 협력을 청했는데 이미 끝냈다고 그 해가
+    통째로 지나가면, 같은 해 왕복 대화라는 순차 라운드로빈의 취지가 절반만 산다.
+
+    시드 3 은 **수신자(Asla2, 0번째)가 발신자(Asla1, 3번째)보다 먼저** 온다. Asla2 가
+    먼저 끝내고, 그 뒤 Asla1 이 말을 보내고, 그래서 Asla2 가 다시 불린다.
+    """
+    cfg = _cfg(1)
+    end = assistant_msg(tool_call("end_turn", "e", reasoning="r"))
+    speak = assistant_msg(tool_call("speak", "s", to="Asla2", text="WAKE_UP", reasoning="r"))
+    clients = _clients({"Asla1": [speak, end], "Asla2": [end, end]})
+    res = _run(cfg, clients, seed=3, parallel=False, sequential=True)
+
+    # 깨어나 두 번 불렸다 (한 번은 처음, 한 번은 도착 뒤)
+    assert len(clients["Asla2"].calls) == 2
+    convo = json.dumps(res.world.agents["Asla2"].convo, ensure_ascii=False)
+    assert "WAKE_UP" in convo                         # 같은 해에 봤다
+    # 깨어난 뒤 붙은 것은 도착분만 — 해를 다시 열지 않는다
+    users = [m["content"] for m in res.world.agents["Asla2"].convo if m["role"] == "user"]
+    assert len(users) == 2 and "になりました" not in users[1]
+
+
+def test_a_stopped_agent_is_not_woken_when_it_cannot_act():
+    """깨우는 조건은 셋이다 — **스스로 끝냈고 · 행동력이 남았고 · 받을 것이 있다.**
+
+    `exhausted`·`error`·`repeat_guard`·`runaway` 로 멈춘 것을 깨우면 같은 실패를
+    되풀이한다. 행동력이 0 이면 깨워도 할 수 있는 것이 `memory_write` 뿐이다.
+    """
+    from core.loop import _has_inbox
+    cfg = _cfg(1)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 1
+    assert _has_inbox(world, "Asla2") is False
+    world.inbox_queue.append({"deliver_turn": 1, "to": "Asla2",
+                              "to_uid": world.agents["Asla2"].uid,
+                              "msg": {"msg_id": 1, "from": "Asla1", "text": "x"}})
+    assert _has_inbox(world, "Asla2") is True
+    # **꺼내지 않고 본다** — 깨울지 판단만 하고, 실제 수령은 그 차례에 한다
+    assert _has_inbox(world, "Asla2") is True
+    assert len(world.inbox_queue) == 1
+
+    # 수신 슬롯이 바뀌었으면(사망·교체) 받을 것이 아니다
+    world.inbox_queue[0]["to_uid"] = 9999
+    assert _has_inbox(world, "Asla2") is False

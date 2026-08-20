@@ -689,6 +689,17 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
 
 # ── 순차 라운드로빈 (spec — 한 턴 안에서 서로 반영·대화. issue #20) ──────────────
 
+def _has_inbox(world: World, aid: str) -> bool:
+    """이 차례에 받을 것이 있나. **꺼내지 않고 본다** (깨울지 판단하는 데만 쓴다)."""
+    current = world.agents.get(aid)
+    for e in world.inbox_queue:
+        if e["deliver_turn"] <= world.turn and e["to"] == aid:
+            if current and e.get("to_uid") is not None and e["to_uid"] != current.uid:
+                continue                     # 수신 슬롯이 바뀌었다 — 폐기될 것
+            return True
+    return False
+
+
 def _dequeue_inbox_pop(world: World, aid: str) -> list[dict]:
     """이 차례에 받을 메시지를 큐에서 **꺼내며 제거**한다 (라운드로빈).
 
@@ -877,7 +888,28 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
         active = False
         for aid in order:
             if ended[aid] is not None:
-                continue
+                # **끝냈다고 했는데 그 뒤에 말이 왔다면 다시 깨운다.**
+                #
+                # `end_turn` 은 「지금 더 할 일이 없다」 는 판단이다. 그 뒤에 도착한
+                # 메시지는 **그 판단의 근거를 무너뜨리는 새 정보**다 — 누가 협력을 청했는데
+                # 이미 끝냈다고 그 해가 통째로 지나가면, 같은 해 왕복 대화라는 순차
+                # 라운드로빈의 취지가 절반만 산다.
+                #
+                # 세 조건을 다 만족해야 깨운다.
+                #   ① 스스로 끝낸 것("ended")만. exhausted·error·repeat_guard·runaway 는
+                #      깨우면 같은 실패를 되풀이한다
+                #   ② 행동력이 남아 있어야 한다. 0 이면 깨워도 할 수 있는 것이
+                #      memory_write 뿐이다
+                #   ③ 받을 것이 실제로 있어야 한다 (꺼내지 않고 본다)
+                #
+                # 무한 왕복은 AP 가 막는다 — speak 이 0.3 이라 한 해에 세 번이 끝이다.
+                if not (ended[aid] == "ended"
+                        and aid in world.agents
+                        and world.agents[aid].uid in snapshot_uids
+                        and world.agents[aid].ap > 0
+                        and _has_inbox(world, aid)):
+                    continue
+                ended[aid] = None            # 다시 차례를 준다
             agent = world.agents[aid]
             st = accs[aid]
             if st.steps >= agent_loop.RUNAWAY_CAP:
