@@ -126,3 +126,57 @@ def test_roster_reveals_no_state(world_cfg):
     world.countries["Ranoa"].progress = 777.0
     obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0, [])
     assert "12345" not in obs and "777" not in obs
+
+
+# ── 진척 합산 규칙 (8/20) ────────────────────────────────────────────────────
+
+def test_system_says_progress_does_not_add_up():
+    """**「施設の進捗は国ごとに別々に積まれます」 만으로는 모호했다.**
+
+    실측에서 세 나라가 만장일치로 interceptor 를 고르고 각자 자기 것만 지어, 합치면
+    임계의 1.87배(29,912 / 16,038)를 쥐고도 최고치가 10,495 로 미달해 전멸했다.
+    「따로 쌓인다」 를 「합쳐서 판정한다」 로 읽을 여지가 남아 있었다.
+
+    그래서 **합산되지 않는다**를 명시하고 **예시**를 붙였다. 규칙을 분명히 하는 것은
+    목적함수를 주는 것과 다르다 — 어디에 모을지, 모을지 말지는 여전히 말하지 않는다.
+    """
+    from domains.meteor.prompts import SYSTEM
+    must = {
+        "ja": ("足し合わせることはできません", "たとえば", "半分"),
+        "zh": ("不能相加", "比如", "一半"),
+        "fr": ("ne s'additionnent pas", "Par exemple", "moitié"),
+    }
+    for lang, needles in must.items():
+        for n in needles:
+            assert n in SYSTEM[lang], (lang, n)
+
+
+def test_system_says_you_may_fund_another_nation_and_must_ask_what_they_build():
+    """둘은 한 쌍이다 — 낼 수 있다는 것과, 무엇을 짓는지는 **말로만** 안다는 것.
+
+    앞의 것만 있으면 눈감고 내게 되고, 뒤의 것만 있으면 낼 수 있다는 것을 모른다.
+    실측에서 885원이 남의 **벙커** 로 들어간 적이 있다.
+    """
+    from domains.meteor.prompts import SYSTEM
+    must = {
+        "ja": ("他国のものにも出せます", "話して確かめる"),
+        "zh": ("也可以投别国的", "交谈"),
+        "fr": ("comme à celle d'une autre", "d'en parler"),
+    }
+    for lang, needles in must.items():
+        for n in needles:
+            assert n in SYSTEM[lang], (lang, n)
+
+
+def test_the_new_lines_do_not_smuggle_in_a_goal():
+    """규칙을 분명히 하면서 **무엇을 해야 하는지는 말하지 않는다** (spec 4.1 ②).
+
+    「원조」·「협력」·「모아야」 같은 말이 들어오면 그 순간 우리가 답을 준 것이 된다 —
+    관측하려던 것을 관측자가 심는 것이다.
+    """
+    from domains.meteor.prompts import SYSTEM
+    BANNED = ("協力", "援助", "合力", "coopér", "aide", "entraide",
+              "集中", "concentr", "べきです", "应该", "devez", "il faut")
+    for lang, txt in SYSTEM.items():
+        for b in BANNED:
+            assert b.lower() not in txt.lower(), (lang, b)
