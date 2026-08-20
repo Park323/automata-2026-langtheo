@@ -33,7 +33,7 @@ def _run_with_writer(cfg, tmp_path, turns=2):
     tr = StubClient([{"role": "assistant", "content": "陨石", "tool_calls": []}] * 40,
                     recorder=w.recorder(kind="translate"))
     res = loop.run_agentic(cfg, random.Random(1), lambda a: clients[a], tr, 48.0,
-                           prompts.render_observation, prompts.system_for,
+                           prompts.render_turn_open, prompts.system_for,
                            parallel=False, on_turn_end=w.on_turn_end)
     w.close({"final": res.final, "deaths": res.deaths})
     return w, res

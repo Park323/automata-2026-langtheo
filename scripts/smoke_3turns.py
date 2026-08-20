@@ -179,7 +179,7 @@ def main() -> None:
     try:
         res = run_agentic(cfg, random.Random(args.seed),
                           client_for=lambda aid: agent_client, translator=translator,
-                          knob_ai=knob, render_obs=prompts.render_observation,
+                          knob_ai=knob, render_obs=prompts.render_turn_open,
                           system_prompt=prompts.system_for, sequential=args.sequential,
                           on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)),
                           sim_turns=args.turns,

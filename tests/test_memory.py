@@ -171,7 +171,7 @@ def test_sender_context_has_no_translation(cfg):
     clients = {a: StubClient(list(scripts.get(a, []))) for a in ids}
     tr = StubClient([{"role": "assistant", "content": "TRANSLATED_MARK", "tool_calls": []}] * 30)
     res = loop.run_agentic(cfg, random.Random(1), lambda a: clients[a], tr, 48.0,
-                           prompts.render_observation, prompts.system_for, parallel=False)
+                           prompts.render_turn_open, prompts.system_for, parallel=False)
     sender = res.world.agents["Asla1"]
     blob = json.dumps(sender.convo, ensure_ascii=False)
     assert "TRANSLATED_MARK" not in blob, "번역 결과가 발신자에게 샜다"
@@ -195,12 +195,24 @@ def test_agents_have_separate_contexts(cfg):
     clients = {a: StubClient([end, end]) for a in ids}
     res = loop.run_agentic(cfg, random.Random(1), lambda a: clients[a],
                            StubClient([{"role": "assistant", "content": "t", "tool_calls": []}] * 30),
-                           48.0, prompts.render_observation, prompts.system_for, parallel=False)
+                           48.0, prompts.render_turn_open, prompts.system_for, parallel=False)
+    # **신원은 이제 system 에 있다.** 관측(지금 그러한 것)이 system 으로 옮겨갔고,
+    # 대화에는 턴을 여는 한 마디와 내 행동·결과만 쌓인다.
     for aid in ids:
-        blob = json.dumps(res.world.agents[aid].convo, ensure_ascii=False)
-        others = [o for o in ids if o != aid and not blob.count(f"You are {o}")]
-        assert others, "자기 관측만 있어야 한다"
-        assert f"あなたは {aid}" in blob or f"你是 {aid}" in blob or f"Vous êtes {aid}" in blob
+        agent = res.world.agents[aid]
+        sysp = prompts.system_for(agent, res.world, cfg, 48.0)
+        assert (f"あなたは {aid}" in sysp or f"你是 {aid}" in sysp
+                or f"Vous êtes {aid}" in sysp), aid
+        for other in ids:
+            if other != aid:
+                assert f"あなたは {other}" not in sysp
+                assert f"你是 {other}" not in sysp
+                assert f"Vous êtes {other}" not in sysp
+        # 대화에 남의 신원이 섞이지 않는다
+        blob = json.dumps(agent.convo, ensure_ascii=False)
+        for other in ids:
+            if other != aid:
+                assert f"あなたは {other}" not in blob
 
 
 def test_memory_not_wiped_by_truncated_args(cfg, world):

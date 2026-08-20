@@ -329,7 +329,7 @@ def test_the_failing_agent_is_named_in_the_traceback(cfg):
     bug = _Bug()
     with pytest.raises(AttributeError) as ei:
         loop.run_agentic(cfg, random.Random(1), lambda aid: bug, bug, 48.0,
-                         render_obs=prompts.render_observation,
+                         render_obs=prompts.render_turn_open,
                          system_prompt=prompts.system_for,
                          parallel=True, sim_turns=1)
     notes = " ".join(getattr(ei.value, "__notes__", []) or [])

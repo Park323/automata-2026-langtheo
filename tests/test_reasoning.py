@@ -45,7 +45,7 @@ def _run(cfg, scripts, turns=1):
     return loop.run_agentic(cfg, random.Random(1), lambda a: clients[a],
                             StubClient([{"role": "assistant", "content": "译文",
                                          "tool_calls": []}] * 60),
-                            48.0, prompts.render_observation, prompts.system_for,
+                            48.0, prompts.render_turn_open, prompts.system_for,
                             parallel=False)
 
 
