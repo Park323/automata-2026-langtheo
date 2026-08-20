@@ -404,6 +404,11 @@ def render_observation(world, agent, cfg, knob_ai: float,
         # year/you/land/골격은 그 턴 첫 차례 풀 관측에 있으므로 반복하지 않는다.
         parts = [
             t["budget"].format(b=agent.budget),
+            # **남은 행동력.** 예산을 넣는 이유가 그대로 여기에도 적용된다 — 차례마다
+            # 달라지고, 그전에는 자기 AP 를 아는 유일한 경로가 직전 도구 응답의 `ap_left`
+            # 였다. 컨텍스트가 밀려 그 응답이 방출되면 몇 번 더 움직일 수 있는지 모르는
+            # 채로 차례를 받는다 — 하필 이 델타가 막으려는 상황이다.
+            t["ap_now"].format(v=agent.ap),
             t["prog"].format(v=c.progress),
             _proposal_line(world, c, t),
             "",

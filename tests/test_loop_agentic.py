@@ -181,4 +181,25 @@ def test_delta_observation_drops_static_scaffold():
     costs = prompts.render_costs(world, agent, cfg, 48)
     assert costs in full                # 풀엔 비용표(골격)가 있고
     assert costs not in delta           # 델타엔 없다 (반복 제거)
-    assert 0 < len(delta) < len(full) * 0.6   # 골격 빠져 절반 이하로 압축
+    # 실측 5%. 0.6 으로 두면 골격이 절반쯤 다시 새어들어도 통과한다 —
+    # 이 테스트가 지키려는 것이 바로 그 재유입이다.
+    assert 0 < len(delta) < len(full) * 0.15
+
+
+def test_delta_keeps_the_two_resources_that_change_within_a_turn():
+    """**델타에 예산은 있는데 행동력이 없었다.**
+
+    AP 는 이 세계에서 예산보다 더 묶는 자원이다 (`invest`·`learn` 이 금액 비례로 먹고
+    `propose_vote` 는 0.6). 그런데 자기 AP 를 아는 유일한 경로가 직전 도구 응답의
+    `ap_left` 였고, 컨텍스트가 밀려 그것이 방출되면 몇 번 더 움직일 수 있는지 모르는
+    채로 차례를 받는다 — **하필 이 델타가 막으려는 상황이다.**
+    """
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 3
+    agent = world.agents["Asla1"]
+    agent.budget, agent.ap = 137.0, 0.35
+    delta = prompts.render_observation(world, agent, cfg, 48, [], delta=True)
+    assert "137" in delta and "0.35" in delta
+    # 골격은 여전히 빠져 있다
+    assert prompts.render_costs(world, agent, cfg, 48) not in delta
