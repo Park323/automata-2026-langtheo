@@ -250,3 +250,45 @@ def test_no_line_claims_wellness_is_free(cfg=None):
             for w in FREE:
                 # 정액이 0 보다 크면 「무료」 라고 말할 수 없다
                 assert not (c.ap.invest_wellness > 0 and w in line), (lang, w, line)
+
+
+def test_the_cost_table_shows_learning_as_something_you_pay_into():
+    """**진척 줄이 `done > 0` 일 때만 나와서 표가 일시불처럼 보였다.**
+
+        Ranoa の言語を学ぶ    600   1        ← 600 과 「한 해」
+
+    분할 납부는 도구 설명에만 있었다. 그런데 에이전트가 먼저 읽는 것은 표다 — 예산 100 을
+    든 사람이 저 줄을 보면 **손도 못 댈 값**으로 읽는다. 실측에서 학습 시도가 거의 0 이었다.
+
+    두 곳을 고쳤다.
+      ① 진척 줄을 **언제나** 적는다. 「0 / 600」 이면 쌓인다는 것이 숫자의 모양으로 보인다.
+      ② AP 를 `額÷600` 으로 적는다 — invest 와 같은 꼴. 전에는 눈금을 끝까지 내는 AP 라
+         그냥 `1` 이었고, 100 을 넣으려는 사람이 그것을 「한 해를 통째로」 로 읽는다.
+    """
+    import itertools
+    import random
+
+    from core import config, loop
+    from domains.meteor import prompts
+    cfg = config.load("configs/base.yaml")
+    world = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    world.turn = 1
+    for aid, marks in (("Asla2", ("0 / 300", "0 / 600", "額÷600")),
+                       ("Ranoa1", ("0 / 600", "额÷600")),
+                       ("Miris1", ("0 / 600", "mnt÷600"))):
+        agent = world.agents[aid]
+        agent.lang_progress = {}
+        obs = prompts.system_for(agent, world, cfg, 48.0)
+        for m in marks:
+            assert m in obs, (aid, m)
+        # 「끝까지 내는 AP」 를 그대로 적던 옛 꼴이 돌아오지 않는다
+        learn_lines = [l for l in obs.splitlines()
+                       if any(k in l for k in ("を学ぶ", "的语言", "apprendre la langue"))]
+        assert learn_lines
+        for l in learn_lines:
+            assert not l.rstrip().endswith(" 1"), l
+
+    # 낸 것이 있으면 그대로 보인다
+    a = world.agents["Asla2"]
+    a.lang_progress = {"zh": 150.0}
+    assert "150 / 300" in prompts.system_for(a, world, cfg, 48.0)

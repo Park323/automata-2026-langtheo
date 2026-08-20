@@ -335,14 +335,18 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
             cost, _ = learn_cost(agent, c.id, world, cfg)
             note = (t["c_cheap"] if cost == cfg.costs.learn_base * 0.5
                     else (t["c_disc"] if cost < cfg.costs.learn_base else ""))
-            # AP 도 금액에 비례한다. 이 눈금을 **끝까지** 내는 데 드는 AP 를 적는다 —
-            # 할인이 돈과 시간을 동시에 깎는다는 것이 여기서 보인다.
+            # **AP 는 금액에 비례한다** — invest 와 같은 꼴로 적는다 (額÷600).
+            #
+            # 전에는 「눈금을 끝까지 내는 데 드는 AP」 를 적어서 그냥 `1` 이었다. 100 을
+            # 넣으려는 사람이 그 `1` 을 보면 **한 해를 통째로 쓰는 일**로 읽는다.
             lines.append(row(t["c_learn"].format(nation=c.id), cost,
-                             cfg.ap.learn_full * cost / cfg.costs.learn_base, note))
-            # 얼마나 냈고 얼마가 남았는지. **별도 관측 없이** 그대로 보인다.
+                             t["ap_prop"].format(v=cfg.costs.learn_base / cfg.ap.learn_full),
+                             note))
+            # **진척 줄은 언제나 적는다.** 0 일 때 빼면 표가 일시불처럼 보인다 —
+            # 600 이라는 한 숫자만 남고, 예산 100 을 든 사람은 손도 못 댈 값으로 읽는다.
+            # 「0 / 600」 이면 쌓인다는 것이 숫자의 모양으로 보인다.
             done = agent.lang_progress.get(c.lang, 0.0)
-            if done > 0:
-                lines.append(t["c_learn_prog"].format(done=done, need=cost))
+            lines.append(t["c_learn_prog"].format(done=done, need=cost))
     lines.append(row(t["c_vote"], cfg.costs.propose_vote, cfg.ap.propose_vote,
                      t["c_vote_note"]))
     lines.append(row(t["c_obs"], cfg.costs.observe_risk, cfg.ap.observe_risk, t["c_obs_note"]))
