@@ -266,26 +266,25 @@ def test_tool_schema_counted_in_eviction(cfg):
     assert estimate_tokens(msgs, _TOOL_TOKENS) > estimate_tokens(msgs)
 
 
-def test_an_empty_memo_says_how_to_fill_it(cfg, world):
-    """**비어 있을 때만** 갱신 방법을 적는다.
+def test_the_memo_header_says_it_overwrites(cfg, world):
+    """**덧붙이는 것으로 읽히고 있었다.**
 
-    비용표에 `memory_write` 행이 있어도 그것이 관측의 「내 메모」 칸과 이어진다는 것은
-    따로 보이지 않는다. 한 번 써 본 뒤에는 알므로, 채워진 메모에는 붙이지 않는다 —
-    거기에 붙이면 매 콜 실려 가는 군더더기가 된다.
+    `memory_write` 는 통째로 덮어쓴다 — 그것이 spec 3.3 의 「구전의 감쇠」 다. 무엇을
+    버릴지 고르는 것이 관측 대상인데, 덧붙는 줄로 알면 그 선택 자체가 일어나지 않는다.
+
+    안내를 **머리말**에 둔다. 비어 있을 때만 적으면 정작 오해가 생기는 자리 — 이미 뭔가
+    적혀 있는 상태 — 에서 안 보인다. 그리고 「어떻게 쓰는가」 와 「덮어쓴다」 를 한 줄이
+    같이 말하므로 빈 칸의 안내는 없어도 된다.
     """
     from domains.meteor import prompts
-    a = world.agents["Asla1"]
-    a.memory = ""
-    empty = prompts.system_for(a, world, cfg, 48.0)
-    assert "memory_write" in empty.split(prompts.T["ja"]["mem_hdr"])[-1]
-
-    a.memory = "요격기에 몰아줘라"
-    filled = prompts.system_for(a, world, cfg, 48.0)
-    tail = filled.split(prompts.T["ja"]["mem_hdr"])[-1]
-    assert "요격기에 몰아줘라" in tail and "memory_write" not in tail
-
-    # 세 언어 모두
+    marks = {"ja": "書き足すのではなく", "zh": "不是追加", "fr": "n'ajoute rien"}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         ag = world.agents[aid]
-        ag.memory = ""
-        assert "memory_write" in prompts.T[ag.native_lang]["mem_none"], aid
+        hdr = prompts.T[ag.native_lang]["mem_hdr"]
+        assert "memory_write" in hdr and marks[ag.native_lang] in hdr, aid
+        for memo in ("", "요격기에 몰아줘라"):
+            ag.memory = memo
+            obs = prompts.system_for(ag, world, cfg, 48.0)
+            assert hdr in obs                     # 채워져 있어도 보인다
+            if memo:
+                assert memo in obs
