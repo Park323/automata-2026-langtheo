@@ -198,9 +198,88 @@ def _prompt_share(rows: list[dict]) -> float:
         pc += float(d.get("upstream_inference_prompt_cost") or 0.0)
         cc += float(d.get("upstream_inference_completions_cost") or 0.0)
     return pc / (pc + cc) if (pc + cc) else 0.8
+# ── 모델을 바꾸면 얼마가 되나 ────────────────────────────────────────────────
+#
+# **단가를 코드에 적지 않는다.** OpenRouter 의 모델 목록에서 그때그때 읽는다. 대신 이
+# 계산은 「토큰 구성은 그대로 두고 단가만 갈아 끼운다」 는 가정을 깔고 있다. 그 가정이
+# 깨지는 두 자리를 아래 `warn` 이 짚는다.
+
+PRICES_URL = "https://openrouter.ai/api/v1/models"
+
+
+def _prices() -> dict:
+    import urllib.request
+    with urllib.request.urlopen(PRICES_URL, timeout=30) as r:
+        data = json.load(r)["data"]
+    out = {}
+    for m in data:
+        p = m.get("pricing") or {}
+        try:
+            out[m["id"]] = dict(
+                prompt=float(p["prompt"]) * 1e6,
+                completion=float(p["completion"]) * 1e6,
+                ctx=m.get("context_length"),
+                tools="tools" in (m.get("supported_parameters") or []),
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
+def compare(run: pathlib.Path, candidates: list[str]) -> None:
+    """실측 토큰 구성을 그대로 두고 단가만 갈아 끼운다."""
+    rows = load(run)
+    ok = [r for r in rows if r.get("response") and r.get("kind") == "agent"]
+    if not ok:
+        raise SystemExit("에이전트 호출이 없습니다")
+    cur = ok[0]["request"].get("model")
+    pt = sum(_tok(r)[0] for r in ok)
+    ct = sum(_tok(r)[1] for r in ok)
+    paid = sum(_cost(r) for r in ok)
+    n = len({r["turn"] for r in ok}) or 1
+
+    px = _prices()
+    if cur not in px:
+        raise SystemExit(f"{cur} 단가를 못 찾았습니다")
+
+    def bill(mid):
+        p = px[mid]
+        return (pt * p["prompt"] + ct * p["completion"]) / 1e6
+
+    list_now = bill(cur)
+    print(f"\n═══ {run.name}: 모델을 바꾸면 ═══")
+    print(f"  실측 토큰  프롬프트 {pt:,} · 생성 {ct:,}  ({n}해, 호출 {len(ok)})")
+    print(f"  실제 과금  ${paid:.4f}   정가 계산 ${list_now:.4f}  "
+          f"→ 정가의 {paid/list_now:.0%} 로 냈다 (캐시·프로바이더)")
+
+    print(f"\n  {'모델':38} {'프롬프트':>9} {'생성':>9}  {'정가':>9}  {'대비':>6}  도구")
+    for mid in [cur] + [c for c in candidates if c != cur]:
+        if mid not in px:
+            print(f"  {mid:38} — 단가를 못 찾았습니다")
+            continue
+        p = px[mid]
+        b = bill(mid)
+        mark = " ←지금" if mid == cur else ""
+        print(f"  {mid:38} {p['prompt']:>8.3f} {p['completion']:>9.3f}  "
+              f"${b:>8.4f}  {b/list_now:>5.0%}  {'○' if p['tools'] else '✗'}{mark}")
+
+    print("\n  ⚠ 이 표는 **토큰 구성이 그대로**라고 가정한다. 깨지는 자리가 둘이다.")
+    print("    ① 사고 토큰 — 지금 생성 토큰이 적은 것은 `reasoning.enabled: false` 로")
+    print("       사고를 껐기 때문이다. 새 모델에서 그 손잡이가 안 먹으면 생성 토큰이")
+    print("       불어나고, 생성 단가는 프롬프트보다 3~7배 비싸다.")
+    print("    ② 지연 — 단가와 속도는 다른 축이다. 활성 파라미터가 큰 조밀 모델은 토큰당")
+    print("       느리다. 지금 한 해가 전부 API 대기(벽시계 ≈ 지연 합)이므로 그대로 시간이 된다.")
+    print("    둘 다 **한 해만 돌려 보면 재진다.** 표는 상한이 아니라 출발점이다.")
+
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["runs/vis3c"]
-    for a in args:
-        report(pathlib.Path(a))
+    argv = sys.argv[1:]
+    if "--compare" in argv:
+        i = argv.index("--compare")
+        runs, models = argv[:i] or ["runs/vis3c"], argv[i + 1:]
+        for a in runs:
+            compare(pathlib.Path(a), models)
+    else:
+        for a in argv or ["runs/vis3c"]:
+            report(pathlib.Path(a))
