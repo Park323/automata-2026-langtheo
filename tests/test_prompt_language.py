@@ -465,7 +465,9 @@ def test_no_error_message_says_turn():
     c = config.load("configs/base.yaml")
     world = loop.init_world(c, itertools.count(1), random.Random(1))
     world.turn = 10
-    world.countries["Ranoa"].proposal = {"by": "Ranoa1", "opened_turn": 10, "vote_turn": 14}
+    ballot = 10 + loop.VOTE_DELAY
+    world.countries["Ranoa"].proposal = {"by": "Ranoa1", "opened_turn": 10,
+                                         "vote_turn": ballot}
 
     a = world.agents["Ranoa2"]; a.ap, a.budget = 1.0, 100.0
     for name, args in (("propose_vote", {"reasoning": "r"}),
@@ -473,7 +475,7 @@ def test_no_error_message_says_turn():
         r, _ = execute_tool(name, args, world, a, c, Sink(), 48.0)
         assert not r["ok"], name
         assert "turn" not in r["error"], (name, r["error"])
-        assert str(FIRST_YEAR + 14 - 1) in r["error"], (name, r["error"])
+        assert str(FIRST_YEAR + ballot - 1) in r["error"], (name, r["error"])
 
     # 그물을 넓힌다 — 소스의 error 문자열에 「turn」 이 다시 들어오면 잡는다
     src = pathlib.Path("core/agent_loop.py").read_text(encoding="utf-8")

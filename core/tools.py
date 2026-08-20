@@ -104,9 +104,10 @@ def _build(reasoning_arg: bool) -> list[dict]:
 
     fn("propose_vote",
         "Call a ballot on what your nation should build. Your nation only. You do not "
-        "say what to build — the ballot itself decides that. Nothing changes yet: three "
-        "years pass so people can talk it over, and in the fourth year everyone casts a "
-        "choice. **Only people of your own nation may vote** — a foreigner cannot, no "
+        "say what to build — the ballot itself decides that. Nothing changes yet: time "
+        "passes so people can talk it over, and then everyone casts a choice; your "
+        "observation tells you which year that is. **Only people of your own nation may "
+        "vote** — a foreigner cannot, no "
         "matter what they say. If a ballot is already called, calling again does nothing. "
         "It costs no money — poverty must never decide what a nation builds — but it "
         "takes more than half of your action points for the year.",

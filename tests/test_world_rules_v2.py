@@ -95,12 +95,14 @@ def test_ballot_only_counts_on_the_ballot_turn(cfg, world):
     world.turn = 10
     _call(world, cfg, "Ranoa1")
     a = world.agents["Ranoa2"]; a.ap = 1.0
-    world.turn = 12                                    # 아직 유예 중
+    # 유예 안쪽. **VOTE_DELAY 를 4 에서 2 로 줄이면서 12 가 採決일 자체가 됐다** —
+    # 상수를 고쳤을 때 이 숫자가 함께 움직이지 않으면 테스트가 조용히 다른 것을 잰다.
+    world.turn = 10 + loop.VOTE_DELAY - 1
     res, _ = execute_tool("vote", {"choice": "bunker", "reasoning": "r"},
                           world, a, cfg, Sink(), 48.0)
     # **연도로 말한다.** 「turn 14」 라고 말하고 있었다 — 세계는 55년인데 내부 인덱스다.
     from domains.meteor.prompts import FIRST_YEAR
-    assert not res["ok"] and str(FIRST_YEAR + 14 - 1) in res["error"]
+    assert not res["ok"] and str(FIRST_YEAR + 10 + loop.VOTE_DELAY - 1) in res["error"]
     assert "turn" not in res["error"]
 
 
@@ -1257,3 +1259,41 @@ def test_the_discount_note_names_the_right_reason(cfg, world):
     assert "600" in lines[i + 1]
     for k in ("c_cheap", "c_disc", "c_both"):
         assert t[k].strip() not in fr
+
+
+def test_no_prose_hardcodes_the_grace_period(cfg, world):
+    """**숫자를 두 군데 적으면 하나가 낡는다.**
+
+    `VOTE_DELAY` 를 4 에서 2 로 줄였을 때 도구 설명은 *"three years pass … in the fourth
+    year"* 로 남아 있었다. 이번 주에 그 부류를 다섯 번 겪었다 — `can_read_next_turn` ·
+    採決 문구 · wellness 무료 · 「기술력이 비율을 올린다」 · 「메시지는 다음 해에 도착」.
+
+    유예 길이는 **관측만** 말한다 (「採決은 44년」). 도구 설명은 모양만 말한다.
+    """
+    from core import tools
+    d = next(t["function"]["description"] for t in tools.TOOLS
+             if t["function"]["name"] == "propose_vote")
+    for stale in ("three years", "fourth year", "two years", "third"):
+        assert stale not in d, stale
+    assert "which year that is" in d          # 대신 관측이 알려준다고 적는다
+
+    # 관측이 실제 날짜를 말한다
+    from domains.meteor import prompts
+    world.turn = 10
+    _call(world, cfg, "Ranoa1")
+    obs = prompts.system_for(world.agents["Ranoa2"], world, cfg, 48.0)
+    from domains.meteor.prompts import FIRST_YEAR
+    assert str(FIRST_YEAR + 10 + loop.VOTE_DELAY - 1) in obs
+
+
+def test_the_grace_is_one_year_now(cfg, world):
+    """**3해는 메시지 왕복에 두 해가 들던 때 정해진 길이다.** 순차 라운드로빈은 같은 해에
+    왕복이 되므로, 소집한 해의 대화 + 한 해면 충분하다.
+
+    기대수명이 16해인데 다섯 해를 절차에 쓰면 한 사람이 겪는 採決이 세 번뿐이다.
+    """
+    assert loop.VOTE_DELAY == 2
+    world.turn = 10
+    _call(world, cfg, "Ranoa1")
+    p = world.countries["Ranoa"].proposal
+    assert p["opened_turn"] == 10 and p["vote_turn"] == 12   # 소집 · 유예 11 · 採決 12
