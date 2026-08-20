@@ -48,6 +48,7 @@ SYSTEM = {
 施設の進捗は国ごとに別々に積まれ、別々に積まれた進捗を足し合わせることはできません。完成したかどうかは、その国の進捗だけで決まります。
 たとえば A 国の interceptor が半分、B 国の interceptor が半分なら、interceptor はどの国にも完成していません。
 国土がまだ決まっていない国には積むものがありません。そこへ出した分は進捗になりません。
+人はだいたい {life:.0f} 年ほど生きます。
 メッセージの本文は必ず日本語で書いてください。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
     "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
 过去曾有巨大的陨石坠落，所有生命就此灭绝。
@@ -60,6 +61,7 @@ SYSTEM = {
 设施的进度按国家分别累积，分别累积的进度不能相加。是否建成，只看那个国家自己的进度。
 比如 A 国的 interceptor 到一半，B 国的 interceptor 也到一半，那么 interceptor 在任何国家都没有建成。
 国土尚未定下来的国家没有可积累的东西。投到那里的钱不会变成进度。
+人大体活 {life:.0f} 年左右。
 消息正文必须用中文书写。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
     "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
 Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
@@ -72,6 +74,7 @@ Plus un `bunker` est profond, plus les habitants de cette nation ont de chances 
 La progression d'une installation s'accumule séparément pour chaque nation, et des progressions accumulées séparément ne s'additionnent pas. L'achèvement se juge sur la seule progression de cette nation.
 Par exemple, si l'interceptor de la nation A est à moitié fait et celui de la nation B à moitié aussi, l'interceptor n'est achevé dans aucune nation.
 Une nation dont le territoire n'est pas encore fixé n'a rien où accumuler ; ce qu'on y verse ne devient pas de la progression.
+Les gens vivent en général environ {life:.0f} ans.
 Le corps de vos messages doit être rédigé en français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
 }
 
@@ -243,6 +246,23 @@ T = {
 }
 
 
+def typical_lifespan(cfg) -> float:
+    """이 세계 사람의 평균 수명. Weibull(λ, k) 의 기대값 = λ·Γ(1+1/k).
+
+    **이것을 SYSTEM 에 적는 이유는 프레임을 맞추기 위해서다.** 모델은 「8 歳」 를 인간
+    8살로 읽는다 — 아이라고 판단한다. 이 세계에서 8살은 **생애의 51% 지점**이고, 인간
+    수명 80 기준이면 64살 감각이다. 그 어긋남은 우리가 설계한 불확실성이 아니라 **모델이
+    바깥에서 들고 온 잘못된 척도**다. 돈을 달러로 착각하는 것과 같다.
+
+    **곡선은 여전히 숨긴다** (4.1 은닉 목록: 나이→사망확률). 평균 하나로는 8살과 15살의
+    위험이 얼마나 다른지 알 수 없다 — k=8 이라 15살까지 63%, 18살까지 14%, 20살은 1% 로
+    뚝 떨어진다. 그 모양은 부고에 찍힌 나이가 쌓여야 보인다.
+    """
+    import math
+    lam, k = cfg.survival.lambda_base, cfg.survival.k
+    return lam * math.gamma(1 + 1 / k)
+
+
 def system_for(agent, world=None, cfg=None, knob_ai: float | None = None) -> str:
     """에이전트의 모국어 SYSTEM — **세계 규칙 + 지금 그러한 것.**
 
@@ -257,8 +277,11 @@ def system_for(agent, world=None, cfg=None, knob_ai: float | None = None) -> str
 
     `world` 없이 부르면 규칙만 돌려준다 (문구 검사용).
     """
-    txt = SYSTEM[agent.native_lang]
-    if world is None or cfg is None:
+    if cfg is None:
+        raise TypeError("system_for 에는 cfg 가 필요합니다 — 규칙이 기대 수명을 적습니다 "
+                        "(typical_lifespan). 값의 출처는 config 하나여야 합니다.")
+    txt = SYSTEM[agent.native_lang].format(life=typical_lifespan(cfg))
+    if world is None:
         return txt
     return txt + "\n\n" + render_observation(world, agent, cfg, knob_ai or 0.0)
 

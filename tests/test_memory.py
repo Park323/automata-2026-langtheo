@@ -32,7 +32,7 @@ def _turn(world, cfg, aid, script, warn=False):
     a = world.agents[aid]
     a.ap = cfg.turn.action_points
     cl = StubClient(script)
-    log = run_agent_turn(world, a, cfg, cl, Sink(), 48.0, prompts.system_for(a),
+    log = run_agent_turn(world, a, cfg, cl, Sink(), 48.0, prompts.system_for(a, None, cfg),
                          prompts.render_observation(world, a, cfg, 48.0))
     return a, cl, log
 
@@ -225,7 +225,7 @@ def test_memory_not_wiped_by_truncated_args(cfg, world):
            "function": {"name": "memory_write", "arguments": '{"text": "잘린'}}   # 깨진 JSON
     cl = StubClient([{"role": "assistant", "content": None, "tool_calls": [bad]},
                      assistant_msg(tool_call("end_turn", "2", reasoning="r"))])
-    run_agent_turn(world, a, cfg, cl, Sink(), 48.0, prompts.system_for(a),
+    run_agent_turn(world, a, cfg, cl, Sink(), 48.0, prompts.system_for(a, None, cfg),
                    prompts.render_observation(world, a, cfg, 48.0))
     assert a.memory == "지켜야 할 기억", "잘린 인자로 기억이 지워졌다"
 
@@ -238,7 +238,7 @@ def test_broken_arguments_normalized_before_echo(cfg, world):
            "function": {"name": "speak", "arguments": '{"to": "Asla2", "text": "잘린'}}
     cl = StubClient([{"role": "assistant", "content": None, "tool_calls": [bad]},
                      assistant_msg(tool_call("end_turn", "2", reasoning="r"))])
-    run_agent_turn(world, a, cfg, cl, Sink(), 48.0, prompts.system_for(a),
+    run_agent_turn(world, a, cfg, cl, Sink(), 48.0, prompts.system_for(a, None, cfg),
                    prompts.render_observation(world, a, cfg, 48.0))
     echoed = [m for m in a.convo if m["role"] == "assistant" and m.get("tool_calls")]
     for m in echoed:

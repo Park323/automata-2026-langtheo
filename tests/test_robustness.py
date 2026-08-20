@@ -170,7 +170,7 @@ def test_the_agent_turn_also_only_swallows_declared_failures(cfg):
         def chat(self, *ar, **kw):
             raise LLMCallError("HTTP 503 Service Unavailable")
 
-    lg = run_agent_turn(world, a, cfg, _Api(), Sink(), 48.0, prompts.system_for(a), obs)
+    lg = run_agent_turn(world, a, cfg, _Api(), Sink(), 48.0, prompts.system_for(a, None, cfg), obs)
     assert lg["ended_by"] == "error" and "LLMCallError" in lg["error"]
 
     class _Bug:
@@ -178,7 +178,7 @@ def test_the_agent_turn_also_only_swallows_declared_failures(cfg):
             raise AttributeError("NoneType has no attribute 'get'")
 
     with pytest.raises(AttributeError):
-        run_agent_turn(world, a, cfg, _Bug(), Sink(), 48.0, prompts.system_for(a), obs)
+        run_agent_turn(world, a, cfg, _Bug(), Sink(), 48.0, prompts.system_for(a, None, cfg), obs)
 
 
 def test_engine_fault_is_counted_apart_from_metric_9(cfg):
@@ -249,7 +249,7 @@ def test_malformed_response_kills_only_that_agent(cfg):
     w = loop.init_world(cfg, itertools.count(1))
     a = w.agents["Asla1"]; a.ap, a.budget = 1.0, 500.0
     lg = run_agent_turn(w, a, cfg, _Weird(), Sink(), 48.0,
-                        prompts.system_for(a), prompts.render_observation(w, a, cfg, 48.0))
+                        prompts.system_for(a, None, cfg), prompts.render_observation(w, a, cfg, 48.0))
     assert lg["ended_by"] == "error" and "malformed response" in lg["error"]
 
 

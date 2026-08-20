@@ -530,7 +530,7 @@ def test_sites_are_independent_is_stated(cfg, world):
     marks = {"ja": "国ごとに別々", "zh": "按国家分别累积", "fr": "séparément pour chaque nation"}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
-        assert marks[a.native_lang] in prompts.system_for(a), a.native_lang
+        assert marks[a.native_lang] in prompts.system_for(a, None, cfg), a.native_lang
 
 
 def test_invest_names_a_nation_and_says_the_default(cfg, world):
@@ -566,7 +566,7 @@ def test_the_rule_does_not_tell_them_what_to_do(cfg, world):
     from domains.meteor import prompts
     banned = ["집중", "모아", "한 곳", "concentr", "should", "better", "集中", "最好", "推荐"]
     for aid in ("Asla1", "Ranoa1", "Miris1"):
-        t = prompts.system_for(world.agents[aid])
+        t = prompts.system_for(world.agents[aid], None, cfg)
         for b in banned:
             assert b not in t, f"{aid}: {b}"
 
@@ -584,7 +584,7 @@ def test_investing_before_a_territory_is_settled_is_stated(cfg, world):
              "fr": "n'a rien où accumuler"}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
-        assert marks[a.native_lang] in prompts.system_for(a), a.native_lang
+        assert marks[a.native_lang] in prompts.system_for(a, None, cfg), a.native_lang
     d = next(t["function"]["description"] for t in tools.TOOLS
              if t["function"]["name"] == "invest")
     assert "has not settled its territory" in d and "buys no progress" in d

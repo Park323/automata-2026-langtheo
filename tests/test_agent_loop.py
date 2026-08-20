@@ -33,7 +33,7 @@ def _run(world, cfg, agent_id, script, knob_ai=48, budget=None):
         agent.budget = budget
     sink = Sink()
     client = StubClient(script)
-    sys_p = prompts.system_for(agent)
+    sys_p = prompts.system_for(agent, None, cfg)
     usr_p = prompts.render_observation(world, agent, cfg, knob_ai)
     log = run_agent_turn(world, agent, cfg, client, sink, knob_ai, sys_p, usr_p)
     return agent, sink, client, log
@@ -278,7 +278,7 @@ def test_inbox_renders_delivery_failure():
 def test_prompt_hides_secrets(cfg, world):
     """프롬프트(system·관측)에 success_prob·λ·하자드·재앙까지 남은 턴이 없다."""
     a0 = world.agents["Asla1"]
-    p = prompts.system_for(a0) + "\n" + prompts.render_observation(world, a0, cfg, knob_ai=48)
+    p = prompts.system_for(a0, None, cfg) + "\n" + prompts.render_observation(world, a0, cfg, knob_ai=48)
     for bad in FORBIDDEN:
         assert bad not in p, f"프롬프트에 금지어 '{bad}' 노출"
 

@@ -255,7 +255,7 @@ def test_system_without_a_world_is_just_the_rules():
     cfg = _cfg(2)
     world = init_world(cfg, itertools.count(1))
     a = world.agents["Asla1"]
-    assert "予算" not in prompts.system_for(a)
+    assert "予算" not in prompts.system_for(a, None, cfg)
     assert "予算" in prompts.system_for(a, world, cfg, 48.0)
 
 

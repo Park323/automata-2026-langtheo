@@ -47,7 +47,7 @@ def _model_facing(world, cfg):
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
         lang = a.native_lang
-        out.append((f"SYSTEM[{lang}]", lang, prompts.system_for(a)))
+        out.append((f"SYSTEM[{lang}]", lang, prompts.system_for(a, None, cfg)))
         out.append((f"observation[{lang}]", lang,
                     prompts.render_observation(world, a, cfg, 48.0, inbox)))
         out.append((f"inbox[{lang}]", lang, prompts.render_inbox(inbox, lang)))
@@ -88,7 +88,7 @@ def test_language_instruction_present(world_cfg):
     marks = {"ja": "日本語", "zh": "中文", "fr": "français"}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
-        assert marks[a.native_lang] in prompts.system_for(a), \
+        assert marks[a.native_lang] in prompts.system_for(a, None, _cfg), \
             f"{a.native_lang} SYSTEM 에 산출 언어 명시가 없다"
 
 
@@ -377,3 +377,67 @@ def test_nothing_claims_technical_level_changes_the_action_rate():
              if t["function"]["name"] == "invest")
     assert "raises how much one point buys" not in d
     assert "one fixed amount" in d                   # 대신 고정이라고 적는다
+
+
+def test_system_states_the_typical_lifespan():
+    """**모델은 「8 歳」 를 인간 8살로 읽는다** — 아이라고 판단한다.
+
+    이 세계에서 8살은 **생애의 51% 지점**이고, 인간 수명 80 기준이면 64살 감각이다.
+    그 어긋남은 우리가 설계한 불확실성이 아니라 **모델이 바깥에서 들고 온 잘못된
+    척도**다 — 돈을 달러로 착각하는 것과 같다. 척도는 세계의 프레임이지 은닉 대상이
+    아니다.
+
+    **곡선은 여전히 숨긴다** (4.1: 나이→사망확률). 평균 하나로는 8살과 15살의 위험이
+    얼마나 다른지 알 수 없다 — k=8 이라 15살까지 63%, 18살까지 14%, 20살은 1% 로 뚝
+    떨어진다. 그 모양은 부고에 찍힌 나이가 쌓여야 보인다.
+    """
+    import math
+
+    from core import config
+    from domains.meteor import prompts
+    c = config.load("configs/base.yaml")
+    life = prompts.typical_lifespan(c)
+    assert abs(life - c.survival.lambda_base * math.gamma(1 + 1 / c.survival.k)) < 1e-9
+
+    import itertools
+    import random
+
+    from core import loop
+    world = loop.init_world(c, itertools.count(1), random.Random(1))
+    marks = {"ja": f"だいたい {life:.0f} 年ほど生きます",
+             "zh": f"大体活 {life:.0f} 年左右",
+             "fr": f"en général environ {life:.0f} ans"}
+    for aid in ("Asla1", "Ranoa1", "Miris1"):
+        a = world.agents[aid]
+        txt = prompts.system_for(a, None, c)
+        assert marks[a.native_lang] in txt, a.native_lang
+        # 곡선은 새지 않는다 — k 도, 분위수도 적지 않는다
+        assert str(c.survival.k) not in txt.replace(f"{life:.0f}", "")
+        assert "lambda" not in txt and "λ" not in txt
+
+
+def test_the_lifespan_line_follows_the_config():
+    """**값의 출처는 하나여야 한다.** 문구에 16 을 박아 두면 λ 를 바꿀 때 거짓이 된다 —
+    이번 주에 그 부류를 네 번 겪었다 (can_read_next_turn · 採決 문구 · wellness 무료 ·
+    기술력이 비율을 올린다).
+
+    그래서 `system_for` 는 cfg 없이는 부를 수 없다.
+    """
+    import dataclasses
+    import itertools
+    import random
+
+    from core import config, loop
+    from domains.meteor import prompts
+    c = config.load("configs/base.yaml")
+    world = loop.init_world(c, itertools.count(1), random.Random(1))
+    a = world.agents["Asla1"]
+
+    longer = dataclasses.replace(
+        c, survival=dataclasses.replace(c.survival, lambda_base=c.survival.lambda_base * 2))
+    assert f"{prompts.typical_lifespan(longer):.0f}" in prompts.system_for(a, None, longer)
+    assert f"{prompts.typical_lifespan(c):.0f}" not in prompts.system_for(a, None, longer)
+
+    import pytest
+    with pytest.raises(TypeError):
+        prompts.system_for(a)
