@@ -215,3 +215,62 @@ def test_message_id_is_assigned_before_the_translation_runs(cfg, world):
                          itertools.count(500), r, itertools.count(900))
     assert seen and seen[0]["msg_id"] == 900
     assert r.messages_log[0]["msg_id"] == 900
+
+
+# ── 호출마다 이름 (8/20) ────────────────────────────────────────────────────
+
+def test_every_raw_call_gets_a_unique_id(tmp_path, cfg):
+    """**한 호출을 가리키려면 (turn, agent, step, attempt) 네 개를 나열해야 했다.**
+
+    `call_id` 하나면 된다. 재시도까지 갈리므로 같은 스텝의 1차·2차 시도도 서로 다른
+    이름을 갖는다.
+    """
+    from core.llm import StubClient
+    w = RunWriter("ids", cfg_raw={"x": 1}, root=tmp_path)
+    client = StubClient([], recorder=w.recorder(kind="agent"))
+    for step in (1, 2, 3):
+        client.chat([], log_tag={"turn": 4, "agent": "Asla1", "step": step})
+    rows = _rows(w, "raw_calls")
+    ids = [r["call_id"] for r in rows]
+    assert ids == ["c00001", "c00002", "c00003"]
+    assert len(set(ids)) == len(ids)
+    # 맨 앞 키다 — 한 줄을 눈으로 훑을 때 먼저 보인다
+    assert next(iter(rows[0])) == "call_id"
+
+
+def test_ids_do_not_collide_after_a_resume(tmp_path, cfg):
+    """이어할 때 0 에서 다시 시작하면 앞 구간과 **같은 이름이 두 번** 생긴다.
+    raw_calls_total 도 이어붙인 구간만 센 값이 된다."""
+    from core.llm import StubClient
+    a = RunWriter("rid", cfg_raw={"x": 1}, root=tmp_path)
+    c1 = StubClient([], recorder=a.recorder(kind="agent"))
+    c1.chat([]); c1.chat([])
+    a.close()
+
+    b = RunWriter("rid", cfg_raw={"x": 1}, root=tmp_path, overwrite=True, append=True)
+    c2 = StubClient([], recorder=b.recorder(kind="agent"))
+    c2.chat([])
+    rows = _rows(b, "raw_calls")
+    ids = [r["call_id"] for r in rows]
+    assert ids == ["c00001", "c00002", "c00003"], ids
+    assert b.counts["raw"] == 3          # 이어붙인 구간만 세지 않는다
+
+
+def test_the_counter_does_not_leak_under_parallel_writes(tmp_path, cfg):
+    """카운터가 락 **밖**이라 병렬 경로에서 집계가 새고 있었다."""
+    import threading
+
+    from core.llm import StubClient
+    w = RunWriter("par", cfg_raw={"x": 1}, root=tmp_path)
+    N, T = 40, 8
+
+    def work(k):
+        c = StubClient([], recorder=w.recorder(kind="agent"))
+        for i in range(N):
+            c.chat([], log_tag={"turn": 1, "agent": f"A{k}", "step": i})
+
+    ts = [threading.Thread(target=work, args=(k,)) for k in range(T)]
+    [t.start() for t in ts]; [t.join() for t in ts]
+    rows = _rows(w, "raw_calls")
+    assert w.counts["raw"] == N * T == len(rows)
+    assert len({r["call_id"] for r in rows}) == N * T      # 겹치지 않는다

@@ -2,7 +2,7 @@
 
   runs/{run_id}/
     config_snapshot.yaml   설정 + 코드 커밋 해시
-    raw_calls.jsonl        ★ LLM 호출 전문 (요청·응답 원본 + turn·agent·step·msg_id)
+    raw_calls.jsonl        ★ LLM 호출 전문 (call_id + 요청·응답 원본 + turn·agent·step·msg_id)
     state.jsonl            턴별 에이전트 상태 (메모·학습 진척·AP 잔량 포함)
     messages.jsonl         6.1 스키마 (원문·번역 프롬프트·도착문)
     events.jsonl           사망·출생·학습·투표·관측 + agent_turn(호출 전문)
@@ -33,6 +33,11 @@
     호출의 임자·시각       kind 는 클라이언트를 만들 때 붙는 고정 태그라 turn·agent 를
                           담을 수 없었다. raw_calls 를 events 와 이어붙일 키가 없어
                           호출 단위 분석이 통째로 막혀 있었다
+
+**호출마다 `call_id` 가 붇는다** (`c00001` …). 로그를 읽다 한 호출을 가리켜야 할 때
+(turn, agent, step, attempt) 네 개를 나열하는 대신 한 마디로 말할 수 있다. 순차 라운드
+로빈에서는 호출 순서가 결정론이라 같은 시드·같은 코드면 같은 번호가 나오고, 병렬 경로는
+순서가 비결정론이라 런마다 다르다 — 그때는 (turn, agent, step) 으로 찾는다.
 
 그래서 `tests/test_logging_complete.py` 가 **덮개를 지킨다.** `Agent`·`Country` 에 필드가
 늘면 로그에 안 들어간 채로는 통과하지 못한다 — 면제하려면 이유를 적어야 하고, 이유를
@@ -100,9 +105,18 @@ class RunWriter:
         if not append:
             for f in existing:
                 f.unlink()
-        self._lock = threading.Lock()
+        # **재진입 락.** raw() 가 카운터를 잡은 채 _append 를 부른다 — 한 락 안에서
+        # 끝내야 `call_id` 순서와 파일 순서가 어긋나지 않는다.
+        self._lock = threading.RLock()
         self._files: dict[str, object] = {}
         self.counts = {"raw": 0, "errors": 0, "retries": 0}
+        # **이어할 때는 이미 쓴 줄 수에서 이어 센다.** 0 에서 다시 시작하면 `call_id` 가
+        # 앞 구간과 충돌하고, raw_calls_total 도 이어붙인 구간만 센 값이 된다.
+        if append:
+            prev = self.dir / "raw_calls.jsonl"
+            if prev.exists():
+                with prev.open(encoding="utf-8") as f:
+                    self.counts["raw"] = sum(1 for line in f if line.strip())
         self.last_turn = 0                    # 크래시 행을 놓을 자리
         if cfg_raw is not None:
             import yaml
@@ -162,14 +176,28 @@ class RunWriter:
 
     # ── raw 호출 ──────────────────────────────────────────────────────────────
     def raw(self, rec: dict) -> None:
-        """LLM 호출 1회(재시도 각각). request/response 를 가공 없이 남긴다."""
-        rec.setdefault("run_id", self.run_id)
-        self.counts["raw"] += 1
-        if rec.get("error"):
-            self.counts["errors"] += 1
-        if rec.get("attempt", 1) > 1:
-            self.counts["retries"] += 1
-        self._append("raw_calls", rec)
+        """LLM 호출 1회(재시도 각각). request/response 를 가공 없이 남긴다.
+
+        **호출마다 `call_id` 를 붇인다** (`c00001` …). 로그를 읽다 한 호출을 가리켜야 할
+        때 (turn, agent, step, attempt) 네 개를 나열하는 대신 한 마디로 말할 수 있다 —
+        재시도까지 갈리므로 같은 스텝의 1차·2차 시도도 서로 다른 이름을 갖는다.
+
+        번호는 그 런에서 이 파일에 쓴 줄 수다. 순차 라운드로빈에서는 호출 순서가
+        결정론이라 같은 시드·같은 코드면 같은 번호가 나온다. 병렬 경로는 순서가
+        비결정론이므로 번호도 런마다 다르다 — 그때는 (turn, agent, step) 으로 찾는다.
+
+        카운터를 락 안에서 올린다. 전에는 밖이라 병렬 경로에서 **집계가 새고 있었다.**
+        """
+        with self._lock:
+            self.counts["raw"] += 1
+            if rec.get("error"):
+                self.counts["errors"] += 1
+            if rec.get("attempt", 1) > 1:
+                self.counts["retries"] += 1
+            # call_id 를 맨 앞에 둔다 — 한 줄을 눈으로 훑을 때 먼저 보이게
+            row = {"call_id": f"c{self.counts['raw']:05d}", **rec}
+            row.setdefault("run_id", self.run_id)
+            self._append("raw_calls", row)
 
     def recorder(self, **tag):
         """클라이언트에 붙일 기록 콜백. tag 는 {kind, agent, ...}."""
