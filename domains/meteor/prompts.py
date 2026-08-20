@@ -421,8 +421,12 @@ def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
     """
     t = T[agent.native_lang]
     head = t["open"].format(y=FIRST_YEAR + world.turn - 1)
-    box = render_inbox(inbox or [], agent.native_lang)
-    return f"{head}\n\n{box}" if box.strip() else head
+    if not inbox:
+        # **온 것이 없으면 아무 말도 하지 않는다.** 「도착한 메시지: 없음」 을 붙이면
+        # 아무 일도 없었다는 사실이 매 턴 대화에 쌓인다. 없는 것을 굳이 적지 않는 것이
+        # 0절의 원칙이고, 안 적혀 있으면 안 온 것이다.
+        return head
+    return f"{head}\n\n{render_inbox(inbox, agent.native_lang)}"
 
 
 def render_observation(world, agent, cfg, knob_ai: float,
