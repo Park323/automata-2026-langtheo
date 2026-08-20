@@ -79,11 +79,11 @@ Le corps de vos messages doit être rédigé en français. Gardez les noms d'opt
 T = {
     "ja": dict(
         you="あなたは {id}（{nation} の人）です。", read="扱える言語: {langs}",
-        budget="予算: {b:.0f}", age="年齢: {a} 歳",
+        budget="予算: {b:.0f}",
         land="自国の国土: {v}", undecided="未定",
         prog="自国の進捗: {v:.0f}", thresh="  interceptor の完成に要る進捗: {v:.0f}",
         year="今年: {y} 年",
-        open="{y} 年になりました。今年の収入は +{inc:.0f}、手元の予算は {b:.0f} です。\nこの年を執り行ってください。",
+        open="{y} 年になりました。あなたは {age} 歳。今年の収入は +{inc:.0f}、手元の予算は {b:.0f} です。\nこの年を執り行ってください。",
         prop="  採決が {vt} 年に開かれます（{by} が召集）。何を建てるかをそこで決めます",
         prop_today="  ★ 今年が採決の年です。vote で interceptor / bunker / abstain を選べます",
         prop_none="  採決は開かれていません。国土は投票でしか決まりません",
@@ -132,14 +132,14 @@ T = {
     ),
     "zh": dict(
         you="你是 {id}（{nation} 人）。", read="你掌握的语言: {langs}",
-        budget="预算: {b:.0f}", age="年龄: {a} 岁",
+        budget="预算: {b:.0f}",
         land="本国国土: {v}", undecided="未定",
         prog="本国进度: {v:.0f}", thresh="  建成 interceptor 所需的进度: {v:.0f}",
         year="今年: {y} 年",
         prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
         prop_today="  ★ 今年就是表决之年。可以用 vote 选 interceptor / bunker / abstain",
         prop_none="  没有正在进行的表决。国土只能由投票决定",
-        open="到了 {y} 年。今年的收入是 +{inc:.0f}，手上的预算是 {b:.0f}。\n请执行这一年。",
+        open="到了 {y} 年。你 {age} 岁。今年的收入是 +{inc:.0f}，手上的预算是 {b:.0f}。\n请执行这一年。",
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
         ap_now="剩余行动力: {v:.2f}",
@@ -185,7 +185,7 @@ T = {
     ),
     "fr": dict(
         you="Vous êtes {id}, de {nation}.", read="Langues que vous maniez : {langs}",
-        budget="Budget : {b:.0f}", age="Âge : {a} ans",
+        budget="Budget : {b:.0f}",
         land="Territoire de votre nation : {v}", undecided="indéterminé",
         prog="Progression de votre nation : {v:.0f}",
         thresh="  Progression requise pour achever un interceptor : {v:.0f}",
@@ -193,7 +193,7 @@ T = {
         prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
         prop_today="  ★ Le scrutin a lieu cette année. Choisissez avec vote : interceptor / bunker / abstain",
         prop_none="  Aucun scrutin en cours. Le territoire ne se décide que par un vote",
-        open="L'an {y} est arrivé. Le revenu de cette année est de +{inc:.0f} ; votre budget est de {b:.0f}.\nMenez cette année.",
+        open="L'an {y} est arrivé. Vous avez {age} ans. Le revenu de cette année est de +{inc:.0f} ; votre budget est de {b:.0f}.\nMenez cette année.",
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
         ap_now="Action restante : {v:.2f}",
@@ -439,7 +439,11 @@ def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
     # 새로 말하고, 도구 응답도 매번 돌려준다.
     inc = (income_this_turn if income_this_turn is not None
            else cfg.income.per_turn * world.countries[agent.country].multiplier(cfg))
-    head = t["open"].format(y=FIRST_YEAR + world.turn - 1, inc=inc, b=agent.budget)
+    # **나이도 여기다.** 한 해에 한 번 바뀌는 그 해의 사실이고, 무엇보다 대화에 쌓이면
+    # **나이 드는 것이 느껴진다** — 6살 · 7살 · 8살이 차례로 남는다. 관측에 두면 매 콜
+    # 덮여서 그 감각이 생기지 않는다. 수명 곡선은 여전히 비공개다 (4.1).
+    head = t["open"].format(y=FIRST_YEAR + world.turn - 1, age=agent.age,
+                            inc=inc, b=agent.budget)
     if not inbox:
         # **온 것이 없으면 아무 말도 하지 않는다.** 「도착한 메시지: 없음」 을 붙이면
         # 아무 일도 없었다는 사실이 매 턴 대화에 쌓인다. 없는 것을 굳이 적지 않는 것이
@@ -491,7 +495,6 @@ def render_observation(world, agent, cfg, knob_ai: float,
         t["you"].format(id=agent.id, nation=agent.country),
         t["read"].format(langs=langs),
         t["budget"].format(b=agent.budget),
-        t["age"].format(a=agent.age),
         "",
         t["land"].format(v=land),
         t["prog"].format(v=c.progress),

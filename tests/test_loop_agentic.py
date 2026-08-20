@@ -304,3 +304,24 @@ def test_income_is_stated_once_a_year_not_recomputed_each_call():
     world.countries["Asla"].national_capital = 12_000.0
     obs = prompts.render_observation(world, a, cfg, 48.0)
     assert "収入:" not in obs and "収入は" not in obs
+
+
+def test_growing_older_accumulates_in_the_conversation():
+    """**나이가 관측에 있으면 매 콜 덮여서 나이 드는 것이 느껴지지 않는다.**
+
+    해가 열릴 때 적으면 대화에 6살 · 7살 · 8살이 차례로 남는다. 그것이 `procreate` 를
+    고를 시점을 가늠하는 유일한 재료다 — 수명 곡선은 비공개이고(4.1), 부고에 찍힌 나이와
+    자기 나이의 흐름만이 단서다. 세 런 21명이 전부 자연사한 뒤에 붙인 것이 부고의
+    나이였고, 이건 그 짝이다.
+    """
+    cfg = _cfg(3)
+    world = init_world(cfg, itertools.count(1))
+    a = world.agents["Asla1"]
+    seen = []
+    for t, age in ((1, 6), (2, 7), (3, 8)):
+        world.turn, a.age = t, age
+        seen.append(prompts.render_turn_open(world, a, cfg, 48.0, []))
+    assert ["6 歳" in seen[0], "7 歳" in seen[1], "8 歳" in seen[2]] == [True] * 3
+    # 관측에는 없다 — 그리고 죽은 문구도 남기지 않는다
+    assert "歳" not in prompts.render_observation(world, a, cfg, 48.0)
+    assert "age" not in prompts.T["ja"]
