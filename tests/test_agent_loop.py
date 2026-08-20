@@ -172,6 +172,8 @@ def test_learn_is_paid_in_instalments(cfg, world):
     script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=250)),
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla2", script, budget=10000)
+    # **정가 600 은 한 해에 못 낸다** — 600/300 = AP 2.0 > 1.0. AP 가 250 을 300 까지만
+    # 받아들이므로 250 은 그대로 나가지만, 이 상한이 분할을 필수로 만든다.
     assert agent.budget == 10000 - 250
     (rec,) = sink.learns
     assert rec["charged"] == 250 and rec["required"] == 600 and rec["rung"] == 1.0
@@ -184,12 +186,17 @@ def test_learn_is_paid_in_instalments(cfg, world):
 
 
 def test_learn_never_takes_more_than_needed(cfg, world):
-    """넘치게 내면 필요한 만큼만 받는다 — 남는 돈이 조용히 사라지면 안 된다."""
+    """넘치게 내면 **필요한 만큼과 AP 가 닿는 만큼** 중 작은 쪽만 받는다 — 남는 돈이
+    조용히 사라지면 안 된다.
+
+    정가 600 은 AP 2.0 이라 한 해에 못 낸다 (상한 1.0). 그래서 9,999 를 내려 해도 그 해에
+    나가는 것은 300 이다 — **분할이 선택이 아니라 필수다.**
+    """
     script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=9999)),
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla2", script, budget=10000)
-    assert agent.budget == 10000 - 600
-    assert sink.learns[0]["charged"] == 600
+    assert agent.budget == 10000 - cfg.facility.invest_per_ap
+    assert sink.learns[0]["charged"] == cfg.facility.invest_per_ap
 
 
 def test_learn_rejects_a_language_already_read(cfg, world):
@@ -203,8 +210,8 @@ def test_learn_rejects_a_language_already_read(cfg, world):
 
 
 def test_learn_uses_less_than_a_whole_turn(cfg, world):
-    """**한 번의 납부는 한 턴을 통째로 쓰지 않는다.** 전액을 낼 때만 1.0 이 든다."""
-    assert (cfg.ap.learn_full * (100 / cfg.costs.learn_base)) < cfg.turn.action_points
+    """한 번의 납부는 한 해를 통째로 쓰지 않는다. AP 는 **금액 ÷ 300** 이다."""
+    assert (100 / cfg.facility.invest_per_ap) < cfg.turn.action_points
     script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=100)),
               assistant_msg(tool_call("speak", "2", to="Asla3", text="x")),
               assistant_msg(tool_call("end_turn", "3"))]
@@ -223,14 +230,15 @@ def test_learn_action_points_scale_with_the_amount(cfg, world):
     lump = world.agents["Asla2"]; lump.ap, lump.budget = 1.0, 10_000.0
     r, _ = execute_tool("learn", {"country": "Miris", "amount": base, "reasoning": "r"},
                         world, lump, cfg, Sink(), 48.0)
-    assert r["ok"] and lump.ap == 1.0 - cfg.ap.learn_full    # 정가 전액 = 한 턴
+    # **정가 전액은 한 해에 못 낸다** — 600/300 = AP 2.0. AP 가 300 까지만 받는다.
+    assert r["ok"] and lump.ap == 0.0 and r["charged"] == cfg.facility.invest_per_ap
 
     split = world.agents["Asla3"]; split.ap, split.budget = 1.0, 10_000.0
     sink = Sink()
-    for _ in range(6):
+    for _ in range(3):                            # 100 씩 세 번 = 300 = AP 1.0
         execute_tool("learn", {"country": "Miris", "amount": base / 6, "reasoning": "r"},
                      world, split, cfg, sink, 48.0)
-    assert abs(split.ap - lump.ap) < 1e-9        # 합계가 같다
+    assert abs(split.ap - lump.ap) < 1e-9        # 합계가 같다 — 나눠 내도 손해가 없다
     assert abs(split.budget - lump.budget) < 1e-9
 
 
@@ -241,7 +249,7 @@ def test_learn_is_clamped_by_action_points_not_rejected(cfg, world):
     a = world.agents["Asla2"]; a.ap, a.budget = 0.4, 10_000.0
     r, _ = execute_tool("learn", {"country": "Miris", "amount": cfg.costs.learn_base,
                                   "reasoning": "r"}, world, a, cfg, Sink(), 48.0)
-    assert r["ok"] and abs(r["charged"] - cfg.costs.learn_base * 0.4) < 1e-6
+    assert r["ok"] and abs(r["charged"] - cfg.facility.invest_per_ap * 0.4) < 1e-6
     assert abs(a.ap) < 1e-9
 
 

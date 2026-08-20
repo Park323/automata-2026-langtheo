@@ -913,19 +913,19 @@ def test_national_and_facility_draw_from_the_same_action_points(cfg, world):
     assert not r["ok"] and a.budget == 10_000.0 - per_ap
 
 
-def test_wellness_is_not_metered_by_amount(cfg, world):
-    """**사적 재화라 금액에 비례해 묶지 않는다.** 비례로 묶으면 수명이 예산에 반응하지
-    않게 되고, 지표 11(수명 함정)이 관측하려는 것이 바로 그 반응이다.
+def test_wellness_is_metered_like_every_other_investment(cfg, world):
+    """**세 대상 모두 금액에 비례한다** (8/20).
 
-    다만 공짜도 아니다 — 하는 일이므로 정액 AP 를 문다.
+    wellness 만 정액이던 때는 규칙이 둘이었고, 관측 문구가 그것을 따라가지 못해
+    「wellness は無料」 라는 거짓이 같은 화면에 남았다. 규칙이 하나면 그 틈이 없다.
     """
-    from core.agent_loop import Sink, execute_tool
+    from core.agent_loop import Sink, execute_tool, invest_per_ap
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
+    per_ap = invest_per_ap(a, world, cfg)
     r, _ = execute_tool("invest", {"target": "wellness", "amount": 5000, "reasoning": "r"},
                         world, a, cfg, Sink(), 48.0)
-    assert r["ok"] and "charged" not in r            # 잘리지 않았으므로 조용하다
-    assert a.budget == 10_000.0 - 5000
-    assert a.ap == 1.0 - cfg.ap.invest_wellness      # 금액과 무관한 정액
+    assert r["ok"] and r["charged"] == per_ap         # AP 가 닿는 데까지만
+    assert a.ap == 0.0
 
 
 def test_higher_technical_level_buys_more_per_action_point(cfg, world):

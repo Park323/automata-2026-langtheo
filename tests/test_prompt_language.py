@@ -223,7 +223,7 @@ def test_knowing_a_language_is_not_described_as_reading_only():
         assert stale not in prompts.T[lang]["read"], lang
 
 
-def test_no_line_claims_wellness_is_free(cfg=None):
+def test_no_line_claims_wellness_is_free_or_flat(cfg=None):
     """**`ap.invest_wellness` 를 0 에서 0.1 로 올릴 때 문구를 안 고쳤다.**
 
     그래서 같은 관측이 두 가지를 말하고 있었다 —
@@ -238,18 +238,16 @@ def test_no_line_claims_wellness_is_free(cfg=None):
     `inv_cap` 에서 wellness 문구를 아예 뺐다. 정확한 값은 비용표에 이미 있고, 두 군데
     적으면 다음에 또 갈린다.
     """
-    from core import config
     from domains.meteor import prompts
-    c = config.load("configs/base.yaml")
-    FREE = ("無料", "不消耗", "gratuit", "無償", "免费")
+    # 이제 세 대상 모두 금액 비례다 — 「무료」 도 「정액」 도 거짓이다
+    STALE = ("無料", "不消耗", "gratuit", "免费", "定額", "定额", "fixe")
     for lang, t in prompts.T.items():
         blob = "\n".join(str(v) for v in t.values())
         for line in blob.splitlines():
             if "wellness" not in line:
                 continue
-            for w in FREE:
-                # 정액이 0 보다 크면 「무료」 라고 말할 수 없다
-                assert not (c.ap.invest_wellness > 0 and w in line), (lang, w, line)
+            for w in STALE:
+                assert w not in line, (lang, w, line)
 
 
 def test_the_cost_table_shows_learning_as_something_you_pay_into():
@@ -273,9 +271,9 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
     cfg = config.load("configs/base.yaml")
     world = loop.init_world(cfg, itertools.count(1), random.Random(1))
     world.turn = 1
-    for aid, marks in (("Asla2", ("0 / 300", "0 / 600", "額÷600")),
-                       ("Ranoa1", ("0 / 600", "额÷600")),
-                       ("Miris1", ("0 / 600", "mnt÷600"))):
+    for aid, marks in (("Asla2", ("0 / 300", "0 / 600", "額÷300")),
+                       ("Ranoa1", ("0 / 600", "额÷300")),
+                       ("Miris1", ("0 / 600", "mnt÷300"))):
         agent = world.agents[aid]
         agent.lang_progress = {}
         obs = prompts.system_for(agent, world, cfg, 48.0)
@@ -292,3 +290,31 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
     a = world.agents["Asla2"]
     a.lang_progress = {"zh": 150.0}
     assert "150 / 300" in prompts.system_for(a, world, cfg, 48.0)
+
+
+def test_the_observation_says_money_carries_over():
+    """**안 쓰면 사라진다고 읽으면 저축을 안 한다.**
+
+    관측은 예산과 이번 해 수입만 적고, 남은 돈이 다음 해로 넘어간다는 것은 어디에도
+    없었다. 실측에서 에이전트들이 매 해 예산을 거의 0 까지 쓰고 있었다 — 600 짜리 학습에
+    손을 못 대는 이유 중 하나가 이것일 수 있다.
+
+    쌓인다는 것은 세계의 사실이므로 적는다.
+    """
+    from domains.meteor import prompts
+    marks = {"ja": "翌年に残ります", "zh": "会留到明年", "fr": "reste pour l'année suivante"}
+    for lang, m in marks.items():
+        assert m in prompts.T[lang]["multi"], lang
+
+
+def test_the_action_rate_is_one_number_for_the_whole_world():
+    """learn 도 invest 도 **금액 ÷ invest_per_ap** 다. 규칙이 둘이면 문구가 갈리고,
+    실제로 「wellness は無料」 라는 거짓이 그렇게 남았다."""
+    from core import config
+    from domains.meteor import prompts
+    c = config.load("configs/base.yaml")
+    rate = f"{c.facility.invest_per_ap:.0f}"
+    for lang in ("ja", "zh", "fr"):
+        assert rate in prompts.T[lang]["ap_prop"].format(v=c.facility.invest_per_ap)
+    # 옛 값(600)이 표에 남아 있지 않다
+    assert not hasattr(c.ap, "learn_full") and not hasattr(c.ap, "invest_wellness")

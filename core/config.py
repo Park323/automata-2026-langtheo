@@ -51,14 +51,13 @@ class TurnCfg:
 class AP:
     speak: float
     ask: float
-    learn_full: float              # **정가 전액을 내는 데 드는 AP** (4.4)
-                                   # 실제 소모 = learn_full × (금액 ÷ learn_base)
+    # learn·invest 의 AP 는 **금액 ÷ invest_per_ap** 하나로 통일했다 (4.4).
+    # learn_full·invest_wellness 는 그래서 없앴다.
     propose_vote: float
     memory_write: float
     procreate: float
     observe_risk: float = 0.3
     vote: float = 0.05             # 採決과 제안은 무게가 다르다 (4.4)
-    invest_wellness: float = 0.1   # national·facility 는 금액 비례라 여기 없다
 
 
 @dataclass(frozen=True)

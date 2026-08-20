@@ -240,24 +240,18 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         # **남은 AP 로 자르고 나서 예산을 본다.** 순서를 바꾸면 AP 가 잘라줬을 금액을
         # 그대로 들고 "예산 부족" 으로 거절한다 — 9,999 를 내려다 300 만 냈어야 할 것이
         # 통째로 실패한다.
-        per_ap = None
-        if target == "wellness":
-            # 사적 재화라 금액에 비례해 묶지 않는다 (묶으면 수명이 예산에 반응하지
-            # 않게 되고, 지표 11 이 관측하려는 것이 바로 그 반응이다). 다만 공짜도 아니다.
-            ap_used = cfg.ap.invest_wellness
-            if agent.ap < ap_used:
-                return {"ok": False,
-                        "error": f"not enough AP; invest(wellness) needs {ap_used}"}, None
-        else:
-            per_ap = invest_per_ap(agent, world, cfg)
-            affordable = agent.ap * per_ap
-            if affordable <= 0:
-                return {"ok": False, "error":
-                        f"no action points left; {per_ap:.0f} of investment costs 1.0 AP "
-                        f"and your nation's technical level sets that rate"}, None
-            # round — 0.667 AP × 300 이 200.00000000000003 로 나와 그대로 청구된다.
-            amount = round(min(amount, affordable), 6)   # 넘치게 내면 AP 가 닿는 데까지만
-            ap_used = min(agent.ap, amount / per_ap)     # 부동소수로 AP 가 음수가 되지 않게
+        #
+        # **세 대상 모두 금액에 비례한다.** wellness 만 정액이던 때는 규칙이 둘이었고,
+        # 관측 문구가 그것을 따라가지 못해 「wellness は無料」 같은 거짓이 남았다.
+        per_ap = invest_per_ap(agent, world, cfg)
+        affordable = agent.ap * per_ap
+        if affordable <= 0:
+            return {"ok": False, "error":
+                    f"no action points left; {per_ap:.0f} of investment costs 1.0 AP "
+                    f"and your nation's technical level sets that rate"}, None
+        # round — 0.667 AP × 300 이 200.00000000000003 로 나와 그대로 청구된다.
+        amount = round(min(amount, affordable), 6)   # 넘치게 내면 AP 가 닿는 데까지만
+        ap_used = min(agent.ap, amount / per_ap)     # 부동소수로 AP 가 음수가 되지 않게
         if agent.budget < amount:
             return {"ok": False, "error": f"not enough budget; need {amount:.0f}, have {agent.budget:.0f}"}, None
         agent.budget -= amount
@@ -311,7 +305,10 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         # **AP 도 금액에 비례한다.** 정액이면 분할이 손해다 — 600 을 여섯 번에 나눠 내면
         # AP 1.8, 한 번에 내면 0.3. 분할을 넣어놓고 분할에 벌을 주게 된다.
         # 비례로 두면 나눠 내든 몰아 내든 합계가 같고, 정가 전액이 딱 한 턴이 된다.
-        per_ap = cfg.costs.learn_base / cfg.ap.learn_full
+        # **invest 와 같은 비율.** 세계에 「돈을 일로 바꾸는 속도」 가 하나만 있는 편이
+        # 읽기 쉽다. 국가 배수는 걸지 않는다 — 걸면 국가 투자가 학습률을 올려서, 지표 1
+        # (학습자 비율)이 노브가 아닌 이유로 움직인다.
+        per_ap = cfg.facility.invest_per_ap
         affordable = agent.ap * per_ap
         if affordable <= 0:
             return {"ok": False, "error":
@@ -588,7 +585,7 @@ def can_act(agent, cfg, knob_ai: float) -> bool:
         return True
     if agent.ap >= cfg.ap.propose_vote and agent.budget >= cfg.costs.propose_vote:
         return True
-    if agent.budget > 0 and agent.ap >= cfg.ap.invest_wellness:
+    if agent.budget > 0 and agent.ap > 0:      # 투자는 금액 비례라 AP 가 조금만 있어도 된다
         return True
     return agent.ap >= min(cfg.ap.memory_write, cfg.ap.vote)
 
