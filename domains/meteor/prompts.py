@@ -47,7 +47,7 @@ SYSTEM = {
 `bunker` は深いほど、その国の人々が隕石を生き延びる見込みが高くなります。他国の人は含まれません。
 施設の進捗は国ごとに別々に積まれ、別々に積まれた進捗を足し合わせることはできません。完成したかどうかは、その国の進捗だけで決まります。
 たとえば A 国の interceptor が半分、B 国の interceptor が半分なら、interceptor はどの国にも完成していません。
-国土がまだ決まっていない国には積むものがありません。そこへ出した分は進捗になりません。
+何を建てるかがまだ決まっていない国には積むものがありません。そこへ出した分は進捗になりません。
 人はだいたい {life:.0f} 年ほど生きます。
 メッセージの本文は必ず日本語で書いてください。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
     "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
@@ -60,7 +60,7 @@ SYSTEM = {
 `bunker` 挖得越深，该国国民从陨石中活下来的可能性越大。别国的人不在其内。
 设施的进度按国家分别累积，分别累积的进度不能相加。是否建成，只看那个国家自己的进度。
 比如 A 国的 interceptor 到一半，B 国的 interceptor 也到一半，那么 interceptor 在任何国家都没有建成。
-国土尚未定下来的国家没有可积累的东西。投到那里的钱不会变成进度。
+还没决定要建什么的国家没有可积累的东西。投到那里的钱不会变成进度。
 人大体活 {life:.0f} 年左右。
 消息正文必须用中文书写。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
     "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
@@ -73,7 +73,7 @@ Un `interceptor`, une fois achevé dans une seule nation, arrête la météorite
 Plus un `bunker` est profond, plus les habitants de cette nation ont de chances de survivre à la météorite. Les gens des autres nations n'y sont pas compris.
 La progression d'une installation s'accumule séparément pour chaque nation, et des progressions accumulées séparément ne s'additionnent pas. L'achèvement se juge sur la seule progression de cette nation.
 Par exemple, si l'interceptor de la nation A est à moitié fait et celui de la nation B à moitié aussi, l'interceptor n'est achevé dans aucune nation.
-Une nation dont le territoire n'est pas encore fixé n'a rien où accumuler ; ce qu'on y verse ne devient pas de la progression.
+Une nation qui n'a pas encore décidé quoi bâtir n'a rien où accumuler ; ce qu'on y verse ne devient pas de la progression.
 Les gens vivent en général environ {life:.0f} ans.
 Le corps de vos messages doit être rédigé en français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
 }
@@ -82,13 +82,13 @@ Le corps de vos messages doit être rédigé en français. Gardez les noms d'opt
 T = {
     "ja": dict(
         you="あなたは {id}（{nation} の人）です。", read="扱える言語: {langs}",
-        land="自国の国土: {v}", undecided="未定",
+        land="自国が建てるもの: {v}", undecided="未定",
         prog="自国の進捗: {v:.0f}", thresh="  interceptor の完成に要る進捗: {v:.0f}",
         year="今年: {y} 年",
         open="{y} 年になりました。あなたは {age} 歳。今年の収入は +{inc:.0f}、手元の予算は {b:.0f} です。\nこの年を執り行ってください。",
         prop="  採決が {vt} 年に開かれます（{by} が召集）。何を建てるかをそこで決めます",
         prop_today="  ★ 今年が採決の年です。vote で interceptor / bunker / abstain を選べます",
-        prop_none="  採決は開かれていません。国土は投票でしか決まりません",
+        prop_none="  採決は開かれていません。何を建てるかは投票でしか決まりません",
         c_ballot="  vote",  c_ballot_note="採決で何を建てるかを選ぶ",
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
         multi="予算と行動力が許す限り複数の行動ができます。\n使い残した予算は翌年に残ります。",
@@ -102,8 +102,8 @@ T = {
         c_learn="  {nation} の言語を学ぶ",
         c_learn_prog="   これまで {done:.0f} / {need:.0f}",
         c_fac_mine="  {nation} の施設にこれまで出した額: {v:.0f}",
-        c_cheap="   自国に話せる人がいるので半額", c_disc="   親が話せたので半額",
-        c_both="   自国に話せる人がいて、親も話せたので四分の一",
+        c_cheap="   自国に話せる人がいるので {cut:.0f} 安い", c_disc="   親が話せたので {cut:.0f} 安い",
+        c_both="   自国に話せる人がいて、親も話せたので {cut2:.0f} 安い",
         c_vote="  propose_vote",
         c_vote_note="何を建てるかの採決を召集する",
         c_obs="  observe_risk",
@@ -129,9 +129,9 @@ T = {
         fac_still="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
         prog_up="  自国の進捗が {gain:.0f} 進んで {now:.0f} になりました。",
         cap_up="  自国の技術力が上がりました。",
-        ballot_kept="  採決の結果、国土は {land} のままです。",
-        ballot_new="  採決の結果、国土は {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
-        ballot_none="  採決では何も決まりませんでした。国土は {land} のままです。",
+        ballot_kept="  採決の結果、建てるものは {land} のままです。",
+        ballot_new="  採決の結果、建てるものは {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
+        ballot_none="  採決では何も決まりませんでした。建てるものは {land} のままです。",
         outcome_win="  interceptor が完成し、隕石は止まりました。全ての国の人が生き残りました。",
         outcome_lose="  隕石が落ちました。",
         roster="人々:", roster_you="（あなた）",
@@ -142,12 +142,12 @@ T = {
     ),
     "zh": dict(
         you="你是 {id}（{nation} 人）。", read="你掌握的语言: {langs}",
-        land="本国国土: {v}", undecided="未定",
+        land="本国要建的设施: {v}", undecided="未定",
         prog="本国进度: {v:.0f}", thresh="  建成 interceptor 所需的进度: {v:.0f}",
         year="今年: {y} 年",
         prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
         prop_today="  ★ 今年就是表决之年。可以用 vote 选 interceptor / bunker / abstain",
-        prop_none="  没有正在进行的表决。国土只能由投票决定",
+        prop_none="  没有正在进行的表决。要建什么只能由投票决定",
         open="到了 {y} 年。你 {age} 岁。今年的收入是 +{inc:.0f}，手上的预算是 {b:.0f}。\n请执行这一年。",
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
@@ -162,8 +162,8 @@ T = {
         c_learn="  学习 {nation} 的语言",
         c_learn_prog="   已投入 {done:.0f} / {need:.0f}",
         c_fac_mine="  你至今向 {nation} 的设施投入: {v:.0f}",
-        c_cheap="   本国有人会说，所以只要一半", c_disc="   父母会说，所以只要一半",
-        c_both="   本国有人会说，父母也会说，所以只要四分之一",
+        c_cheap="   本国有人会说，所以便宜 {cut:.0f}", c_disc="   父母会说，所以便宜 {cut:.0f}",
+        c_both="   本国有人会说，父母也会说，所以便宜 {cut2:.0f}",
         c_vote="  propose_vote",
         c_vote_note="召集「建什么」的表决",
         c_obs="  observe_risk",
@@ -189,9 +189,9 @@ T = {
         fac_still="  你去年投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
         prog_up="  本国的进度前进了 {gain:.0f}，现在是 {now:.0f}。",
         cap_up="  本国的技术水平提高了。",
-        ballot_kept="  表决的结果，国土仍是 {land}。",
-        ballot_new="  表决的结果，国土定为 {land}。此前的进度 {lost:.0f} 已失去。",
-        ballot_none="  表决没有决定任何事。国土仍是 {land}。",
+        ballot_kept="  表决的结果，要建的设施仍是 {land}。",
+        ballot_new="  表决的结果，要建的设施定为 {land}。此前的进度 {lost:.0f} 已失去。",
+        ballot_none="  表决没有决定任何事。要建的设施仍是 {land}。",
         outcome_win="  interceptor 建成，陨石被拦下了。所有国家的人都活了下来。",
         outcome_lose="  陨石落下了。",
         roster="人们:", roster_you="（你）",
@@ -202,13 +202,13 @@ T = {
     ),
     "fr": dict(
         you="Vous êtes {id}, de {nation}.", read="Langues que vous maniez : {langs}",
-        land="Territoire de votre nation : {v}", undecided="indéterminé",
+        land="Ce que bâtit votre nation : {v}", undecided="indéterminé",
         prog="Progression de votre nation : {v:.0f}",
         thresh="  Progression requise pour achever un interceptor : {v:.0f}",
         year="Année : {y}",
         prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
         prop_today="  ★ Le scrutin a lieu cette année. Choisissez avec vote : interceptor / bunker / abstain",
-        prop_none="  Aucun scrutin en cours. Le territoire ne se décide que par un vote",
+        prop_none="  Aucun scrutin en cours. Ce qu'on bâtit ne se décide que par un vote",
         open="L'an {y} est arrivé. Vous avez {age} ans. Le revenu de cette année est de +{inc:.0f} ; votre budget est de {b:.0f}.\nMenez cette année.",
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
@@ -223,8 +223,8 @@ T = {
         c_learn="  apprendre la langue de {nation}",
         c_learn_prog="   déjà versé {done:.0f} / {need:.0f}",
         c_fac_mine="  déjà versé à l'installation de {nation} : {v:.0f}",
-        c_cheap="   moitié prix : quelqu'un de votre nation la parle", c_disc="   moitié prix : votre parent la parlait",
-        c_both="   un quart du prix : quelqu'un de votre nation la parle et votre parent la parlait",
+        c_cheap="   {cut:.0f} de moins : quelqu'un de votre nation la parle", c_disc="   {cut:.0f} de moins : votre parent la parlait",
+        c_both="   {cut2:.0f} de moins : quelqu'un de votre nation la parle et votre parent la parlait",
         c_vote="  propose_vote",
         c_vote_note="convoquer un scrutin sur quoi bâtir",
         c_obs="  observe_risk",
@@ -253,9 +253,9 @@ T = {
         fac_still="  Votre versement de {amt:.0f} l'an dernier n'a fait progresser {to} en rien.",
         prog_up="  La progression de votre nation a avancé de {gain:.0f} ; elle est à {now:.0f}.",
         cap_up="  Le niveau technique de votre nation s'est élevé.",
-        ballot_kept="  Au scrutin, le territoire reste {land}.",
-        ballot_new="  Au scrutin, le territoire devient {land}. La progression acquise, {lost:.0f}, est perdue.",
-        ballot_none="  Le scrutin n'a rien décidé. Le territoire reste {land}.",
+        ballot_kept="  Au scrutin, ce qu'on bâtit reste {land}.",
+        ballot_new="  Au scrutin, ce qu'on bâtit devient {land}. La progression acquise, {lost:.0f}, est perdue.",
+        ballot_none="  Le scrutin n'a rien décidé. Ce qu'on bâtit reste {land}.",
         outcome_win="  L'interceptor est achevé ; la météorite a été arrêtée. Tous ont survécu.",
         outcome_lose="  La météorite est tombée.",
         roster="Les gens :", roster_you="(vous)",
@@ -388,9 +388,12 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
             # 때문인지 알 수 없다 — 전에는 무조건 「국내에 구사자가 있다」 라고 적었고,
             # 문구가 뭉개져 있어서 그 거짓이 눈에 띄지 않았다.
             domestic, parent = learn_discounts(agent, c.id, world)
-            note = (t["c_both"] if domestic and parent
-                    else t["c_cheap"] if domestic
-                    else t["c_disc"] if parent else "")
+            cut = cfg.costs.learn_discount
+            # **깎인 액수를 적는다.** 「반값」 은 무엇의 반인지 총액을 되짚어야 알고,
+            # 사유가 둘일 때 「사분의 일」 로 뛰던 것도 이제는 정액 두 번이다.
+            note = (t["c_both"].format(cut2=cut * 2) if domestic and parent
+                    else t["c_cheap"].format(cut=cut) if domestic
+                    else t["c_disc"].format(cut=cut) if parent else "")
             # **비용 칸은 한 번의 값이다** (20 · 0.1). 총액은 바로 아래 진척 줄이
             # 말한다 — 전에는 비용 칸에 총액(600)이 있고 아래에 또 0/600 이 나와서
             # 같은 숫자가 두 번 보였고, 「20 을 낸다」 와 「600 이 든다」 가 한 줄에

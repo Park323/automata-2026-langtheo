@@ -110,16 +110,24 @@ def learn_discounts(agent, country_id: str, world) -> tuple[bool, bool]:
 
 
 def learn_cost(agent, country_id: str, world, cfg) -> tuple[float, str]:
-    """(비용, 할인사유). L × 국내구사자(×0.5) × 부모(×0.5), 중복 시 ×0.25."""
+    """(비용, 할인사유). **L − 사유당 정액.**
+
+    비율(×0.5)이었을 때 사유가 둘이면 ×0.25 라 정가와 네 배가 벌어졌다. L 을 200 으로
+    내리면서 그 배율은 50 이 되어 **두 번 만에 끝나는** 값이 된다. 정액이면 사유 하나가
+    언제나 같은 값어치라 사다리가 200 · 150 · 100 으로 고르다.
+
+    한 번의 학습이 20 원이므로 바닥은 그 아래로 내려가지 않게 잡는다.
+    """
     base = cfg.costs.learn_base
+    cut = cfg.costs.learn_discount
     domestic, parent = learn_discounts(agent, country_id, world)
-    mult = (0.5 if domestic else 1.0) * (0.5 if parent else 1.0)
     reasons = []
     if domestic:
-        reasons.append("someone in your nation speaks it (x0.5)")
+        reasons.append(f"someone in your nation speaks it (-{cut:.0f})")
     if parent:
-        reasons.append("your parent spoke it (x0.5)")
-    return base * mult, " · ".join(reasons) if reasons else "no discount"
+        reasons.append(f"your parent spoke it (-{cut:.0f})")
+    cost = max(cfg.costs.unit, base - cut * len(reasons))
+    return cost, " · ".join(reasons) if reasons else "no discount"
 
 
 # ── 새어나온 도구 호출 회수 ──────────────────────────────────────────────────

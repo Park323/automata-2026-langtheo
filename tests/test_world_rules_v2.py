@@ -601,7 +601,12 @@ def test_investing_before_a_territory_is_settled_is_stated(cfg, world):
         assert marks[a.native_lang] in prompts.system_for(a, None, cfg), a.native_lang
     d = next(t["function"]["description"] for t in tools.TOOLS
              if t["function"]["name"] == "invest")
-    assert "has not settled its territory" in d and "buys no progress" in d
+    # **「국토」 라는 말을 걷어냈다** (8/20). `land` 는 무엇을 짓는가인데 세 언어 모두
+    # 国土·領土·territoire 로 옮겨 두어, 에이전트들이 지리로 읽고 없는 절차를 발명했다
+    # (「先定国土，再推动表决」 · 「你们的领土是固定的吗？」).
+    assert "yet decided what to build" in d and "buys no progress" in d
+    for stale in ("territor", "国土", "领土"):
+        assert stale not in d, stale
 
 
 def test_the_rule_still_hides_which_nation_decided(cfg, world):
@@ -715,8 +720,8 @@ def test_the_delivery_rule_matches_the_loop_that_is_running(cfg, world):
 def test_one_speaker_per_nation_at_the_start(cfg):
     """나라마다 **한 명**이 이웃 나라 말을 이미 안다 (순환).
 
-    그전에는 국내에 구사자가 아무도 없어 학습이 **늘 정가 600** 이었고, 20턴 동안
-    학습 시도가 **0건**이었다. `x̂` 는 L/2 눈금이 존재해야 구간으로 좁혀진다 (spec 7장).
+    그전에는 국내에 구사자가 아무도 없어 학습이 **늘 정가** 였고, 20턴 동안 학습 시도가
+    **0건**이었다. `x̂` 는 할인 눈금이 존재해야 구간으로 좁혀진다 (spec 7장).
     """
     import random
     from core.agent_loop import learn_cost
@@ -744,7 +749,8 @@ def test_one_speaker_per_nation_at_the_start(cfg):
     tgt_lang = next(iter(speaker.known_langs - {"ja"}))
     tgt = next(c.id for c in w.countries.values() if c.lang == tgt_lang)
     cost, why = learn_cost(other, tgt, w, cfg)
-    assert cost == cfg.costs.learn_base / 2 and "nation" in why
+    # **정액 할인이다** (8/20). L/2 였을 때 사유가 둘이면 L/4 라 정가와 네 배가 벌어졌다.
+    assert cost == cfg.costs.learn_base - cfg.costs.learn_discount and "nation" in why
 
 
 def test_initial_ages_are_spread(cfg):
@@ -769,11 +775,12 @@ def test_initialisation_is_reproducible(cfg):
 def test_learning_progress_is_visible_without_paying_to_look(cfg, world):
     """언어별 진척은 **별도 관측 없이** 그대로 보인다. 얼마 냈고 얼마 남았는지."""
     from domains.meteor import prompts
+    L, cut = cfg.costs.learn_base, cfg.costs.learn_discount
     a = world.agents["Asla2"]
-    a.lang_progress = {"fr": 400.0, "zh": 120.0}
+    a.lang_progress = {"fr": 140.0, "zh": 120.0}
     obs = prompts.render_observation(world, a, cfg, 48.0)
-    assert "400 / 600" in obs        # Miris(fr) 정가 — Asla 에 fr 구사자 없음
-    assert "120 / 300" in obs        # Ranoa(zh) 절반 — Asla1 이 zh 를 안다
+    assert f"140 / {L:.0f}" in obs          # Miris(fr) 정가 — Asla 에 fr 구사자 없음
+    assert f"120 / {L - cut:.0f}" in obs    # Ranoa(zh) 할인가 — Asla1 이 zh 를 안다
 
 
 def test_a_cheaper_price_can_finish_a_half_paid_language(cfg, world):
@@ -783,19 +790,20 @@ def test_a_cheaper_price_can_finish_a_half_paid_language(cfg, world):
     아니라 조건이고, 계보가 아니라 **지금 누가 살아 있는가**로 정해진다.
     """
     import random
+    L, cut = cfg.costs.learn_base, cfg.costs.learn_discount
     a = world.agents["Asla2"]
-    a.lang_progress = {"fr": 400.0}          # 정가 600 중 400
+    a.lang_progress = {"fr": L - cut}        # 정가에는 모자라고 할인가에는 딱 맞는 액수
     r = loop.RunResult(world=world)
     loop._settle_agentic(world, cfg, random.Random(0), Sink(), None, 48.0,
                          itertools.count(500), r, itertools.count(900))
     assert "fr" not in a.known_langs         # 아직 모자라다
 
-    world.agents["Asla3"].known_langs.add("fr")   # 국내 구사자 등장 → 필요액 300
+    world.agents["Asla3"].known_langs.add("fr")   # 국내 구사자 등장 → 필요액이 내려간다
     loop._settle_agentic(world, cfg, random.Random(0), Sink(), None, 48.0,
                          itertools.count(500), r, itertools.count(900))
     assert "fr" in a.known_langs
     (done,) = [x for x in r.learns_log if x.get("kind") == "acquired"]
-    assert done["charged"] == 400.0 and done["required"] == 300.0 and done["rung"] == 0.5
+    assert done["charged"] == L - cut and done["required"] == L - cut
 
 
 def test_the_obituary_says_how_old_they_were(cfg, world):
@@ -1184,7 +1192,8 @@ def test_learn_reports_completion_not_a_schedule(cfg, world):
     from core.agent_loop import Sink, execute_tool
     a = world.agents["Asla2"]; a.ap, a.budget = 1.0, 10_000.0
     sink = Sink()
-    a.lang_progress = {"zh": 295.0}                 # 국내 구사자가 있어 300, 5 만 남았다
+    # 국내 구사자가 있어 할인가이고, 5 만 남았다
+    a.lang_progress = {"zh": cfg.costs.learn_base - cfg.costs.learn_discount - 5.0}
     r, _ = execute_tool("learn", {"country": "Ranoa", "reasoning": "r"},
                         world, a, cfg, sink, 48.0)
     assert r["complete"] is True and r["remaining"] == 0.0
@@ -1232,7 +1241,7 @@ def test_my_resources_are_not_in_the_observation(cfg, world):
 def test_the_discount_note_names_the_right_reason(cfg, world):
     """**금액만 보고 문구를 골라서 부모 할인을 「자국에 구사자가 있다」 로 적었다.**
 
-    300 은 두 갈래로 나온다 — 국내 구사자 때문일 수도, 부모 때문일 수도 있다. 문구가
+    L−50 은 두 갈래로 나온다 — 국내 구사자 때문일 수도, 부모 때문일 수도 있다. 문구가
     「割引あり」 처럼 뭉개져 있던 동안에는 그 거짓이 눈에 띄지 않았다. 사유를 적기로 한
     순간 드러났다.
 
@@ -1247,26 +1256,40 @@ def test_the_discount_note_names_the_right_reason(cfg, world):
     obs = prompts.system_for(a, world, cfg, 48.0)
     zh = next(l for l in obs.splitlines() if "Ranoa の言語を学ぶ" in l)
     fr = next(l for l in obs.splitlines() if "Miris の言語を学ぶ" in l)
-    assert t["c_cheap"].strip() in zh                # 국내 구사자
-    assert t["c_disc"].strip() in fr                 # 부모
-    assert t["c_cheap"].strip() not in fr            # 서로 섞이지 않는다
+    L, cut = cfg.costs.learn_base, cfg.costs.learn_discount
+    cheap = t["c_cheap"].format(cut=cut).strip()
+    disc = t["c_disc"].format(cut=cut).strip()
+    assert cheap in zh                               # 국내 구사자
+    assert disc in fr                                # 부모
+    assert cheap not in fr                           # 서로 섞이지 않는다
+    # **깎인 액수를 적는다.** 「반값」 은 무엇의 반인지 총액을 되짚어야 알았다.
+    assert f"{cut:.0f}" in cheap
 
-    a.parent_langs = {"zh"}                          # 둘 다 걸리면 1/4
+    a.parent_langs = {"zh"}                          # 둘 다 걸리면 두 번 깎인다
     obs = prompts.system_for(a, world, cfg, 48.0)
     lines = obs.splitlines()
     i = next(n for n, l in enumerate(lines) if "Ranoa の言語を学ぶ" in l)
-    assert t["c_both"].strip() in lines[i]
-    # **눈금은 진척 줄에 있다** — 비용 칸은 한 번의 값(20)이다
-    assert "150" in lines[i + 1] and "150" not in lines[i]
+    assert t["c_both"].format(cut2=cut * 2).strip() in lines[i]
+    assert f"0 / {L - 2 * cut:.0f}" in lines[i + 1]
+
+    # **눈금은 진척 줄에 있다** — 비용 칸은 한 번의 값(20)이다. 사유 하나짜리로 본다:
+    # 두 개면 깎인 액수(2×50=100)가 필요액(200−100=100)과 같은 숫자가 되어 못 가린다.
+    a.parent_langs = set()
+    lines = prompts.system_for(a, world, cfg, 48.0).splitlines()
+    i = next(n for n, l in enumerate(lines) if "Ranoa の言語を学ぶ" in l)
+    assert f"{cfg.costs.unit:g}" in lines[i]
+    assert f"{L - cut:.0f}" not in lines[i]
+    assert f"0 / {L - cut:.0f}" in lines[i + 1]
 
     a.parent_langs = set()                           # 정가에는 아무 문구도 없다
     obs = prompts.system_for(a, world, cfg, 48.0)
     lines = obs.splitlines()
     i = next(n for n, l in enumerate(lines) if "Miris の言語を学ぶ" in l)
     fr = lines[i]
-    assert "600" in lines[i + 1]
-    for k in ("c_cheap", "c_disc", "c_both"):
-        assert t[k].strip() not in fr
+    assert f"0 / {L:.0f}" in lines[i + 1]
+    for k, kw in (("c_cheap", dict(cut=cut)), ("c_disc", dict(cut=cut)),
+                  ("c_both", dict(cut2=cut * 2))):
+        assert t[k].format(**kw).strip() not in fr
 
 
 def test_no_prose_hardcodes_the_grace_period(cfg, world):
@@ -1358,7 +1381,9 @@ def test_a_language_you_already_read_is_not_on_the_learning_table(cfg, world):
 
     sysmsg = prompts.system_for(a, world, cfg, 48.0)
     lines = sysmsg.splitlines()
-    prog = [i for i, ln in enumerate(lines) if "/ 600" in ln or "/ 300" in ln]
+    # **총액을 여기 적지 않는다** — 이 테스트를 쓴 다음 날 L 이 600 에서 200 으로 갔다.
+    prog = [i for i, ln in enumerate(lines) if " / " in ln and "0" in ln
+            and any(c.isdigit() for c in ln.split(" / ")[0])]
     assert prog, sysmsg                          # 모르는 말(Asla)은 여전히 표에 있다
     for i in prog:
         near = " ".join(lines[max(0, i - 1):i + 1])

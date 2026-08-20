@@ -29,6 +29,9 @@ class Costs:
     propose_vote: float
     observe_risk: float = 20.0
     unit: float = 20.0             # 한 번의 invest·learn 이 나가는 돈 (4.4)
+    # **할인은 비율이 아니라 정액이다** (8/20). ×0.5 였을 때 사유가 둘이면 ×0.25 라
+    # 정가와 4배가 벌어졌다. 정액이면 사유 하나가 언제나 같은 값어치라 사다리가 고르다.
+    learn_discount: float = 50.0
 
 
 @dataclass(frozen=True)

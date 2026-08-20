@@ -255,15 +255,17 @@ def test_no_line_claims_wellness_is_free_or_flat(cfg=None):
 def test_the_cost_table_shows_learning_as_something_you_pay_into():
     """**진척 줄이 `done > 0` 일 때만 나와서 표가 일시불처럼 보였다.**
 
-        Ranoa の言語を学ぶ    600   1        ← 600 과 「한 해」
+        Ranoa の言語を学ぶ    600   1        ← 총액과 「한 해」
 
     분할 납부는 도구 설명에만 있었다. 그런데 에이전트가 먼저 읽는 것은 표다 — 예산 100 을
     든 사람이 저 줄을 보면 **손도 못 댈 값**으로 읽는다. 실측에서 학습 시도가 거의 0 이었다.
 
     두 곳을 고쳤다.
-      ① 진척 줄을 **언제나** 적는다. 「0 / 600」 이면 쌓인다는 것이 숫자의 모양으로 보인다.
-      ② AP 를 `額÷600` 으로 적는다 — invest 와 같은 꼴. 전에는 눈금을 끝까지 내는 AP 라
-         그냥 `1` 이었고, 100 을 넣으려는 사람이 그것을 「한 해를 통째로」 로 읽는다.
+      ① 진척 줄을 **언제나** 적는다. 「0 / 200」 이면 쌓인다는 것이 숫자의 모양으로 보인다.
+      ② 비용 칸은 **한 번의 값**(20 · 0.1)이다. 총액은 진척 줄이 말한다.
+
+    **정가·할인가를 여기 적지 않는다** — 8/20 에 L 을 600 에서 200 으로 내리고 할인을
+    정액으로 바꿨을 때, 박아 둔 600·300 이 다섯 파일에서 같이 깨졌다.
     """
     import itertools
     import random
@@ -271,28 +273,30 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
     from core import config, loop
     from domains.meteor import prompts
     cfg = config.load("configs/base.yaml")
+    L, cut = cfg.costs.learn_base, cfg.costs.learn_discount
     world = loop.init_world(cfg, itertools.count(1), random.Random(1))
     world.turn = 1
-    for aid, marks in (("Asla2", ("0 / 300", "0 / 600")),
-                       ("Ranoa1", ("0 / 600",)),
-                       ("Miris1", ("0 / 600",))):
+    # Asla2 는 국내에 zh 구사자(Asla1)가 있어 zh 만 할인가다.
+    for aid, marks in (("Asla2", (f"0 / {L - cut:.0f}", f"0 / {L:.0f}")),
+                       ("Ranoa1", (f"0 / {L:.0f}",)),
+                       ("Miris1", (f"0 / {L:.0f}",))):
         agent = world.agents[aid]
         agent.lang_progress = {}
         obs = prompts.system_for(agent, world, cfg, 48.0)
         for m in marks:
             assert m in obs, (aid, m)
-        # **비용 칸은 한 번의 값이다.** 총액(600)이 비용 칸에 있으면 「한 번에 600 이
-        # 나간다」 로 읽힌다 — 그 숫자는 바로 아래 진척 줄이 말한다.
+        # **비용 칸은 한 번의 값이다.** 총액이 비용 칸에 있으면 「한 번에 그만큼 나간다」
+        # 로 읽힌다 — 그 숫자는 바로 아래 진척 줄이 말한다.
         learn_lines = [l for l in obs.splitlines()
                        if any(k in l for k in ("の言語を学ぶ", "学习 ", "apprendre la langue de"))]
         assert learn_lines
         for l in learn_lines:
-            assert f"{cfg.costs.unit:g}" in l and "600" not in l, l
+            assert f"{cfg.costs.unit:g}" in l and f"{L:.0f}" not in l, l
 
     # 낸 것이 있으면 그대로 보인다
     a = world.agents["Asla2"]
-    a.lang_progress = {"zh": 150.0}
-    assert "150 / 300" in prompts.system_for(a, world, cfg, 48.0)
+    a.lang_progress = {"zh": 100.0}
+    assert f"100 / {L - cut:.0f}" in prompts.system_for(a, world, cfg, 48.0)
 
 
 def test_the_observation_says_money_carries_over():
@@ -509,3 +513,42 @@ def test_the_inbox_shows_no_message_ids():
         assert "MARK" in out and "Ranoa1" in out
         for n in ("[7]", "[8]", "[9]", "7", "8", "9"):
             assert n not in out, (lang, n, out)
+
+
+def test_nothing_tells_the_agent_to_repeat_an_action():
+    """**「더 넣고 싶으면 같은 행동을 다시 하라」 는 적지 않는다.**
+
+    invest·learn 은 금액을 인자로 받지 않고 한 번에 20 씩 나간다. 더 넣는 방법은 도구를
+    또 부르는 것뿐인데, 그 말을 프롬프트에 적으면 **사실이 아니라 지시**가 된다 —
+    「반복하라」 를 읽은 에이전트는 반복이 최적인지 따지지 않고 반복한다.
+
+    적지 않아도 표의 모양이 말한다: 비용 칸은 `20 · 0.1`, 바로 아래는 `0 / 200`. 열 배
+    차이가 「한 번으로는 안 된다」 를 숫자로 말한다. 3해 실측에서 **27 에이전트-해 중
+    22 건**이 같은 도구를 그 해에 두 번 이상 불렀다 — 아무도 알려주지 않았다.
+
+    남기는 말은 하나뿐이다: 「예산과 행동력이 허락하는 한 여러 행동을 할 수 있다」.
+    그건 반복이 아니라 **한 해에 여러 번 움직일 수 있다는 사실**이다.
+    """
+    from core import config, tools
+    from domains.meteor import prompts
+    cfg = config.load("configs/base.yaml")
+    STALE = ("繰り返", "もう一度", "何度でも", "反复", "重复", "再来一次",
+             "répétez", "à nouveau", "autant de fois")
+    blobs = [b for t in prompts.T.values() for b in (str(v) for v in t.values())]
+    blobs += list(prompts.SYSTEM.values())
+    blobs += [t["function"]["description"] for t in tools.TOOLS]
+    for b in blobs:
+        for w in STALE:
+            assert w not in b, (w, b[:120])
+
+    # 비용 칸(한 번)과 총액이 **둘 다** 보여야 한다 — 그 차이가 함의를 만든다
+    import itertools
+    import random
+    from core import loop
+    world = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    world.turn = 1
+    obs = prompts.system_for(world.agents["Miris1"], world, cfg, 48.0)
+    lines = obs.splitlines()
+    i = next(n for n, l in enumerate(lines) if "apprendre la langue de" in l)
+    assert f"{cfg.costs.unit:g}" in lines[i]                     # 한 번의 값
+    assert f"/ {cfg.costs.learn_base:.0f}" in lines[i + 1]       # 총액
