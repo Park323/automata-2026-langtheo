@@ -44,6 +44,33 @@ class Sink:
     observations_by: dict = field(default_factory=dict)   # 이번 턴 개체별 관측 횟수
 
 
+# ── 행동력 산술 (부동소수) ────────────────────────────────────────────────────
+#
+# 행동력은 0.05·0.1·0.3 같은 값을 빼며 움직인다. 2진 부동소수에 0.1 은 정확히 없으므로
+# `1.0 - 0.3 - 0.3 - 0.1` 은 0.3 이 아니라 **0.29999999999999993** 이 된다. 그러면
+# `ap < 0.3` 이 참이 되어 **딱 낼 수 있는 사람이 거절당한다.**
+#
+# 오류 문구가 그것을 그대로 드러냈다 — `.2f` 로 반올림하니
+#
+#     not enough action; speak needs 0.3, have 0.30
+#
+# 라는, 에이전트 입장에서 앞뒤가 맞지 않는 말이 나왔다. 3해 실측에서 **25건**이 이렇게
+# 사라졌다 (투자 20 · 발화 5). 에이전트는 그 뒤 대개 end_turn 을 불렀다.
+#
+# 격자에 올려 둔다. 최소 단위가 0.05 이므로 소수 세 자리면 충분하고, 비교와 차감이 같은
+# 격자를 쓰는 한 오차가 누적되지 않는다.
+AP_GRID = 3
+
+
+def _afford(ap: float, cost: float) -> bool:
+    """딱 맞으면 낼 수 있다."""
+    return round(ap - cost, AP_GRID) >= 0
+
+
+def _spend(agent, cost: float) -> None:
+    agent.ap = round(agent.ap - cost, AP_GRID)
+
+
 # ── 학습 비용 (spec 3.4) ──────────────────────────────────────────────────────
 
 def risk_sigma(country, cfg) -> float:
@@ -190,13 +217,13 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
     if name == "memory_write":
         # 예산이 아니라 AP 로 묶는다 (spec 4.5) — 예산을 물리면 기억이 시설 투자와
         # 경쟁해서 "AI 가 싸지면 기억을 덜 하는가" 관측에 교란이 섞인다.
-        if agent.ap < cfg.ap.memory_write:
+        if not _afford(agent.ap, cfg.ap.memory_write):
             return {"ok": False, "error": f"not enough action; memory_write needs {cfg.ap.memory_write}, have {agent.ap:.2f}"}, None
         if "text" not in args:
             # 인자가 잘려 파싱에 실패하면 args 가 {} 로 온다. 그때 덮어쓰면 기억이
             # 통째로 지워진다 — 실측에서 실제로 일어났다 ("saved": 0).
             return {"ok": False, "error": "memory_write needs text"}, None
-        agent.ap -= cfg.ap.memory_write
+        _spend(agent, cfg.ap.memory_write)
         agent.memory = str(args.get("text", ""))
         return {"ok": True}, None      # 돈도 AP 도 안 든다 — 돌려줄 것이 없다
 
@@ -217,7 +244,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         # 금액이 자유였을 때는 요청·절삭·과금이 서로 달라서, 응답이 그 차이를 알려야
         # 했고(`_clamped`) 표에는 「額÷300」 이라는 비율이 필요했다. 고정하면 셋이 하나다.
         amount, ap_used = cfg.costs.unit, cfg.ap.unit
-        if agent.ap < ap_used:
+        if not _afford(agent.ap, ap_used):
             return {"ok": False,
                     "error": f"not enough action; one investment needs {ap_used}, have {agent.ap:.2f}"}, None
         if agent.budget < amount:
@@ -225,7 +252,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                     "error": f"not enough budget; one investment needs {amount:.0f}, "
                              f"have {agent.budget:.0f}"}, None
         agent.budget -= amount
-        agent.ap -= ap_used
+        _spend(agent, ap_used)
         if target == "facility":
             sink.facility.append((to, amount, agent.id))
             # 접수와 과금만 답한다. **그 나라가 시설을 정했는지는 알려주지 않는다** —
@@ -267,7 +294,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         amount = min(amount, max(0.0, need - done_before))
         if amount <= 0:
             return {"ok": False, "error": f"{country_id}'s language is already paid for"}, None
-        if agent.ap < ap_used:
+        if not _afford(agent.ap, ap_used):
             return {"ok": False,
                     "error": f"not enough action; one payment needs {ap_used}, have {agent.ap:.2f}"}, None
         if agent.budget < amount:
@@ -275,7 +302,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                     "error": f"not enough budget; one payment needs {amount:.0f}, "
                              f"have {agent.budget:.0f}"}, None
         agent.budget -= amount
-        agent.ap -= ap_used
+        _spend(agent, ap_used)
         # **진척은 즉시 쌓는다.** 금액이 20 으로 고정되면서 한 해에 여러 번 내는 것이
         # 정상 경로가 됐는데, 정산 때만 갱신하면 그 해의 두 번째 호출부터 `done_before`
         # 가 0 으로 보인다 — 응답이 매번 `progress: 20` 이라고 거짓을 말하고, 남은 액이
@@ -324,12 +351,12 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         kind = messaging.classify(agent.country, recipient.country, args.get("route"))
         c = messaging.cost(kind, cfg, knob_ai)
         ap_cost = cfg.ap.speak
-        if agent.ap < ap_cost:
+        if not _afford(agent.ap, ap_cost):
             return {"ok": False, "error": f"not enough action; speak needs {ap_cost}, have {agent.ap:.2f}"}, None
         if agent.budget < c:
             return {"ok": False, "error": f"not enough budget; need {c:.0f}, have {agent.budget:.0f}"}, None
         agent.budget -= c
-        agent.ap -= ap_cost
+        _spend(agent, ap_cost)
         ti = args.get("translate_instruction")
         sink.messages.append({
             "kind": "speak", "from": agent.id, "from_country": agent.country,
@@ -345,14 +372,14 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                 "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "observe_risk":
-        if agent.ap < cfg.ap.observe_risk:
+        if not _afford(agent.ap, cfg.ap.observe_risk):
             return {"ok": False, "error": f"not enough action; observe_risk needs {cfg.ap.observe_risk}, have {agent.ap:.2f}"}, None
         if agent.budget < cfg.costs.observe_risk:
             return {"ok": False,
                     "error": f"not enough budget; need {cfg.costs.observe_risk:.0f}, "
                              f"have {agent.budget:.0f}"}, None
         agent.budget -= cfg.costs.observe_risk
-        agent.ap -= cfg.ap.observe_risk
+        _spend(agent, cfg.ap.observe_risk)
         truth = cfg.world.total_turns - world.turn        # 남은 턴 (마지막 턴에 판정)
         err = risk_error(world.countries[agent.country], cfg)
         # 잡음은 **매 관측마다 새로** 뽑는다. 여러 번 재면 평균으로 좁혀지지만 관측이
@@ -394,14 +421,14 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error":
                     f"a ballot is already called for year "
                     f"{_year(c.proposal['vote_turn'])}"}, None
-        if agent.ap < cfg.ap.propose_vote:
+        if not _afford(agent.ap, cfg.ap.propose_vote):
             return {"ok": False, "error": f"not enough action; propose_vote needs {cfg.ap.propose_vote}, have {agent.ap:.2f}"}, None
         # **돈은 안 받는다.** 가난이 제안을 막으면 국토가 돈으로 정해진다. 무게는 AP 로만
         # 준다 — 국가의 용도를 여는 행위라 한 턴의 절반이 넘는다.
         if cfg.costs.propose_vote and agent.budget < cfg.costs.propose_vote:
             return {"ok": False, "error": f"not enough budget; need {cfg.costs.propose_vote}"}, None
         agent.budget -= cfg.costs.propose_vote
-        agent.ap -= cfg.ap.propose_vote
+        _spend(agent, cfg.ap.propose_vote)
         sink.votes.append((agent.id, agent.country))
         # **이제 날짜를 돌려줄 수 있다.** 소집에 내용이 없으니 둘이 소집해도 같은
         # 採決이고, 밀려서 안 열리는 일이 없다.
@@ -422,16 +449,16 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                     "choice must be interceptor, bunker or abstain"}, None
         # **표는 돈도 AP 도 거의 안 받는다.** 돈을 물리면 참여가 재산이 되고, AP 를 크게
         # 물리면 採決 당일 — 설득이 가장 필요한 날 — 말할 기회가 줄어든다.
-        if agent.ap < cfg.ap.vote:
+        if not _afford(agent.ap, cfg.ap.vote):
             return {"ok": False, "error": f"not enough action; vote needs {cfg.ap.vote}, have {agent.ap:.2f}"}, None
-        agent.ap -= cfg.ap.vote
+        _spend(agent, cfg.ap.vote)
         sink.ballots.append((agent.id, agent.country, choice))
         return {"ok": True, "ap_left": round(agent.ap, 1)}, None
 
     if name == "procreate":
-        if agent.ap < cfg.ap.procreate:
+        if not _afford(agent.ap, cfg.ap.procreate):
             return {"ok": False, "error": f"not enough action; procreate needs {cfg.ap.procreate}, have {agent.ap:.2f}"}, None
-        agent.ap -= cfg.ap.procreate
+        _spend(agent, cfg.ap.procreate)
         sink.procreations.append((agent.id, args.get("testament", "")))
         return {"ok": True}, "end"
 
@@ -550,15 +577,17 @@ def can_act(agent, cfg, knob_ai: float) -> bool:
     > 계산합니다** — 여기서 거짓으로 False 를 돌려주면 합법적인 행동을 잘라내게 됩니다.
     """
     free_ap = min(cfg.ap.memory_write, cfg.ap.procreate)
-    if agent.ap >= free_ap and free_ap <= 0:          # 공짜 행동이 하나라도 있으면 참
+    if free_ap <= 0:                                  # 공짜 행동이 하나라도 있으면 참
         return True
-    if agent.budget >= cfg.costs.comm_domestic and agent.ap >= cfg.ap.speak:
+    if agent.budget >= cfg.costs.comm_domestic and _afford(agent.ap, cfg.ap.speak):
         return True
-    if agent.ap >= cfg.ap.propose_vote and agent.budget >= cfg.costs.propose_vote:
+    if _afford(agent.ap, cfg.ap.propose_vote) and agent.budget >= cfg.costs.propose_vote:
         return True
-    if agent.budget > 0 and agent.ap > 0:      # 투자는 금액 비례라 AP 가 조금만 있어도 된다
+    # 투자·학습은 **고정 단위**다 (8/19). 예전엔 금액 비례라 「AP 가 조금이라도 있으면
+    # 참」 이었는데, 단위가 고정된 뒤로도 그 말이 남아 있었다.
+    if agent.budget >= cfg.costs.unit and _afford(agent.ap, cfg.ap.unit):
         return True
-    return agent.ap >= min(cfg.ap.memory_write, cfg.ap.vote)
+    return _afford(agent.ap, min(cfg.ap.memory_write, cfg.ap.vote))
 
 
 # ── 에이전트 한 턴 ────────────────────────────────────────────────────────────

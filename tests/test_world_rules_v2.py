@@ -39,6 +39,14 @@ def _settle(world, cfg, sink, result=None):
     return result
 
 
+
+def _do(world, cfg, agent, name, args):
+    """도구 하나를 직접 실행한다 (정산 없이). 행동력 산술만 볼 때 쓴다."""
+    from core import agent_loop
+    r, _ = agent_loop.execute_tool(name, args, world, agent, cfg, Sink(), 48.0)
+    return r
+
+
 # ── 국토 배타성 ─────────────────────────────────────────────────────────────────
 
 def _call(world, cfg, who):
@@ -1297,3 +1305,65 @@ def test_the_grace_is_one_year_now(cfg, world):
     _call(world, cfg, "Ranoa1")
     p = world.countries["Ranoa"].proposal
     assert p["opened_turn"] == 10 and p["vote_turn"] == 12   # 소집 · 유예 11 · 採決 12
+
+
+def test_exactly_affordable_is_affordable(cfg, world):
+    """**딱 낼 수 있는 사람이 거절당하고 있었다.**
+
+    행동력에서 0.3·0.3·0.1 을 빼면 2진 부동소수에서 0.3 이 아니라 0.29999999999999993 이
+    나온다. `ap < 0.3` 이 참이 되어 발화가 막혔고, 오류 문구는 `.2f` 로 반올림해
+    「0.3 이 필요한데 0.30 을 갖고 있다」 는 말을 했다.
+
+    3해 실측에서 **25건** — 투자 20 · 발화 5. 에이전트는 그 뒤 대개 end_turn 을 불렀다.
+    """
+    a = world.agents["Ranoa1"]
+    a.ap, a.budget = 1.0, 1000.0
+    assert _do(world, cfg, a, "speak", {"to": "Ranoa2", "text": "x"})["ok"]
+    assert _do(world, cfg, a, "speak", {"to": "Ranoa2", "text": "x"})["ok"]
+    assert _do(world, cfg, a, "invest", {"target": "wellness"})["ok"]
+    assert a.ap == 0.3                       # 0.29999… 이 아니라 정확히 0.3
+
+    r = _do(world, cfg, a, "speak", {"to": "Ranoa2", "text": "y"})
+    assert r["ok"], r                        # 딱 맞으면 낼 수 있다
+    assert a.ap == 0.0
+
+
+def test_ap_stays_on_the_grid_over_a_full_year(cfg, world):
+    """단위가 0.05 이므로 소수 세 자리 격자에 계속 붙어 있어야 한다. 비교와 차감이 같은
+    격자를 쓰는 한 오차가 누적되지 않는다."""
+    a = world.agents["Ranoa1"]
+    a.ap, a.budget = 1.0, 10_000.0
+    for _ in range(10):
+        assert _do(world, cfg, a, "invest", {"target": "wellness"})["ok"]
+        assert a.ap == round(a.ap, 3)
+    assert a.ap == 0.0                       # 0.1 을 열 번 빼면 정확히 0
+    r = _do(world, cfg, a, "invest", {"target": "wellness"})
+    assert not r["ok"] and "have 0.00" in r["error"]
+
+
+def test_a_language_you_already_read_is_not_on_the_learning_table(cfg, world):
+    """**같은 화면에서 두 줄이 서로를 부정했다.**
+
+    맨 위는 「掌握している言語: Miris の言葉」 라고 적고, 비용표는 「Miris の言葉を学ぶ
+    … 0 / 600」 이라고 적었다. 3해 실측에서 `learn` 이 14번 거절당했고
+    (`you already read Ranoa's language`), 한 에이전트는 메모에
+
+        学习Miris语已投入 0/600（但已掌握？笔记需更新：已掌握Miris语）
+
+    라고 적어 **스스로 모순을 기록했다.** 아는 말은 배울 표에서 뺀다.
+    """
+    from domains.meteor import prompts
+    a = world.agents["Ranoa1"]
+    a.known_langs = {world.countries["Ranoa"].lang, world.countries["Miris"].lang}
+
+    sysmsg = prompts.system_for(a, world, cfg, 48.0)
+    lines = sysmsg.splitlines()
+    prog = [i for i, ln in enumerate(lines) if "/ 600" in ln or "/ 300" in ln]
+    assert prog, sysmsg                          # 모르는 말(Asla)은 여전히 표에 있다
+    for i in prog:
+        near = " ".join(lines[max(0, i - 1):i + 1])
+        assert "Miris" not in near, near
+        assert "Asla" in near, near
+
+    # **말을 걸 때는 여전히 나온다** — 아는 말이라 반드시 닿는다는 사실은 남아야 한다
+    assert "Miris" in sysmsg

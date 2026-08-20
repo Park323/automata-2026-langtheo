@@ -377,7 +377,12 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
     lines += [
              row(t["c_ai"], knob_ai, cfg.ap.speak)]
     for c in world.countries.values():
-        if c.id != agent.country:
+        # **이미 아는 말은 배울 표에 올리지 않는다.** 올려 두었더니 3해 실측에서 `learn`
+        # 이 14번 거절당했고 (`you already read Ranoa's language`), 한 에이전트는 메모에
+        # 「学习Miris语已投入 0/600（但已掌握？笔记需更新）」 라고 적어 스스로 모순을
+        # 기록했다. 맨 위의 「掌握している言語」 와 「0 / 600」 이 같은 화면에서 서로를
+        # 부정하고 있었던 것이다.
+        if c.id != agent.country and c.lang not in agent.known_langs:
             cost, _ = learn_cost(agent, c.id, world, cfg)
             # **사유를 보고 고른다.** 금액만 보면 300 이 국내 구사자 때문인지 부모
             # 때문인지 알 수 없다 — 전에는 무조건 「국내에 구사자가 있다」 라고 적었고,
