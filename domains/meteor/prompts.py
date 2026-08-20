@@ -110,7 +110,7 @@ T = {
         c_obs_note="   隕石までの残り年数と interceptor に要る進捗を測る。国家投資が精度を上げる",
         c_inv="  invest", c_inv_note="指定した額。wellness は 0.1 定額",
         c_pro="  procreate", c_pro_note="子を残してあなたは死ぬ",
-        inv_hdr="invest の効果", inv_cap="  national と facility には行動力がかかる — {v:.0f} ごとに 1.0。\n                          自国の技術力がその率を上げる。wellness は無料",
+        inv_hdr="invest の効果", inv_cap="  national と facility には行動力がかかる — {v:.0f} ごとに 1.0。\n                          自国の技術力がその率を上げる",
         inv_well="  wellness   あなたの健康が良くなる",
         inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n                          observe_risk の精度も良くなる。国民全員に及ぶ",
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n                          （省くと自国）",
@@ -163,7 +163,7 @@ T = {
         c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 需要多少进度。国家投资会提高精度",
         c_inv="  invest", c_inv_note="你指定的数额。wellness 为 0.1 定额",
         c_pro="  procreate", c_pro_note="留下孩子，你随即死去",
-        inv_hdr="invest 的效果", inv_cap="  national 与 facility 消耗行动力 — 每 {v:.0f} 花 1.0。本国技术水平提高该比率。\n             wellness 不消耗",
+        inv_hdr="invest 的效果", inv_cap="  national 与 facility 消耗行动力 — 每 {v:.0f} 花 1.0。本国技术水平提高该比率",
         inv_well="  wellness   你的健康会变好",
         inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n                          observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
@@ -217,7 +217,7 @@ T = {
         c_obs_note="   mesure les années restantes et la progression qu'exige un interceptor ; l'investissement national affine",
         c_inv="  invest", c_inv_note="le montant choisi ; wellness : 0.1 fixe",
         c_pro="  procreate", c_pro_note="vous laissez un enfant et vous mourez",
-        inv_hdr="effets d'invest", inv_cap="  national et facility coûtent de l'action : 1.0 par tranche de {v:.0f} ;\n             le niveau technique de votre nation relève ce taux. wellness est gratuit",
+        inv_hdr="effets d'invest", inv_cap="  national et facility coûtent de l'action : 1.0 par tranche de {v:.0f} ;\n             le niveau technique de votre nation relève ce taux",
         inv_well="  wellness   votre santé s'améliore",
         inv_natl="  national   élève le niveau technique de votre nation : le revenu, le rendement\n"
                           "             de ce qu'on verse à une installation et la précision d'observe_risk\n"

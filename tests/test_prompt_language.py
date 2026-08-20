@@ -221,3 +221,32 @@ def test_knowing_a_language_is_not_described_as_reading_only():
     for lang, stale in (("ja", "読める言語"), ("zh", "你能读懂的语言"),
                         ("fr", "Vous pouvez lire :")):
         assert stale not in prompts.T[lang]["read"], lang
+
+
+def test_no_line_claims_wellness_is_free(cfg=None):
+    """**`ap.invest_wellness` 를 0 에서 0.1 로 올릴 때 문구를 안 고쳤다.**
+
+    그래서 같은 관측이 두 가지를 말하고 있었다 —
+
+        비용표      invest … 指定した額。wellness は 0.1 定額     ← 맞다
+        invest 효과 … 自国の技術力がその率を上げる。wellness は無料  ← 거짓
+
+    한 화면에 모순이 있으면 에이전트가 어느 쪽을 믿을지는 우리가 정할 수 없다. 이번 주에
+    같은 종류를 세 번 겪었다 (`can_read_next_turn` · 採決 문구 · 이것) — **규칙을 고치면
+    말이 따라와야 한다.**
+
+    `inv_cap` 에서 wellness 문구를 아예 뺐다. 정확한 값은 비용표에 이미 있고, 두 군데
+    적으면 다음에 또 갈린다.
+    """
+    from core import config
+    from domains.meteor import prompts
+    c = config.load("configs/base.yaml")
+    FREE = ("無料", "不消耗", "gratuit", "無償", "免费")
+    for lang, t in prompts.T.items():
+        blob = "\n".join(str(v) for v in t.values())
+        for line in blob.splitlines():
+            if "wellness" not in line:
+                continue
+            for w in FREE:
+                # 정액이 0 보다 크면 「무료」 라고 말할 수 없다
+                assert not (c.ap.invest_wellness > 0 and w in line), (lang, w, line)
