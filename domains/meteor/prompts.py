@@ -31,7 +31,7 @@ them verbatim in tool calls, so they are never translated. Prose around them is.
 from __future__ import annotations
 
 from core import agent_loop
-from core.agent_loop import learn_cost
+from core.agent_loop import learn_cost, learn_discounts
 
 # 세계의 첫 해. 1 로 시작하면 "첫 해라서 아직 괜찮다" 같은 편향이 붙는다.
 FIRST_YEAR = 42
@@ -103,7 +103,8 @@ T = {
         c_learn="  {nation} の言語を学ぶ",
         c_learn_prog="   これまで {done:.0f} / {need:.0f}",
         c_fac_mine="  {nation} の施設にこれまで出した額: {v:.0f}",
-        c_cheap="   安い: 自国に話せる人がいる", c_disc="   割引あり",
+        c_cheap="   自国に話せる人がいるので半額", c_disc="   親が話せたので半額",
+        c_both="   自国に話せる人がいて、親も話せたので四分の一",
         c_vote="  propose_vote",
         c_vote_note="何を建てるかの採決を召集する",
         c_obs="  observe_risk",
@@ -156,7 +157,8 @@ T = {
         c_learn="  学习 {nation} 的语言",
         c_learn_prog="   已投入 {done:.0f} / {need:.0f}",
         c_fac_mine="  你至今向 {nation} 的设施投入: {v:.0f}",
-        c_cheap="   较便宜: 本国有人会说", c_disc="   有折扣",
+        c_cheap="   本国有人会说，所以只要一半", c_disc="   父母会说，所以只要一半",
+        c_both="   本国有人会说，父母也会说，所以只要四分之一",
         c_vote="  propose_vote",
         c_vote_note="召集「建什么」的表决",
         c_obs="  observe_risk",
@@ -210,7 +212,8 @@ T = {
         c_learn="  apprendre la langue de {nation}",
         c_learn_prog="   déjà versé {done:.0f} / {need:.0f}",
         c_fac_mine="  déjà versé à l'installation de {nation} : {v:.0f}",
-        c_cheap="   moins cher : quelqu'un de votre nation la parle", c_disc="   remise",
+        c_cheap="   moitié prix : quelqu'un de votre nation la parle", c_disc="   moitié prix : votre parent la parlait",
+        c_both="   un quart du prix : quelqu'un de votre nation la parle et votre parent la parlait",
         c_vote="  propose_vote",
         c_vote_note="convoquer un scrutin sur quoi bâtir",
         c_obs="  observe_risk",
@@ -333,8 +336,13 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
     for c in world.countries.values():
         if c.id != agent.country:
             cost, _ = learn_cost(agent, c.id, world, cfg)
-            note = (t["c_cheap"] if cost == cfg.costs.learn_base * 0.5
-                    else (t["c_disc"] if cost < cfg.costs.learn_base else ""))
+            # **사유를 보고 고른다.** 금액만 보면 300 이 국내 구사자 때문인지 부모
+            # 때문인지 알 수 없다 — 전에는 무조건 「국내에 구사자가 있다」 라고 적었고,
+            # 문구가 뭉개져 있어서 그 거짓이 눈에 띄지 않았다.
+            domestic, parent = learn_discounts(agent, c.id, world)
+            note = (t["c_both"] if domestic and parent
+                    else t["c_cheap"] if domestic
+                    else t["c_disc"] if parent else "")
             # **AP 는 금액에 비례한다** — invest 와 같은 꼴로 적는다 (額÷600).
             #
             # 전에는 「눈금을 끝까지 내는 데 드는 AP」 를 적어서 그냥 `1` 이었다. 100 을

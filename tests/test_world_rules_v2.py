@@ -1185,3 +1185,38 @@ def test_the_observation_shows_how_much_action_is_left(cfg, world):
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         world.agents[aid].ap = 0.45
         assert "0.45" in prompts.render_observation(world, world.agents[aid], cfg, 48.0)
+
+
+def test_the_discount_note_names_the_right_reason(cfg, world):
+    """**금액만 보고 문구를 골라서 부모 할인을 「자국에 구사자가 있다」 로 적었다.**
+
+    300 은 두 갈래로 나온다 — 국내 구사자 때문일 수도, 부모 때문일 수도 있다. 문구가
+    「割引あり」 처럼 뭉개져 있던 동안에는 그 거짓이 눈에 띄지 않았다. 사유를 적기로 한
+    순간 드러났다.
+
+    그리고 「先輩」 같은 말은 쓸 수 없다 — **실측에서 국내 구사자가 배우는 사람보다 어린
+    경우가 13%**(805짝 중 108건)다. 나이 관계는 이 세계에 없다.
+    """
+    from domains.meteor import prompts
+    t = prompts.T["ja"]
+    a = world.agents["Asla2"]                       # Asla1 이 zh 를 안다 (씨앗)
+
+    a.parent_langs = {"fr"}
+    obs = prompts.system_for(a, world, cfg, 48.0)
+    zh = next(l for l in obs.splitlines() if "Ranoa の言語を学ぶ" in l)
+    fr = next(l for l in obs.splitlines() if "Miris の言語を学ぶ" in l)
+    assert t["c_cheap"].strip() in zh                # 국내 구사자
+    assert t["c_disc"].strip() in fr                 # 부모
+    assert t["c_cheap"].strip() not in fr            # 서로 섞이지 않는다
+
+    a.parent_langs = {"zh"}                          # 둘 다 걸리면 1/4
+    obs = prompts.system_for(a, world, cfg, 48.0)
+    zh = next(l for l in obs.splitlines() if "Ranoa の言語を学ぶ" in l)
+    assert t["c_both"].strip() in zh and "150" in zh
+
+    a.parent_langs = set()                           # 정가에는 아무 문구도 없다
+    obs = prompts.system_for(a, world, cfg, 48.0)
+    fr = next(l for l in obs.splitlines() if "Miris の言語を学ぶ" in l)
+    assert "600" in fr
+    for k in ("c_cheap", "c_disc", "c_both"):
+        assert t[k].strip() not in fr
