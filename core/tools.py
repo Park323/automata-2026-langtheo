@@ -48,7 +48,7 @@ _TR_INSTR = {"type": "string",
 # spec 4.2 의 reasoning. **모든** 도구의 필수 인자다 (_fn 이 자동 주입).
 # API 응답의 message.reasoning(추론 모델의 사고 과정)과는 다른 것이다.
 _REASONING = {"type": "string",
-              "description": "one sentence on why you did what you did this turn"}
+              "description": "one sentence on why you did what you did this year"}
 
 
 def _build(reasoning_arg: bool) -> list[dict]:
@@ -56,8 +56,8 @@ def _build(reasoning_arg: bool) -> list[dict]:
       return _fn(name, desc, props, req, reasoning and reasoning_arg)
   return [
     fn("speak",
-        "Send a message to one recipient. It arrives on the next turn, and a reply "
-        "can only arrive the turn after that — a round trip takes two turns. "
+        "Send a message to one recipient. It arrives the next year, and a reply "
+        "can only arrive the year after that — a round trip takes two years. "
         "Sending the same thing again before then does not make it arrive sooner.",
         {"to": {"type": "string", "description": "recipient id (e.g. Ranoa2)"},
          "route": _ROUTE, "text": _TEXT,
@@ -98,29 +98,29 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["country", "amount"]),
 
     fn("observe_risk",
-        "Measure how many turns remain until the meteorite strikes, and how much "
+        "Measure how many years remain until the meteorite strikes, and how much "
         "progress an interceptor needs. Both readings are imprecise; your nation's "
         "accumulated national investment is what sharpens them, and the result tells "
         "you the typical size of its error — a single reading can be much further off "
         "than that. Each reading is a fresh measurement and costs both money and a "
-        "large share of your action points — measuring the world takes most of a turn. "
+        "large share of your action points — measuring the world takes most of a year. "
         "What you learn is yours alone — nobody else sees it.",
         {}, []),
 
     fn("propose_vote",
         "Call a ballot on what your nation should build. Your nation only. You do not "
         "say what to build — the ballot itself decides that. Nothing changes yet: three "
-        "turns pass so people can talk it over, and on the fourth turn everyone casts a "
+        "years pass so people can talk it over, and in the fourth year everyone casts a "
         "choice. **Only people of your own nation may vote** — a foreigner cannot, no "
         "matter what they say. If a ballot is already called, calling again does nothing. "
         "It costs no money — poverty must never decide what a nation builds — but it "
-        "takes more than half of your action points for the turn.",
+        "takes more than half of your action points for the year.",
         {}, []),
 
     fn("vote",
         "Choose what **your own nation** builds — `interceptor`, `bunker`, or `abstain`. "
-        "You cannot vote in another nation. Only on the turn the ballot is held; the "
-        "observation tells you which turn that is. The choice with the most votes wins; "
+        "You cannot vote in another nation. Only in the year the ballot is held; the "
+        "observation tells you which year that is. The choice with the most votes wins; "
         "`abstain` counts for neither. If the two tie, or nobody votes, your nation keeps "
         "what it has and its progress survives. It costs no money and almost no action "
         "points, so voting never takes away your chance to speak on the day it matters most.",
@@ -128,7 +128,7 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["choice"]),
 
     fn("procreate",
-        "Leave a child and die. Calling it ends your turn at once. "
+        "Leave a child and die. Calling it ends your year at once. "
         "The child inherits your remaining budget and your testament, half of whatever "
         "you had put toward learning a language, and a discount on learning any language "
         "you could read. The child does NOT inherit the languages themselves, nor your "
@@ -137,12 +137,12 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["testament"]),
 
     fn("memory_write",
-        "Overwrite your notes. They stay with you next turn; nobody else sees them.",
+        "Overwrite your notes. They stay with you next year; nobody else sees them.",
         {"text": {"type": "string", "description": "your notes, replacing whatever was there"}},
         ["text"]),
 
     # 유일하게 reasoning 이 없는 도구 — 행동이 아니라 행동을 그만두는 신호다.
-    fn("end_turn", "You have nothing more to do this turn. Ends the loop.", {}, [],
+    fn("end_turn", "You have nothing more to do this year. Ends the loop.", {}, [],
         reasoning=False),
 ]
 

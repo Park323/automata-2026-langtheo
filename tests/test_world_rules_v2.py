@@ -448,7 +448,7 @@ def test_readings_are_normal_around_the_truth(cfg, world):
     for _ in range(400):
         a.ap = 1.0
         r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, sink, 48.0)
-        seen.append(r["turns_until_impact"])
+        seen.append(r["years_until_impact"])
     truth = cfg.world.total_turns - world.turn
     assert statistics.mean(seen) == pytest.approx(truth, abs=0.15 * r["typical_error"])
     assert statistics.pstdev(seen) == pytest.approx(r["typical_error"], rel=0.25)
@@ -466,7 +466,7 @@ def test_each_reading_is_fresh_but_costs(cfg, world):
     for _ in range(5):
         a.ap = 1.0
         r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, sink, 48.0)
-        seen.append(r["turns_until_impact"])
+        seen.append(r["years_until_impact"])
     assert len(set(seen)) > 1, "매번 같으면 새 관측이 아니다"
     assert a.budget == 1000.0 - 5 * cfg.costs.observe_risk
     assert [o["nth"] for o in sink.observations] == [0, 1, 2, 3, 4]
@@ -478,7 +478,7 @@ def test_reading_is_private(cfg, world):
     world.turn = 10
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 1000.0
     r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, Sink(), 48.0)
-    assert set(r) == {"ok", "turns_until_impact", "typical_error", "interceptor_needs",
+    assert set(r) == {"ok", "years_until_impact", "typical_error", "interceptor_needs",
                       "interceptor_typical_error_pct", "budget_left", "ap_left"}
     # "당신만의 것" 은 **도구 설명**에 있다 — 응답마다 되풀이할 규칙이 아니다
     from core.tools import TOOLS
@@ -653,8 +653,8 @@ def test_procreate_also_announces_the_pair(cfg, world):
     assert d["born"] == "Asla4" and d["born"] in world.agents
 
 
-def test_round_trip_takes_two_turns_is_stated(cfg, world):
-    """**도착만 알려주고 답신까지 한 턴 더라는 건 안 알려줬다.**
+def test_round_trip_takes_two_years_is_stated(cfg, world):
+    """**도착만 알려주고 답신까지 한 해 더라는 건 안 알려줬다.**
 
     그래서 같은 말을 반복해서 보내는 일이 잦았다 — 답이 안 오니 안 갔다고 여긴 것이다.
     """
@@ -662,11 +662,11 @@ def test_round_trip_takes_two_turns_is_stated(cfg, world):
     from domains.meteor import prompts
     d = next(t["function"]["description"] for t in tools.TOOLS
              if t["function"]["name"] == "speak")
-    assert "round trip takes two turns" in d
+    assert "round trip takes two years" in d
     assert "does not make it arrive sooner" in d
 
-    marks = {"ja": "返事が来るのはさらに次のターン", "zh": "回信要再下一回合",
-             "fr": "une réponse n'arrive qu'au tour d'après"}
+    marks = {"ja": "返事が来るのはさらにその翌年", "zh": "回信要再过一年",
+             "fr": "une réponse n'arrive que l'année d'après"}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
         assert marks[a.native_lang] in prompts.render_observation(world, a, cfg, 48.0)
