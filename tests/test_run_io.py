@@ -184,7 +184,7 @@ def test_agent_turn_records_its_own_wall_time():
     a = w.agents["Asla1"]; a.ap = 1.0; a.budget = 500.0
     lg = run_agent_turn(
         w, a, cfg, StubClient([assistant_msg(tool_call("end_turn", "1"))]),
-        Sink(), 48.0, prompts.system_for(a), prompts.render_observation(w, a, cfg, 48.0))
+        Sink(), 48.0, prompts.system_for(a, None, cfg), prompts.render_observation(w, a, cfg, 48.0))
     for k in ("elapsed_ms", "llm_ms", "ms_per_step"):
         assert lg[k] is not None and lg[k] >= 0, k
     assert lg["llm_ms"] <= lg["elapsed_ms"] + 1

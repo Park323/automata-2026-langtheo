@@ -15,6 +15,8 @@
 """
 from __future__ import annotations
 
+import pathlib
+
 import itertools
 import re
 
@@ -47,7 +49,7 @@ def _model_facing(world, cfg):
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
         lang = a.native_lang
-        out.append((f"SYSTEM[{lang}]", lang, prompts.system_for(a)))
+        out.append((f"SYSTEM[{lang}]", lang, prompts.system_for(a, None, cfg)))
         out.append((f"observation[{lang}]", lang,
                     prompts.render_observation(world, a, cfg, 48.0, inbox)))
         out.append((f"inbox[{lang}]", lang, prompts.render_inbox(inbox, lang)))
@@ -88,7 +90,7 @@ def test_language_instruction_present(world_cfg):
     marks = {"ja": "日本語", "zh": "中文", "fr": "français"}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
-        assert marks[a.native_lang] in prompts.system_for(a), \
+        assert marks[a.native_lang] in prompts.system_for(a, None, _cfg), \
             f"{a.native_lang} SYSTEM 에 산출 언어 명시가 없다"
 
 
@@ -223,7 +225,7 @@ def test_knowing_a_language_is_not_described_as_reading_only():
         assert stale not in prompts.T[lang]["read"], lang
 
 
-def test_no_line_claims_wellness_is_free(cfg=None):
+def test_no_line_claims_wellness_is_free_or_flat(cfg=None):
     """**`ap.invest_wellness` 를 0 에서 0.1 로 올릴 때 문구를 안 고쳤다.**
 
     그래서 같은 관측이 두 가지를 말하고 있었다 —
@@ -238,18 +240,16 @@ def test_no_line_claims_wellness_is_free(cfg=None):
     `inv_cap` 에서 wellness 문구를 아예 뺐다. 정확한 값은 비용표에 이미 있고, 두 군데
     적으면 다음에 또 갈린다.
     """
-    from core import config
     from domains.meteor import prompts
-    c = config.load("configs/base.yaml")
-    FREE = ("無料", "不消耗", "gratuit", "無償", "免费")
+    # 이제 세 대상 모두 금액 비례다 — 「무료」 도 「정액」 도 거짓이다
+    STALE = ("無料", "不消耗", "gratuit", "免费", "定額", "定额", "fixe")
     for lang, t in prompts.T.items():
         blob = "\n".join(str(v) for v in t.values())
         for line in blob.splitlines():
             if "wellness" not in line:
                 continue
-            for w in FREE:
-                # 정액이 0 보다 크면 「무료」 라고 말할 수 없다
-                assert not (c.ap.invest_wellness > 0 and w in line), (lang, w, line)
+            for w in STALE:
+                assert w not in line, (lang, w, line)
 
 
 def test_the_cost_table_shows_learning_as_something_you_pay_into():
@@ -273,22 +273,237 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
     cfg = config.load("configs/base.yaml")
     world = loop.init_world(cfg, itertools.count(1), random.Random(1))
     world.turn = 1
-    for aid, marks in (("Asla2", ("0 / 300", "0 / 600", "額÷600")),
-                       ("Ranoa1", ("0 / 600", "额÷600")),
-                       ("Miris1", ("0 / 600", "mnt÷600"))):
+    for aid, marks in (("Asla2", ("0 / 300", "0 / 600")),
+                       ("Ranoa1", ("0 / 600",)),
+                       ("Miris1", ("0 / 600",))):
         agent = world.agents[aid]
         agent.lang_progress = {}
         obs = prompts.system_for(agent, world, cfg, 48.0)
         for m in marks:
             assert m in obs, (aid, m)
-        # 「끝까지 내는 AP」 를 그대로 적던 옛 꼴이 돌아오지 않는다
+        # **비용 칸은 한 번의 값이다.** 총액(600)이 비용 칸에 있으면 「한 번에 600 이
+        # 나간다」 로 읽힌다 — 그 숫자는 바로 아래 진척 줄이 말한다.
         learn_lines = [l for l in obs.splitlines()
-                       if any(k in l for k in ("を学ぶ", "的语言", "apprendre la langue"))]
+                       if any(k in l for k in ("の言語を学ぶ", "学习 ", "apprendre la langue de"))]
         assert learn_lines
         for l in learn_lines:
-            assert not l.rstrip().endswith(" 1"), l
+            assert f"{cfg.costs.unit:g}" in l and "600" not in l, l
 
     # 낸 것이 있으면 그대로 보인다
     a = world.agents["Asla2"]
     a.lang_progress = {"zh": 150.0}
     assert "150 / 300" in prompts.system_for(a, world, cfg, 48.0)
+
+
+def test_the_observation_says_money_carries_over():
+    """**안 쓰면 사라진다고 읽으면 저축을 안 한다.**
+
+    관측은 예산과 이번 해 수입만 적고, 남은 돈이 다음 해로 넘어간다는 것은 어디에도
+    없었다. 실측에서 에이전트들이 매 해 예산을 거의 0 까지 쓰고 있었다 — 600 짜리 학습에
+    손을 못 대는 이유 중 하나가 이것일 수 있다.
+
+    쌓인다는 것은 세계의 사실이므로 적는다.
+    """
+    from domains.meteor import prompts
+    marks = {"ja": "翌年に残ります", "zh": "会留到明年", "fr": "reste pour l'année suivante"}
+    for lang, m in marks.items():
+        assert m in prompts.T[lang]["multi"], lang
+
+
+def test_learn_and_invest_share_one_unit():
+    """learn 도 invest 도 **한 번에 같은 돈·같은 AP** 다. 규칙이 여럿이면 문구가 갈리고,
+    실제로 「wellness は無料」 라는 거짓이 그렇게 남았다."""
+    import itertools
+    import random
+
+    from core import config, loop
+    from domains.meteor import prompts
+    c = config.load("configs/base.yaml")
+    # 금액별 AP 를 계산하던 값들은 없어졌다
+    for gone in ("learn_full", "invest_wellness", "unit_ap"):
+        assert not hasattr(c.ap, gone) or gone == "unit_ap"
+    assert not hasattr(c.facility, "invest_per_ap")
+
+    world = loop.init_world(c, itertools.count(1), random.Random(1))
+    world.turn = 1
+    obs = prompts.system_for(world.agents["Asla2"], world, c, 48.0)
+    rows = [l for l in obs.splitlines()
+            if "の言語を学ぶ" in l or l.startswith("  invest ")]   # 헤더는 들여쓰기가 없다
+    assert len(rows) == 3                       # 학습 둘 + invest 하나
+    for l in rows:                              # 셋이 같은 값을 적는다
+        assert f"{c.costs.unit:g}" in l and f"{c.ap.unit:g}" in l
+
+
+def test_the_observation_states_no_message_cap():
+    """**「메시지는 1년에 3건까지」 는 규칙이 아니었고, 참도 아니었다.**
+
+    코드에 하드 캡이 없다 — 3건은 `ap.speak 0.3` 에서 나오는 **파생값**이고, spec 자신이
+    *"인위적인 메시지 캡이 필요 없습니다 — AP 가 세계 규칙으로 자연히 제한합니다"* 라고
+    적어 뒀다.
+
+    그리고 **투자를 하면 3건이 안 된다.** 「3건까지」 는 그 해에 아무것도 안 할 때만
+    참이므로, 적어 두면 있지도 않은 여유를 약속하는 셈이다. 비용표에 `speak 0.3` 과
+    남은 행동력이 이미 있으니 계산은 에이전트가 한다 (0절 — 함의되게 둔다).
+    """
+    from core import config
+    from domains.meteor import prompts
+    c = config.load("configs/base.yaml")
+    for lang in ("ja", "zh", "fr"):
+        m = prompts.T[lang]["multi"]
+        assert "3" not in m, (lang, m)
+        # 대신 무엇이 제한하는지는 적는다
+        for word in (("行動力",), ("行动力",), ("action",))[("ja", "zh", "fr").index(lang)]:
+            assert word in m, (lang, word)
+    # 하드 캡이 코드에 생기면 이 테스트를 고쳐야 한다는 표시
+    assert not hasattr(c.world, "messages_per_turn")
+
+
+def test_nothing_claims_technical_level_changes_the_action_rate():
+    """**배수를 뺐는데 「자국의 기술력이 그 비율을 올린다」 가 남아 있었다.**
+
+    「wellness は無料」 와 같은 부류다 — 규칙을 고치고 말을 두면 거짓이 된다. 이번 주
+    네 번째다.
+
+    `national` 의 나머지 세 쓸모(수입 · 시설 전환율 · observe_risk 정확도)는 그대로이므로
+    `inv_natl` 은 손대지 않는다.
+    """
+    from core import tools
+    from domains.meteor import prompts
+    STALE = ("その率を上げる", "提高该比率", "relève ce taux",
+             "額÷", "额÷", "mnt÷")
+    for lang, t in prompts.T.items():
+        blob = "\n".join(str(v) for v in t.values())
+        for w in STALE:
+            assert w not in blob, (lang, w)
+    d = next(t["function"]["description"] for t in tools.TOOLS
+             if t["function"]["name"] == "invest")
+    assert "raises how much one point buys" not in d
+    assert "one fixed amount" in d                   # 대신 고정이라고 적는다
+
+
+def test_system_states_the_typical_lifespan():
+    """**모델은 「8 歳」 를 인간 8살로 읽는다** — 아이라고 판단한다.
+
+    이 세계에서 8살은 **생애의 51% 지점**이고, 인간 수명 80 기준이면 64살 감각이다.
+    그 어긋남은 우리가 설계한 불확실성이 아니라 **모델이 바깥에서 들고 온 잘못된
+    척도**다 — 돈을 달러로 착각하는 것과 같다. 척도는 세계의 프레임이지 은닉 대상이
+    아니다.
+
+    **곡선은 여전히 숨긴다** (4.1: 나이→사망확률). 평균 하나로는 8살과 15살의 위험이
+    얼마나 다른지 알 수 없다 — k=8 이라 15살까지 63%, 18살까지 14%, 20살은 1% 로 뚝
+    떨어진다. 그 모양은 부고에 찍힌 나이가 쌓여야 보인다.
+    """
+    import math
+
+    from core import config
+    from domains.meteor import prompts
+    c = config.load("configs/base.yaml")
+    life = prompts.typical_lifespan(c)
+    assert abs(life - c.survival.lambda_base * math.gamma(1 + 1 / c.survival.k)) < 1e-9
+
+    import itertools
+    import random
+
+    from core import loop
+    world = loop.init_world(c, itertools.count(1), random.Random(1))
+    marks = {"ja": f"だいたい {life:.0f} 年ほど生きます",
+             "zh": f"大体活 {life:.0f} 年左右",
+             "fr": f"en général environ {life:.0f} ans"}
+    for aid in ("Asla1", "Ranoa1", "Miris1"):
+        a = world.agents[aid]
+        txt = prompts.system_for(a, None, c)
+        assert marks[a.native_lang] in txt, a.native_lang
+        # 곡선은 새지 않는다 — k 도, 분위수도 적지 않는다
+        assert str(c.survival.k) not in txt.replace(f"{life:.0f}", "")
+        assert "lambda" not in txt and "λ" not in txt
+
+
+def test_the_lifespan_line_follows_the_config():
+    """**값의 출처는 하나여야 한다.** 문구에 16 을 박아 두면 λ 를 바꿀 때 거짓이 된다 —
+    이번 주에 그 부류를 네 번 겪었다 (can_read_next_turn · 採決 문구 · wellness 무료 ·
+    기술력이 비율을 올린다).
+
+    그래서 `system_for` 는 cfg 없이는 부를 수 없다.
+    """
+    import dataclasses
+    import itertools
+    import random
+
+    from core import config, loop
+    from domains.meteor import prompts
+    c = config.load("configs/base.yaml")
+    world = loop.init_world(c, itertools.count(1), random.Random(1))
+    a = world.agents["Asla1"]
+
+    longer = dataclasses.replace(
+        c, survival=dataclasses.replace(c.survival, lambda_base=c.survival.lambda_base * 2))
+    assert f"{prompts.typical_lifespan(longer):.0f}" in prompts.system_for(a, None, longer)
+    assert f"{prompts.typical_lifespan(c):.0f}" not in prompts.system_for(a, None, longer)
+
+    import pytest
+    with pytest.raises(TypeError):
+        prompts.system_for(a)
+
+
+def test_no_error_message_says_turn():
+    """**문구를 「년」 으로 통일했지만 실패 메시지는 훑지 않았다.**
+
+    1턴 실측에서 에이전트가 이것을 봤다 — `a ballot is already called for turn 5`.
+    세계는 46년인데 내부 인덱스를 흘린다. 앞의 테스트(`..._never_hears_the_word_turn`)는
+    SYSTEM·T·도구 설명만 봤고 **에러 메시지는 그 그물 밖이었다.**
+
+    에러는 도구 채널이라 영어로 두지만(도구 설명과 같다), **「턴」 은 이 세계에 없는
+    단위**다.
+    """
+    import itertools
+    import random
+    import re
+
+    from core import config, loop
+    from core.agent_loop import Sink, execute_tool
+    from domains.meteor.prompts import FIRST_YEAR
+    c = config.load("configs/base.yaml")
+    world = loop.init_world(c, itertools.count(1), random.Random(1))
+    world.turn = 10
+    world.countries["Ranoa"].proposal = {"by": "Ranoa1", "opened_turn": 10, "vote_turn": 14}
+
+    a = world.agents["Ranoa2"]; a.ap, a.budget = 1.0, 100.0
+    for name, args in (("propose_vote", {"reasoning": "r"}),
+                       ("vote", {"choice": "bunker", "reasoning": "r"})):
+        r, _ = execute_tool(name, args, world, a, c, Sink(), 48.0)
+        assert not r["ok"], name
+        assert "turn" not in r["error"], (name, r["error"])
+        assert str(FIRST_YEAR + 14 - 1) in r["error"], (name, r["error"])
+
+    # 그물을 넓힌다 — 소스의 error 문자열에 「turn」 이 다시 들어오면 잡는다
+    src = pathlib.Path("core/agent_loop.py").read_text(encoding="utf-8")
+    for line in src.splitlines():
+        if '"error"' not in line and "error\":" not in line:
+            continue
+        assert not re.search(r"\bturn\b", line.replace("end_turn", "")), line
+
+
+def test_the_inbox_shows_no_message_ids():
+    """**`[N]` 은 에이전트에게 잡음이었다.**
+
+    `msg_id` 는 우리 채점의 조인 키(`judge.py` · `messages.jsonl`)이고, 에이전트 쪽에는
+    **그것을 쓸 도구가 없다** — `speak` 의 `reply_to` 를 없앤 뒤로 남을 이유가 사라졌다.
+    번호를 보여주면 「번호로 답할 수 있다」 는 **없는 기능을 암시**한다.
+
+    로그에는 그대로 남으므로 사후 조인은 그대로 된다.
+    """
+    from core import tools
+    from domains.meteor import prompts
+    # 어느 도구도 id 를 인자로 받지 않는다
+    for t in tools.TOOLS:
+        for k in t["function"]["parameters"]["properties"]:
+            assert "msg" not in k and "reply" not in k, (t["function"]["name"], k)
+
+    box = [{"msg_id": 7, "from": "Ranoa1", "label": None, "text": "MARK", "original": None},
+           {"msg_id": 8, "from": "Miris1", "unreadable": True},
+           {"msg_id": 9, "delivery_failed_to": "Asla2"}]
+    for lang in ("ja", "zh", "fr"):
+        out = prompts.render_inbox(box, lang)
+        assert "MARK" in out and "Ranoa1" in out
+        for n in ("[7]", "[8]", "[9]", "7", "8", "9"):
+            assert n not in out, (lang, n, out)

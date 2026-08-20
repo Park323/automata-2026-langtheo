@@ -28,6 +28,7 @@ class Costs:
     learn_base: float
     propose_vote: float
     observe_risk: float = 20.0
+    unit: float = 20.0             # 한 번의 invest·learn 이 나가는 돈 (4.4)
 
 
 @dataclass(frozen=True)
@@ -51,14 +52,14 @@ class TurnCfg:
 class AP:
     speak: float
     ask: float
-    learn_full: float              # **정가 전액을 내는 데 드는 AP** (4.4)
-                                   # 실제 소모 = learn_full × (금액 ÷ learn_base)
     propose_vote: float
     memory_write: float
     procreate: float
     observe_risk: float = 0.3
     vote: float = 0.05             # 採決과 제안은 무게가 다르다 (4.4)
-    invest_wellness: float = 0.1   # national·facility 는 금액 비례라 여기 없다
+    # **한 번의 invest·learn 이 먹는 AP.** 금액은 costs.unit 으로 고정이라 금액별 계산이
+    # 없다 — learn_full·invest_wellness·invest_per_ap 를 그래서 없앴다 (4.4).
+    unit: float = 0.1
 
 
 @dataclass(frozen=True)
@@ -93,9 +94,6 @@ class Facility:
     cap_per_turn: float
     transition_requires_vote: bool
     transition_forfeits_progress: bool
-    # **AP 1.0 어치의 투자량.** 국가 기술력이 넓힌다. 상한은 AP 가 저절로 만든다 —
-    # 턴당 AP 가 1.0 이므로 전부 투자에 쓰면 이만큼이 천장이다.
-    invest_per_ap: float = 300.0
 
 
 @dataclass(frozen=True)

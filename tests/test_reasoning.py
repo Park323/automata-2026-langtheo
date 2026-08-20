@@ -174,13 +174,13 @@ def test_recovered_call_actually_runs(cfg, world):
     a = world.agents["Asla2"]
     a.ap, a.budget = 1.0, 5000.0
     leaked = {"role": "assistant",
-              "content": '{"name":"learn","arguments":{"country":"Miris","amount":100,'
+              "content": '{"name":"learn","arguments":{"country":"Miris",'
                          '"reasoning":"r"}}'}
     lg = run_agent_turn(world, a, cfg, StubClient([leaked]), Sink(), 48.0,
-                        prompts.system_for(a), prompts.render_observation(world, a, cfg, 48.0))
+                        prompts.system_for(a, None, cfg), prompts.render_observation(world, a, cfg, 48.0))
     assert lg["recovered_calls"] == 1
     assert [x["type"] for x in lg["actions"]] == ["learn"]
-    assert a.budget == 5000.0 - 100
+    assert a.budget == 5000.0 - cfg.costs.unit
 
 
 def test_no_tool_call_is_not_reported_as_exhausted(cfg, world):
@@ -193,7 +193,7 @@ def test_no_tool_call_is_not_reported_as_exhausted(cfg, world):
     a.ap, a.budget = 1.0, 5000.0                      # 자원은 충분하다
     lg = run_agent_turn(world, a, cfg,
                         StubClient([{"role": "assistant", "content": "생각 중입니다"}]),
-                        Sink(), 48.0, prompts.system_for(a),
+                        Sink(), 48.0, prompts.system_for(a, None, cfg),
                         prompts.render_observation(world, a, cfg, 48.0))
     assert lg["ended_by"] == "no_tool_call"
     assert lg["recovered_calls"] == 0
@@ -213,7 +213,7 @@ def test_exhausted_still_means_exhausted(cfg, world):
     a.ap, a.budget = 0.0, 0.0
     broke = replace(cfg, ap=replace(cfg.ap, memory_write=0.1, procreate=1.0))
     lg = run_agent_turn(world, a, broke, StubClient([]), Sink(), 48.0,
-                        prompts.system_for(a),
+                        prompts.system_for(a, None, cfg),
                         prompts.render_observation(world, a, broke, 48.0))
     assert lg["ended_by"] == "exhausted" and lg["steps"] == 0
 
@@ -318,6 +318,6 @@ def test_every_step_forces_a_tool_call(cfg, world):
                        assistant_msg(tool_call("end_turn", "2"))])
     a = world.agents["Asla2"]; a.ap, a.budget = 1.0, 500.0
     run_agent_turn(world, a, cfg, stub, Sink(), 48.0,
-                   prompts.system_for(a), prompts.render_observation(world, a, cfg, 48.0))
+                   prompts.system_for(a, None, cfg), prompts.render_observation(world, a, cfg, 48.0))
     # **모든 스텝에서** 강제한다. end_turn 도 도구라 잃는 선택지가 없다.
     assert [c["tool_choice"] for c in stub.calls] == ["required"] * len(stub.calls)

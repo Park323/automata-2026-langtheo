@@ -214,20 +214,28 @@ def test_direct_ok_records_the_counterfactual(cfg):
     assert p["meta"]["direct_ok"] is True and p["meta"]["direct_by"] == "writer"
 
 
-def test_direct_label_is_shown_in_the_recipient_language(cfg):
-    """「번역을 안 거쳤는데 뜻이 통했다」 는 감각은 그 사람의 말로 와야 산다.
+def test_both_labels_are_shown_in_the_recipient_language(cfg):
+    """**두 라벨 모두 읽는 사람의 말로.** 「번역을 안 거쳤는데 뜻이 통했다」 도, 「이건
+    상대가 기계에 맡긴 말이다」 도 그 사람의 말로 와야 감각이 산다.
 
-    AI 라벨은 영어 그대로 둔다 — 기계가 낀 자리를 이물감 있게 두는 편이 낫고,
-    바꾸면 AI 경로의 자극이 달라져 앞선 런들과의 4a 비교가 흔들린다.
+    AI 쪽은 영어 `[AI translation]` 이었다. 그때 근거는 *"기계가 낀 자리를 이물감 있게
+    두는 편이 낫다"* 였는데, 라벨은 **도구 토큰이 아니라 읽는 사람에게 하는 말**이다 —
+    이 세계의 규약은 도구 이름만 영어로 두고 산문은 모국어로 쓴다. 그리고 무엇을 뜻하는지
+    한 문장으로 적는 편이 「기계가 꼈다」 를 더 정확히 전한다.
+
+    남은 대가는 하나다 — **앞선 런들과 4a 를 나란히 놓을 수 없다.** AI 경로의 자극이
+    달라졌다. 다만 이 PR 이 이미 관측 구조·단위·연 표기를 다 바꿨으므로, 라벨 하나가
+    더 얹히는 비용은 사실상 0 이다.
     """
     from domains.meteor import prompts
-    marks = {"ja": "通訳なしで通じた", "zh": "无需翻译就能听懂",
-             "fr": "compris sans traduction"}
-    for lang, mark in marks.items():
+    marks = {"ja": ("通訳なしで通じた", "AI に訳させた"),
+             "zh": ("无需翻译就能听懂", "用 AI 译过来"),
+             "fr": ("compris sans traduction", "traduire par une IA")}
+    for lang, (direct, ai) in marks.items():
         out = prompts.render_inbox(
             [{"msg_id": 1, "from": "Miris1", "label": messaging.DIRECT_LABEL, "text": "x"},
              {"msg_id": 2, "from": "Ranoa1", "label": messaging.AI_LABEL, "text": "y"},
              {"msg_id": 3, "from": "Asla2", "label": None, "text": "z"}], lang)
-        assert mark in out, lang
-        assert "[AI translation]" in out          # 이쪽은 영어 그대로
-        assert out.count(mark) == 1               # 국내 메시지에는 안 붙는다
+        assert direct in out and ai in out, lang
+        assert "[AI translation]" not in out      # 영어가 새지 않는다
+        assert out.count(direct) == 1             # 국내 메시지에는 안 붙는다

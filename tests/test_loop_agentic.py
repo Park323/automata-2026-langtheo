@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import itertools
+import json
 import random
 from pathlib import Path
 
@@ -169,44 +170,6 @@ def test_roundrobin_same_turn_delivery():
     assert "HELLO_SAME_TURN" in str(got)                    # 같은 턴에 도착
     assert _dequeue_inbox_pop(world, "Asla2") == []         # 두 번 안 옴 (제거됨)
 
-
-def test_delta_observation_drops_static_scaffold():
-    """델타 관측(#22): 안 변하는 골격(비용표)은 빼서 짧고, 상태·inbox 는 유지."""
-    cfg = _cfg(2)
-    world = init_world(cfg, itertools.count(1))
-    world.turn = 3
-    agent = world.agents["Asla1"]
-    full = prompts.render_observation(world, agent, cfg, 48, [])
-    delta = prompts.render_observation(world, agent, cfg, 48, [], delta=True)
-    costs = prompts.render_costs(world, agent, cfg, 48)
-    assert costs in full                # 풀엔 비용표(골격)가 있고
-    assert costs not in delta           # 델타엔 없다 (반복 제거)
-    # 실측 5%. 0.6 으로 두면 골격이 절반쯤 다시 새어들어도 통과한다 —
-    # 이 테스트가 지키려는 것이 바로 그 재유입이다.
-    assert 0 < len(delta) < len(full) * 0.15
-
-
-def test_delta_keeps_the_two_resources_that_change_within_a_turn():
-    """**델타에 예산은 있는데 행동력이 없었다.**
-
-    AP 는 이 세계에서 예산보다 더 묶는 자원이다 (`invest`·`learn` 이 금액 비례로 먹고
-    `propose_vote` 는 0.6). 그런데 자기 AP 를 아는 유일한 경로가 직전 도구 응답의
-    `ap_left` 였고, 컨텍스트가 밀려 그것이 방출되면 몇 번 더 움직일 수 있는지 모르는
-    채로 차례를 받는다 — **하필 이 델타가 막으려는 상황이다.**
-    """
-    cfg = _cfg(2)
-    world = init_world(cfg, itertools.count(1))
-    world.turn = 3
-    agent = world.agents["Asla1"]
-    agent.budget, agent.ap = 137.0, 0.35
-    delta = prompts.render_observation(world, agent, cfg, 48, [], delta=True)
-    assert "137" in delta and "0.35" in delta
-    # 골격은 여전히 빠져 있다
-    assert prompts.render_costs(world, agent, cfg, 48) not in delta
-
-
-# ── 상태는 system, 사건은 대화 (8/20) ───────────────────────────────────────
-
 def test_state_lives_in_system_and_never_piles_up_in_the_conversation():
     """**관측이 매 턴 user 로 쌓이고 있었다.** 한 요청 안에 예산이 네 개(100·177·196·215),
     비용표가 네 번 있었다 — 낭비이면서 모순이고, 그 부피가 context_limit 을 밀어
@@ -225,11 +188,14 @@ def test_state_lives_in_system_and_never_piles_up_in_the_conversation():
                       parallel=False)
     convo = res.world.agents["Asla1"].convo
     users = [m["content"] for m in convo if m["role"] == "user"]
-    assert len(users) == 3                       # 턴마다 한 마디
+    assert len(users) == 3                       # 해마다 한 마디
     for u in users:
-        assert "予算" not in u                    # 상태가 대화에 없다
-        assert "行動の費用" not in u               # 비용표도 없다
-        assert "になりました" in u                 # 턴을 여는 한 마디는 있다
+        assert "行動の費用" not in u               # 비용표는 대화에 없다
+        assert "自国の進捗" not in u                # 진척·국토도 없다
+        assert "になりました" in u                 # 해를 여는 한 마디는 있다
+        # **소득과 그때의 예산은 있다** — 그 해에 일어난 일이고, 관측에 두면 매 콜 다시
+        # 계산돼 값이 흔들린다 (실측: 한 해 안에 +100 → +104 → +105).
+        assert "今年の収入は" in u
 
 
 def test_arrived_messages_stay_in_the_conversation():
@@ -252,7 +218,7 @@ def test_system_without_a_world_is_just_the_rules():
     cfg = _cfg(2)
     world = init_world(cfg, itertools.count(1))
     a = world.agents["Asla1"]
-    assert "予算" not in prompts.system_for(a)
+    assert "予算" not in prompts.system_for(a, None, cfg)
     assert "予算" in prompts.system_for(a, world, cfg, 48.0)
 
 
@@ -266,10 +232,198 @@ def test_an_empty_inbox_says_nothing_at_all():
     world.turn = 3
     a = world.agents["Asla1"]
     empty = prompts.render_turn_open(world, a, cfg, 48.0, [])
-    assert empty.count("\n") == 0                     # 한 줄뿐이다
+    assert empty.count("\n") == 1                     # 소득·예산 한 줄 + 집행 한 줄
     for none_word in ("なし", "没有", "aucun", "Aucun"):
         assert none_word not in empty
     got = prompts.render_turn_open(world, a, cfg, 48.0,
                                    [{"msg_id": 1, "from": "Ranoa1", "label": None,
                                      "text": "MARK", "original": None}])
     assert "MARK" in got and got.startswith(empty)    # 머리말은 같다
+
+
+def test_income_is_stated_once_a_year_not_recomputed_each_call():
+    """**소득이 관측에 있던 동안 턴 안에서 값이 흔들렸다.**
+
+    실측(`ovh15` · Asla1 · 44년):
+
+        step 2   予算: 100 · 今年の収入: +100     ← 맞다
+        step 3   予算:   0 · 今年の収入: +104
+        step 6   予算:   0 · 今年の収入: +105
+
+    관측은 매 콜 새로 렌더되므로, 남들이 `national` 에 넣어 배수가 커지면 **이미 받은
+    소득**이 올라간다. 그리고 예산 0 옆에 붙어서 「104 를 받았는데 0」 으로 읽힌다.
+
+    소득은 **그 해에 일어난 일**이다. 해가 열릴 때 한 번 적으면 사실로 굳는다.
+    """
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 3
+    a = world.agents["Asla1"]
+    a.budget = 137.0
+    open_ = prompts.render_turn_open(world, a, cfg, 48.0, [])
+    assert "+100" in open_ and "137" in open_
+
+    # 그 해 안에 남들이 국가에 투자해 배수가 커져도 이미 적힌 말은 안 변한다
+    world.countries["Asla"].national_capital = 12_000.0
+    obs = prompts.render_observation(world, a, cfg, 48.0)
+    assert "収入:" not in obs and "収入は" not in obs
+
+
+def test_growing_older_accumulates_in_the_conversation():
+    """**나이가 관측에 있으면 매 콜 덮여서 나이 드는 것이 느껴지지 않는다.**
+
+    해가 열릴 때 적으면 대화에 6살 · 7살 · 8살이 차례로 남는다. 그것이 `procreate` 를
+    고를 시점을 가늠하는 유일한 재료다 — 수명 곡선은 비공개이고(4.1), 부고에 찍힌 나이와
+    자기 나이의 흐름만이 단서다. 세 런 21명이 전부 자연사한 뒤에 붙인 것이 부고의
+    나이였고, 이건 그 짝이다.
+    """
+    cfg = _cfg(3)
+    world = init_world(cfg, itertools.count(1))
+    a = world.agents["Asla1"]
+    seen = []
+    for t, age in ((1, 6), (2, 7), (3, 8)):
+        world.turn, a.age = t, age
+        seen.append(prompts.render_turn_open(world, a, cfg, 48.0, []))
+    assert ["6 歳" in seen[0], "7 歳" in seen[1], "8 歳" in seen[2]] == [True] * 3
+    # 관측에는 없다 — 그리고 죽은 문구도 남기지 않는다
+    assert "歳" not in prompts.render_observation(world, a, cfg, 48.0)
+    assert "age" not in prompts.T["ja"]
+
+
+def test_a_mid_year_arrival_does_not_reopen_the_year():
+    """**같은 해가 여러 번 열린 것처럼 보이고 있었다.**
+
+    순차 라운드로빈은 한 해에 여러 번 차례가 오고 그 사이에 메시지가 도착한다. 그때마다
+    해 오프닝을 다시 붙이면 실측처럼 된다:
+
+        到了 42 年。你 5 岁。今年的收入是 +100，手上的预算是 100。
+        到了 42 年。你 5 岁。今年的收入是 +100，手上的预算是 97。   ← 같은 해다
+
+    안의 예산이 흔들리고(100 → 97) 이미 받은 소득을 다시 말한다. `ovh15` 에서 135
+    에이전트-해 중 **49건(36%)** 이 오프닝을 두 번 이상 받았다.
+
+    재방문에는 **도착분만** 적는다.
+    """
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 1
+    a = world.agents["Asla1"]
+    a.budget = 100.0
+    box = [{"msg_id": 3, "from": "Asla2", "label": None, "text": "MARK", "original": None}]
+
+    first = prompts.render_turn_open(world, a, cfg, 48.0, box, opening=True)
+    later = prompts.render_turn_open(world, a, cfg, 48.0, box, opening=False)
+
+    assert "になりました" in first and "MARK" in first
+    assert "になりました" not in later and "MARK" in later      # 해를 다시 열지 않는다
+    assert "100" not in later                                 # 소득·예산도 다시 말하지 않는다
+
+    # 재방문에 온 것이 없으면 아무 말도 하지 않는다 (루프가 부르지도 않는다)
+    assert prompts.render_turn_open(world, a, cfg, 48.0, [], opening=False) == ""
+    # 병렬 경로는 한 해에 한 번뿐이므로 기본값이 True 여야 한다
+    assert "になりました" in prompts.render_turn_open(world, a, cfg, 48.0, box)
+
+
+def test_an_ended_agent_wakes_when_mail_arrives():
+    """**끝냈다고 했는데 그 뒤에 말이 오면 다시 깨운다.**
+
+    `end_turn` 은 「지금 더 할 일이 없다」 는 판단이다. 그 뒤에 도착한 메시지는 **그
+    판단의 근거를 무너뜨리는 새 정보**다 — 누가 협력을 청했는데 이미 끝냈다고 그 해가
+    통째로 지나가면, 같은 해 왕복 대화라는 순차 라운드로빈의 취지가 절반만 산다.
+
+    시드 3 은 **수신자(Asla2, 0번째)가 발신자(Asla1, 3번째)보다 먼저** 온다. Asla2 가
+    먼저 끝내고, 그 뒤 Asla1 이 말을 보내고, 그래서 Asla2 가 다시 불린다.
+    """
+    cfg = _cfg(1)
+    end = assistant_msg(tool_call("end_turn", "e", reasoning="r"))
+    speak = assistant_msg(tool_call("speak", "s", to="Asla2", text="WAKE_UP", reasoning="r"))
+    clients = _clients({"Asla1": [speak, end], "Asla2": [end, end]})
+    res = _run(cfg, clients, seed=3, parallel=False, sequential=True)
+
+    # 깨어나 두 번 불렸다 (한 번은 처음, 한 번은 도착 뒤)
+    assert len(clients["Asla2"].calls) == 2
+    convo = json.dumps(res.world.agents["Asla2"].convo, ensure_ascii=False)
+    assert "WAKE_UP" in convo                         # 같은 해에 봤다
+    # 깨어난 뒤 붙은 것은 도착분만 — 해를 다시 열지 않는다
+    users = [m["content"] for m in res.world.agents["Asla2"].convo if m["role"] == "user"]
+    assert len(users) == 2 and "になりました" not in users[1]
+
+
+def test_a_stopped_agent_is_not_woken_when_it_cannot_act():
+    """깨우는 조건은 셋이다 — **스스로 끝냈고 · 행동력이 남았고 · 받을 것이 있다.**
+
+    `exhausted`·`error`·`repeat_guard`·`runaway` 로 멈춘 것을 깨우면 같은 실패를
+    되풀이한다. 행동력이 0 이면 깨워도 할 수 있는 것이 `memory_write` 뿐이다.
+    """
+    from core.loop import _has_inbox
+    cfg = _cfg(1)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 1
+    assert _has_inbox(world, "Asla2") is False
+    world.inbox_queue.append({"deliver_turn": 1, "to": "Asla2",
+                              "to_uid": world.agents["Asla2"].uid,
+                              "msg": {"msg_id": 1, "from": "Asla1", "text": "x"}})
+    assert _has_inbox(world, "Asla2") is True
+    # **꺼내지 않고 본다** — 깨울지 판단만 하고, 실제 수령은 그 차례에 한다
+    assert _has_inbox(world, "Asla2") is True
+    assert len(world.inbox_queue) == 1
+
+    # 수신 슬롯이 바뀌었으면(사망·교체) 받을 것이 아니다
+    world.inbox_queue[0]["to_uid"] = 9999
+    assert _has_inbox(world, "Asla2") is False
+
+
+def test_world_events_get_their_own_context_entry():
+    """**세계의 사건은 해 오프닝과 섞이지 않는다.**
+
+    죽음·출자 결과·전달 실패는 「올해가 시작됐다」 와 성질이 다르다. 오프닝에 묶으면
+    **새해 인사에 부고가 딸려 오고**, 무엇이 언제 일어났는지가 한 덩어리로 뭉개진다.
+
+    대화에서 사건이 **앞**에 온다 — 해 끝에 죽은 사람 소식이 다음 해가 열리기 전에
+    놓인다. 모델은 대화를 볼 때만 무엇을 알게 되므로, 그 순서가 곧 「그 시점」 이다.
+
+    머리말도 다르다. 「도착한 메시지」 는 사람이 나에게 한 말이고, 사건은 세계가 나에게
+    알리는 것이다 — 부고를 「메시지」 라고 부르면 누가 보낸 것처럼 읽힌다.
+    """
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 2
+    a = world.agents["Asla2"]
+    a.budget = 137.0
+    box = [{"died": "Asla1", "born": "Asla4", "age": 14},
+           {"fac_gain": 61, "amount": 200.0, "to": "Asla"},
+           {"from": "Ranoa1", "label": None, "text": "SAID", "original": None}]
+
+    ev = prompts.render_events(a, box)
+    open_ = prompts.render_turn_open(world, a, cfg, 48.0, box, opening=True)
+
+    assert "Asla1" in ev and "61" in ev and "SAID" not in ev
+    assert "起きたこと" in ev and "になりました" not in ev      # 해를 열지 않는다
+    assert "SAID" in open_ and "Asla1" not in open_           # 사건은 여기 없다
+    assert prompts.T["ja"]["in_hdr"] not in ev                # 머리말이 다르다
+
+    # 사건만 있으면 오프닝에는 도착분이 안 붙는다
+    only_ev = prompts.render_turn_open(world, a, cfg, 48.0, box[:2], opening=True)
+    assert "になりました" in only_ev and prompts.T["ja"]["in_hdr"] not in only_ev
+    # 재방문에 사건만 왔으면 오프닝은 빈 문자열 — 루프가 사건만 붙인다
+    assert prompts.render_turn_open(world, a, cfg, 48.0, box[:2], opening=False) == ""
+
+
+def test_the_event_entry_lands_before_the_year_opens():
+    """루프가 **사건을 먼저** 붙인다. 부고가 「43년이 되었습니다」 뒤에 오면 순서가
+    거꾸로다 — 그 죽음은 42년 끝에 일어난 일이다."""
+    from core.loop import _push_events
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    a = world.agents["Asla2"]
+    a.convo = []
+    _push_events(a, [{"died": "Asla1", "born": "Asla4", "age": 14}], prompts.render_events)
+    assert len(a.convo) == 1 and a.convo[0]["role"] == "user"
+    assert "Asla1" in a.convo[0]["content"]
+
+    # 사건이 없으면 아무것도 붙이지 않는다
+    _push_events(a, [{"from": "X", "text": "y"}], prompts.render_events)
+    assert len(a.convo) == 1
+    # 렌더러를 안 주면 아무 일도 하지 않는다 (옛 경로 호환)
+    _push_events(a, [{"died": "Z"}], None)
+    assert len(a.convo) == 1

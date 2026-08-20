@@ -98,7 +98,10 @@ def test_ballot_only_counts_on_the_ballot_turn(cfg, world):
     world.turn = 12                                    # 아직 유예 중
     res, _ = execute_tool("vote", {"choice": "bunker", "reasoning": "r"},
                           world, a, cfg, Sink(), 48.0)
-    assert not res["ok"] and "14" in res["error"]
+    # **연도로 말한다.** 「turn 14」 라고 말하고 있었다 — 세계는 55년인데 내부 인덱스다.
+    from domains.meteor.prompts import FIRST_YEAR
+    assert not res["ok"] and str(FIRST_YEAR + 14 - 1) in res["error"]
+    assert "turn" not in res["error"]
 
 
 def test_one_vote_decides_when_nobody_else_shows_up(cfg, world):
@@ -227,8 +230,7 @@ def test_investing_never_reveals_whether_a_nation_decided(cfg, world):
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 500.0
     outs = []
     for to in ("Ranoa", "Miris"):
-        res, _ = execute_tool("invest", {"target": "facility", "amount": 10,
-                                         "to": to, "reasoning": "r"},
+        res, _ = execute_tool("invest", {"target": "facility", "to": to, "reasoning": "r"},
                               world, a, cfg, Sink(), 48.0)
         outs.append(res)
     # 나라 이름·잔액·AP 말고는 한 글자도 달라선 안 된다 — 다르면 그것이 곧 조회다.
@@ -241,7 +243,7 @@ def test_investing_never_reveals_whether_a_nation_decided(cfg, world):
     assert all(o["ok"] for o in outs)
     # 나라 이름조차 안 나온다 — 응답이 입력을 되돌려주지 않게 된 부수 효과다
     assert not any("Ranoa" in json.dumps(o) or "Miris" in json.dumps(o) for o in outs)
-    assert a.budget == 480.0                           # 둘 다 과금됐다
+    assert a.budget == 500.0 - 2 * cfg.costs.unit       # 둘 다 과금됐다
 
 
 def test_money_into_an_undecided_nation_just_vanishes(cfg, world):
@@ -297,10 +299,9 @@ def test_can_invest_once_decided(cfg, world):
     world.countries["Ranoa"].land = "interceptor"
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 500.0
     sink = Sink()
-    res, _ = execute_tool("invest", {"target": "facility", "amount": 100,
-                                     "to": "Ranoa", "reasoning": "r"},
+    res, _ = execute_tool("invest", {"target": "facility", "to": "Ranoa", "reasoning": "r"},
                           world, a, cfg, sink, 48.0)
-    assert res["ok"] and sink.facility == [("Ranoa", 100.0, "Asla1")]
+    assert res["ok"] and sink.facility == [("Ranoa", cfg.costs.unit, "Asla1")]
 
 
 # ── 진척 공개 ───────────────────────────────────────────────────────────────────
@@ -486,12 +487,26 @@ def test_reading_is_private(cfg, world):
     assert "yours alone" in t["function"]["description"]
 
 def test_production_multiplier_is_gone(cfg, world):
-    """배수는 안 알려준다 — 수입에서 추론 가능하다."""
+    """배수는 안 알려준다 — 수입에서 추론 가능하다.
+
+    수입은 **해가 열릴 때** 한 번 말한다 (관측에 두면 매 콜 다시 계산돼 값이 흔들렸다).
+    """
     from domains.meteor import prompts
     world.countries["Asla"].national_capital = 3000.0
-    obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
+    a = world.agents["Asla1"]
+    obs = prompts.render_observation(world, a, cfg, 48.0)
     assert "1.28" not in obs and "倍率: 1" not in obs
-    assert "+128" in obs or "+1" in obs          # 수입에는 반영돼 보인다
+    # 관측에는 수입 **값**이 없다. `invest 효과` 의 「収入も…良くなる」 은 값이 아니라
+    # national 이 무엇을 올리는지의 설명이라 남는다.
+    assert "収入:" not in obs and "収入は" not in obs
+    assert "income" not in prompts.T["ja"]        # 죽은 문구도 남기지 않는다
+    # 배수가 반영된 값으로 **해 시작 문구에** 보인다. 옛 테스트는 `"+128" or "+1"` 이라
+    # "+100" 에도 통과했다 — growth_coef 가 0.3 에서 0.2 로 바뀐 뒤에도 안 걸렸다.
+    open_ = prompts.render_turn_open(world, a, cfg, 48.0, [])
+    mult = world.countries["Asla"].multiplier(cfg)
+    expect = f"+{cfg.income.per_turn * mult:.0f}"
+    assert expect in open_ and expect != "+100"
+    assert f"{mult:.2f}" not in open_             # 배수 자체는 없다
 
 
 def test_ask_is_gone(cfg):
@@ -518,7 +533,7 @@ def test_sites_are_independent_is_stated(cfg, world):
     marks = {"ja": "国ごとに別々", "zh": "按国家分别累积", "fr": "séparément pour chaque nation"}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
-        assert marks[a.native_lang] in prompts.system_for(a), a.native_lang
+        assert marks[a.native_lang] in prompts.system_for(a, None, cfg), a.native_lang
 
 
 def test_invest_names_a_nation_and_says_the_default(cfg, world):
@@ -554,7 +569,7 @@ def test_the_rule_does_not_tell_them_what_to_do(cfg, world):
     from domains.meteor import prompts
     banned = ["집중", "모아", "한 곳", "concentr", "should", "better", "集中", "最好", "推荐"]
     for aid in ("Asla1", "Ranoa1", "Miris1"):
-        t = prompts.system_for(world.agents[aid])
+        t = prompts.system_for(world.agents[aid], None, cfg)
         for b in banned:
             assert b not in t, f"{aid}: {b}"
 
@@ -572,7 +587,7 @@ def test_investing_before_a_territory_is_settled_is_stated(cfg, world):
              "fr": "n'a rien où accumuler"}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
-        assert marks[a.native_lang] in prompts.system_for(a), a.native_lang
+        assert marks[a.native_lang] in prompts.system_for(a, None, cfg), a.native_lang
     d = next(t["function"]["description"] for t in tools.TOOLS
              if t["function"]["name"] == "invest")
     assert "has not settled its territory" in d and "buys no progress" in d
@@ -852,88 +867,78 @@ def test_the_guarantee_line_leaks_nothing_about_others(cfg, world):
 
 # ── 투자의 AP 비용 · 학습 진척 상속 (8/17) ───────────────────────────────────
 
-def test_investment_costs_action_points_in_proportion(cfg, world):
-    """**AP 가 곧 상한이다.** invest 는 AP 를 안 쓰고 있었다 — 돈만 들고 아무것도
-    포기하지 않았고, 실측에서 invest 211건으로 speak 176건보다 많았다.
+def test_one_investment_costs_one_fixed_unit(cfg, world):
+    """**금액을 인자로 받지 않는다** (8/20). 한 번에 정해진 돈과 정해진 AP 만 나간다.
 
-    AP 에 물리면 천장이 저절로 생기고(턴당 1.0), 말하기·배우기와 **경쟁**한다.
-    그리고 늙어서 다 못 쓸 돈이 생겨 `procreate` 가 처음으로 이득이 된다 —
-    실측에서 21명 전원 자연사, procreate 0건이었다.
-    """
-    from core.agent_loop import Sink, execute_tool, invest_per_ap
-    world.countries["Asla"].land = "interceptor"
-    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
-    per_ap = invest_per_ap(a, world, cfg)
-    assert per_ap == cfg.facility.invest_per_ap            # 자본 0 → 배수 1.0
-
-    r, _ = execute_tool("invest", {"target": "facility", "amount": per_ap / 2,
-                                   "reasoning": "r"}, world, a, cfg, Sink(), 48.0)
-    assert r["ok"] and a.ap == 0.5 and r["ap_left"] == 0.5
-
-
-def test_action_points_clamp_an_oversized_investment(cfg, world):
-    """넘치게 내면 AP 가 닿는 데까지만 받는다 — 통째로 거절하지 않는다."""
-    from core.agent_loop import Sink, execute_tool, invest_per_ap
-    world.countries["Asla"].land = "interceptor"
-    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
-    per_ap = invest_per_ap(a, world, cfg)
-    sink = Sink()
-    r, _ = execute_tool("invest", {"target": "facility", "amount": 9999, "reasoning": "r"},
-                        world, a, cfg, sink, 48.0)
-    assert r["charged"] == per_ap and a.ap == 0.0 and a.budget == 10_000.0 - per_ap
-    r2, _ = execute_tool("invest", {"target": "facility", "amount": 10, "reasoning": "r"},
-                         world, a, cfg, sink, 48.0)
-    assert not r2["ok"] and "no action points left" in r2["error"]
-
-
-def test_the_action_point_clamp_runs_before_the_budget_check(cfg, world):
-    """순서를 바꾸면 AP 가 잘라줬을 금액을 그대로 들고 "예산 부족" 으로 거절한다 —
-    9,999 를 내려다 300 만 냈어야 할 것이 통째로 실패한다."""
-    from core.agent_loop import Sink, execute_tool, invest_per_ap
-    world.countries["Asla"].land = "interceptor"
-    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, invest_per_ap(a, world, cfg)
-    r, _ = execute_tool("invest", {"target": "facility", "amount": 9999, "reasoning": "r"},
-                        world, a, cfg, Sink(), 48.0)
-    assert r["ok"] and a.budget == 0.0
-
-
-def test_national_and_facility_draw_from_the_same_action_points(cfg, world):
-    """**둘은 같은 주의력을 나눠 쓴다.** 따로 세면 한 턴에 두 배를 부을 수 있어
-    AP 를 상한으로 쓰는 뜻이 사라진다."""
-    from core.agent_loop import Sink, execute_tool, invest_per_ap
-    world.countries["Asla"].land = "interceptor"
-    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
-    per_ap = invest_per_ap(a, world, cfg)
-    sink = Sink()
-    execute_tool("invest", {"target": "national", "amount": 9999, "reasoning": "r"},
-                 world, a, cfg, sink, 48.0)
-    assert a.ap == 0.0
-    r, _ = execute_tool("invest", {"target": "facility", "amount": 10, "reasoning": "r"},
-                        world, a, cfg, sink, 48.0)
-    assert not r["ok"] and a.budget == 10_000.0 - per_ap
-
-
-def test_wellness_is_not_metered_by_amount(cfg, world):
-    """**사적 재화라 금액에 비례해 묶지 않는다.** 비례로 묶으면 수명이 예산에 반응하지
-    않게 되고, 지표 11(수명 함정)이 관측하려는 것이 바로 그 반응이다.
-
-    다만 공짜도 아니다 — 하는 일이므로 정액 AP 를 문다.
+    금액이 자유였을 때는 요청·절삭·과금이 서로 달라서, 응답이 그 차이를 알려야 했고
+    (`_clamped`) 표에는 「額÷300」 이라는 비율이 필요했다. 그리고 표의 학습 줄은
+    `600 · 額÷300` 이라 **총액과 비율이 한 줄에 섞여** 읽혔다. 고정하면 `20 · 0.1` 뿐이다.
     """
     from core.agent_loop import Sink, execute_tool
+    world.countries["Asla"].land = "interceptor"
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
-    r, _ = execute_tool("invest", {"target": "wellness", "amount": 5000, "reasoning": "r"},
-                        world, a, cfg, Sink(), 48.0)
-    assert r["ok"] and "charged" not in r            # 잘리지 않았으므로 조용하다
-    assert a.budget == 10_000.0 - 5000
-    assert a.ap == 1.0 - cfg.ap.invest_wellness      # 금액과 무관한 정액
+    sink = Sink()
+    r, _ = execute_tool("invest", {"target": "facility", "reasoning": "r"},
+                        world, a, cfg, sink, 48.0)
+    assert r["ok"] and a.ap == 1.0 - cfg.ap.unit
+    assert a.budget == 10_000.0 - cfg.costs.unit
+    assert sink.facility == [("Asla", cfg.costs.unit, "Asla1")]
+    assert "charged" not in r          # 절삭이 없으니 알릴 차이가 없다
 
 
-def test_higher_technical_level_buys_more_per_action_point(cfg, world):
-    from core.agent_loop import invest_per_ap
-    a = world.agents["Asla1"]
-    lo = invest_per_ap(a, world, cfg)
-    world.countries["Asla"].national_capital = 27_000.0
-    assert invest_per_ap(a, world, cfg) > lo * 1.5
+def test_ten_investments_use_up_the_year(cfg, world):
+    """열 번이면 AP 를 다 쓴다 = 200원. **모아둔 걸 한 해에 쏟아붓는 길이 막힌다** (★A)."""
+    from core.agent_loop import Sink, execute_tool
+    world.countries["Asla"].land = "interceptor"
+    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
+    sink = Sink()
+    for _ in range(10):
+        assert execute_tool("invest", {"target": "facility", "reasoning": "r"},
+                            world, a, cfg, sink, 48.0)[0]["ok"]
+    assert abs(a.ap) < 1e-9 and a.budget == 10_000.0 - 10 * cfg.costs.unit
+    r, _ = execute_tool("invest", {"target": "facility", "reasoning": "r"},
+                        world, a, cfg, sink, 48.0)
+    assert not r["ok"] and "not enough action" in r["error"]
+
+
+def test_every_target_costs_the_same_unit(cfg, world):
+    """세 대상이 같은 값이다. **규칙이 하나면 문구가 갈리지 않는다** — wellness 만
+    정액이던 때 같은 화면에 「無料」 와 「0.1 定額」 이 함께 있었다."""
+    from core.agent_loop import Sink, execute_tool
+    for target in ("wellness", "national", "facility"):
+        w = loop.init_world(cfg, itertools.count(1)); w.turn = 5
+        w.countries["Asla"].land = "interceptor"
+        a = w.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
+        r, _ = execute_tool("invest", {"target": target, "reasoning": "r"},
+                            w, a, cfg, Sink(), 48.0)
+        assert r["ok"] and a.ap == 1.0 - cfg.ap.unit and a.budget == 10_000.0 - cfg.costs.unit
+
+
+def test_the_action_rate_does_not_grow_with_wealth(cfg, world):
+    """**생산배수를 곱하지 않는다** (8/20). 곱했을 때 두 가지가 나빴다.
+
+    ① **표에 숫자가 둘 나왔다.** invest 는 `額÷318`, learn 은 `額÷300` — 배수를 학습에는
+       걸 수 없어서(걸면 국가 투자가 학습률을 올려 지표 1 이 노브 아닌 이유로 움직인다)
+       「하나로 통일」 이 말뿐이었다. 100해 자본이면 530 대 300 으로 77% 벌어진다.
+
+    ② **후반에 상한이 영영 안 걸렸다.** 수입도 배수로 커지므로 `수입 ÷ 상한` 이 0.33 에
+       고정된다 — 1해든 100해든 같다. 부유해질수록 쏟아붓기 속도도 같이 커지면
+       「모아둔 걸 쏟아붓기를 막는다」 는 역할이 흐려진다.
+
+    초반은 그대로고(자본 0 이면 배수 1.0) 후반에만 압박이 생긴다 — 수입 177 대 상한 300.
+    """
+    from core.agent_loop import Sink, execute_tool, risk_sigma
+    world.countries["Asla"].land = "interceptor"
+    for cap in (0.0, 27_000.0):
+        world.countries["Asla"].national_capital = cap
+        a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
+        r, _ = execute_tool("invest", {"target": "facility", "reasoning": "r"},
+                            world, a, cfg, Sink(), 48.0)
+        assert r["ok"] and a.ap == 1.0 - cfg.ap.unit          # 부유해도 같은 값
+        assert a.budget == 10_000.0 - cfg.costs.unit
+    # 국가 투자에는 여전히 세 가지 쓸모가 남는다
+    assert world.countries["Asla"].multiplier(cfg) > 1.0      # 수입·시설 전환율
+    assert risk_sigma(world.countries["Asla"], cfg) < cfg.risk.sigma_ratio   # 관측 정확도
 
 
 def test_half_learned_language_passes_to_the_child_with_decay(cfg, world):
@@ -1067,15 +1072,13 @@ def test_facility_investment_returns_my_running_total(cfg, world):
     world.countries["Ranoa"].land = "interceptor"
     a = world.agents["Asla1"]; a.budget = 10_000.0
     sink = Sink()
-    tot = 0.0
-    for amt in (50, 60, 70):
+    for n in (1, 2, 3):
         a.ap = 1.0
-        r, _ = execute_tool("invest", {"target": "facility", "amount": amt,
+        r, _ = execute_tool("invest", {"target": "facility",
                                        "to": "Ranoa", "reasoning": "r"},
                             world, a, cfg, sink, 48.0)
-        tot += amt
-        assert r["your_total_into"] == tot
-    assert a.facility_invested == {"Ranoa": 180.0}
+        assert r["your_total_into"] == n * cfg.costs.unit
+    assert a.facility_invested == {"Ranoa": 3 * cfg.costs.unit}
 
 
 def test_the_running_total_is_per_nation_and_leaks_nothing_about_them(cfg, world):
@@ -1088,12 +1091,13 @@ def test_the_running_total_is_per_nation_and_leaks_nothing_about_them(cfg, world
     a = world.agents["Asla1"]; a.budget = 10_000.0
     sink = Sink()
     outs = []
-    for c, amt in (("Ranoa", 100), ("Miris", 40), ("Ranoa", 30)):
+    for c in ("Ranoa", "Miris", "Ranoa"):
         a.ap = 1.0
-        r, _ = execute_tool("invest", {"target": "facility", "amount": amt,
+        r, _ = execute_tool("invest", {"target": "facility",
                                        "to": c, "reasoning": "r"}, world, a, cfg, sink, 48.0)
         outs.append(r)
-    assert a.facility_invested == {"Ranoa": 130.0, "Miris": 40.0}
+    u = cfg.costs.unit
+    assert a.facility_invested == {"Ranoa": 2 * u, "Miris": u}
     assert "5555" not in json.dumps(outs)             # 타국 진척은 안 새어 나온다
     assert not any("progress" in o for o in outs)
 
@@ -1157,7 +1161,8 @@ def test_learn_reports_completion_not_a_schedule(cfg, world):
     from core.agent_loop import Sink, execute_tool
     a = world.agents["Asla2"]; a.ap, a.budget = 1.0, 10_000.0
     sink = Sink()
-    r, _ = execute_tool("learn", {"country": "Ranoa", "amount": 300, "reasoning": "r"},
+    a.lang_progress = {"zh": 295.0}                 # 국내 구사자가 있어 300, 5 만 남았다
+    r, _ = execute_tool("learn", {"country": "Ranoa", "reasoning": "r"},
                         world, a, cfg, sink, 48.0)
     assert r["complete"] is True and r["remaining"] == 0.0
     assert not any("turn" in k for k in r)        # 일정을 말하는 필드가 없다
@@ -1169,22 +1174,36 @@ def test_learn_reports_completion_not_a_schedule(cfg, world):
     assert "zh" in world.agents["Asla2"].known_langs
 
 
-def test_the_observation_shows_how_much_action_is_left(cfg, world):
-    """**비용표는 「얼마 드는지」 만 적고 「얼마 남았는지」 는 안 적고 있었다.**
+def test_my_resources_are_not_in_the_observation(cfg, world):
+    """**예산·남은 행동력은 관측에 없다.**
 
-    순차 라운드로빈에서는 차례마다 관측이 새로 렌더되므로 이 값이 매번 다르다. 그전에는
-    자기 AP 를 아는 유일한 경로가 직전 도구 응답의 `ap_left` 였고, 컨텍스트가 밀려 그것이
-    방출되면 **몇 번 더 움직일 수 있는지 모르는 채로** 차례를 받는다.
+    그 둘은 「세계가 어떤가」 가 아니라 **내 행동의 결과**다. 결과는 도구 채널이 말한다 —
+    성공 응답마다 `budget_left`·`ap_left` 가 오고, 실패 응답도 얼마가 필요하고 얼마가
+    있는지 말한다. 해가 열릴 때의 값은 시작 문구가 적는다.
+
+    관측에 두면 **관측이 매 콜 흔들리는 숫자를 담게 된다.** 오늘 그 부류로 세 번 물렸다 —
+    소득 드리프트(+100→+104→+105) · wellness 정액 모순 · 해 중간 재렌더.
     """
+    from core.agent_loop import Sink, execute_tool
     from domains.meteor import prompts
-    for ap in (1.0, 0.35):
-        world.agents["Asla1"].ap = ap
-        obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
-        assert f"{ap:.2f}" in obs, (ap, obs)
-    # 세 언어 모두
-    for aid in ("Asla1", "Ranoa1", "Miris1"):
-        world.agents[aid].ap = 0.45
-        assert "0.45" in prompts.render_observation(world, world.agents[aid], cfg, 48.0)
+    a = world.agents["Asla1"]
+    a.ap, a.budget = 0.9, 80.0
+    obs = prompts.render_observation(world, a, cfg, 48.0)
+    assert "80" not in obs and "0.90" not in obs
+    for gone in ("budget", "ap_now"):
+        assert gone not in prompts.T["ja"]        # 죽은 문구도 남기지 않는다
+
+    # 해가 열릴 때는 적는다
+    assert "80" in prompts.render_turn_open(world, a, cfg, 48.0, [])
+
+    # 그리고 도구가 매번 돌려준다 — 성공도, 실패도
+    r, _ = execute_tool("speak", {"to": "Asla2", "text": "x", "reasoning": "r"},
+                        world, a, cfg, Sink(), 48.0)
+    assert r["ok"] and "budget_left" in r and "ap_left" in r
+    a.ap = 0.01
+    r, _ = execute_tool("speak", {"to": "Asla2", "text": "x", "reasoning": "r"},
+                        world, a, cfg, Sink(), 48.0)
+    assert not r["ok"] and "have 0.01" in r["error"]      # 남은 값을 알려준다
 
 
 def test_the_discount_note_names_the_right_reason(cfg, world):
@@ -1211,12 +1230,17 @@ def test_the_discount_note_names_the_right_reason(cfg, world):
 
     a.parent_langs = {"zh"}                          # 둘 다 걸리면 1/4
     obs = prompts.system_for(a, world, cfg, 48.0)
-    zh = next(l for l in obs.splitlines() if "Ranoa の言語を学ぶ" in l)
-    assert t["c_both"].strip() in zh and "150" in zh
+    lines = obs.splitlines()
+    i = next(n for n, l in enumerate(lines) if "Ranoa の言語を学ぶ" in l)
+    assert t["c_both"].strip() in lines[i]
+    # **눈금은 진척 줄에 있다** — 비용 칸은 한 번의 값(20)이다
+    assert "150" in lines[i + 1] and "150" not in lines[i]
 
     a.parent_langs = set()                           # 정가에는 아무 문구도 없다
     obs = prompts.system_for(a, world, cfg, 48.0)
-    fr = next(l for l in obs.splitlines() if "Miris の言語を学ぶ" in l)
-    assert "600" in fr
+    lines = obs.splitlines()
+    i = next(n for n, l in enumerate(lines) if "Miris の言語を学ぶ" in l)
+    fr = lines[i]
+    assert "600" in lines[i + 1]
     for k in ("c_cheap", "c_disc", "c_both"):
         assert t[k].strip() not in fr
