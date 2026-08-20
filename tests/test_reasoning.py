@@ -174,13 +174,13 @@ def test_recovered_call_actually_runs(cfg, world):
     a = world.agents["Asla2"]
     a.ap, a.budget = 1.0, 5000.0
     leaked = {"role": "assistant",
-              "content": '{"name":"learn","arguments":{"country":"Miris","amount":100,'
+              "content": '{"name":"learn","arguments":{"country":"Miris",'
                          '"reasoning":"r"}}'}
     lg = run_agent_turn(world, a, cfg, StubClient([leaked]), Sink(), 48.0,
                         prompts.system_for(a), prompts.render_observation(world, a, cfg, 48.0))
     assert lg["recovered_calls"] == 1
     assert [x["type"] for x in lg["actions"]] == ["learn"]
-    assert a.budget == 5000.0 - 100
+    assert a.budget == 5000.0 - cfg.costs.unit
 
 
 def test_no_tool_call_is_not_reported_as_exhausted(cfg, world):

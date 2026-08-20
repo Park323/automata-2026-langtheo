@@ -384,7 +384,8 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         result.learns_log.append({"turn": world.turn, **rec})
         if a is None:
             continue
-        a.lang_progress[rec["lang"]] = a.lang_progress.get(rec["lang"], 0.0) + rec["charged"]
+        # 진척은 execute_tool 이 **이미** 쌓았다 (한 해에 여러 번 내는 것이 정상
+        # 경로가 되면서 즉시 반영이 필요해졌다). 여기서 또 더하면 두 번 센다.
     # 완료 판정은 **그 순간의** 학습가로 한다 (3.4). 같은 턴에 국내 구사자가 생기면
     # 필요액이 절반이 되어, 반쯤 낸 사람이 그 자리에서 끝날 수 있다.
     for aid in sorted(world.agents):
@@ -716,7 +717,8 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         a = world.agents.get(rec["agent"])
         if a is None:
             continue
-        a.lang_progress[rec["lang"]] = a.lang_progress.get(rec["lang"], 0.0) + rec["charged"]
+        # 진척은 execute_tool 이 **이미** 쌓았다 (한 해에 여러 번 내는 것이 정상
+        # 경로가 되면서 즉시 반영이 필요해졌다). 여기서 또 더하면 두 번 센다.
         cid = rec["target"]
         c = world.countries.get(cid)
         if c is not None and c.lang not in a.known_langs:

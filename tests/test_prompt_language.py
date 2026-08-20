@@ -271,20 +271,21 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
     cfg = config.load("configs/base.yaml")
     world = loop.init_world(cfg, itertools.count(1), random.Random(1))
     world.turn = 1
-    for aid, marks in (("Asla2", ("0 / 300", "0 / 600", "額÷300")),
-                       ("Ranoa1", ("0 / 600", "额÷300")),
-                       ("Miris1", ("0 / 600", "mnt÷300"))):
+    for aid, marks in (("Asla2", ("0 / 300", "0 / 600")),
+                       ("Ranoa1", ("0 / 600",)),
+                       ("Miris1", ("0 / 600",))):
         agent = world.agents[aid]
         agent.lang_progress = {}
         obs = prompts.system_for(agent, world, cfg, 48.0)
         for m in marks:
             assert m in obs, (aid, m)
-        # 「끝까지 내는 AP」 를 그대로 적던 옛 꼴이 돌아오지 않는다
+        # **비용 칸은 한 번의 값이다.** 총액(600)이 비용 칸에 있으면 「한 번에 600 이
+        # 나간다」 로 읽힌다 — 그 숫자는 바로 아래 진척 줄이 말한다.
         learn_lines = [l for l in obs.splitlines()
-                       if any(k in l for k in ("を学ぶ", "的语言", "apprendre la langue"))]
+                       if any(k in l for k in ("の言語を学ぶ", "学习 ", "apprendre la langue de"))]
         assert learn_lines
         for l in learn_lines:
-            assert not l.rstrip().endswith(" 1"), l
+            assert f"{cfg.costs.unit:g}" in l and "600" not in l, l
 
     # 낸 것이 있으면 그대로 보인다
     a = world.agents["Asla2"]
@@ -307,14 +308,72 @@ def test_the_observation_says_money_carries_over():
         assert m in prompts.T[lang]["multi"], lang
 
 
-def test_the_action_rate_is_one_number_for_the_whole_world():
-    """learn 도 invest 도 **금액 ÷ invest_per_ap** 다. 규칙이 둘이면 문구가 갈리고,
+def test_learn_and_invest_share_one_unit():
+    """learn 도 invest 도 **한 번에 같은 돈·같은 AP** 다. 규칙이 여럿이면 문구가 갈리고,
     실제로 「wellness は無料」 라는 거짓이 그렇게 남았다."""
+    import itertools
+    import random
+
+    from core import config, loop
+    from domains.meteor import prompts
+    c = config.load("configs/base.yaml")
+    # 금액별 AP 를 계산하던 값들은 없어졌다
+    for gone in ("learn_full", "invest_wellness", "unit_ap"):
+        assert not hasattr(c.ap, gone) or gone == "unit_ap"
+    assert not hasattr(c.facility, "invest_per_ap")
+
+    world = loop.init_world(c, itertools.count(1), random.Random(1))
+    world.turn = 1
+    obs = prompts.system_for(world.agents["Asla2"], world, c, 48.0)
+    rows = [l for l in obs.splitlines()
+            if "の言語を学ぶ" in l or l.startswith("  invest ")]   # 헤더는 들여쓰기가 없다
+    assert len(rows) == 3                       # 학습 둘 + invest 하나
+    for l in rows:                              # 셋이 같은 값을 적는다
+        assert f"{c.costs.unit:g}" in l and f"{c.ap.unit:g}" in l
+
+
+def test_the_observation_states_no_message_cap():
+    """**「메시지는 1년에 3건까지」 는 규칙이 아니었고, 참도 아니었다.**
+
+    코드에 하드 캡이 없다 — 3건은 `ap.speak 0.3` 에서 나오는 **파생값**이고, spec 자신이
+    *"인위적인 메시지 캡이 필요 없습니다 — AP 가 세계 규칙으로 자연히 제한합니다"* 라고
+    적어 뒀다.
+
+    그리고 **투자를 하면 3건이 안 된다.** 「3건까지」 는 그 해에 아무것도 안 할 때만
+    참이므로, 적어 두면 있지도 않은 여유를 약속하는 셈이다. 비용표에 `speak 0.3` 과
+    남은 행동력이 이미 있으니 계산은 에이전트가 한다 (0절 — 함의되게 둔다).
+    """
     from core import config
     from domains.meteor import prompts
     c = config.load("configs/base.yaml")
-    rate = f"{c.facility.invest_per_ap:.0f}"
     for lang in ("ja", "zh", "fr"):
-        assert rate in prompts.T[lang]["ap_prop"].format(v=c.facility.invest_per_ap)
-    # 옛 값(600)이 표에 남아 있지 않다
-    assert not hasattr(c.ap, "learn_full") and not hasattr(c.ap, "invest_wellness")
+        m = prompts.T[lang]["multi"]
+        assert "3" not in m, (lang, m)
+        # 대신 무엇이 제한하는지는 적는다
+        for word in (("行動力",), ("行动力",), ("action",))[("ja", "zh", "fr").index(lang)]:
+            assert word in m, (lang, word)
+    # 하드 캡이 코드에 생기면 이 테스트를 고쳐야 한다는 표시
+    assert not hasattr(c.world, "messages_per_turn")
+
+
+def test_nothing_claims_technical_level_changes_the_action_rate():
+    """**배수를 뺐는데 「자국의 기술력이 그 비율을 올린다」 가 남아 있었다.**
+
+    「wellness は無料」 와 같은 부류다 — 규칙을 고치고 말을 두면 거짓이 된다. 이번 주
+    네 번째다.
+
+    `national` 의 나머지 세 쓸모(수입 · 시설 전환율 · observe_risk 정확도)는 그대로이므로
+    `inv_natl` 은 손대지 않는다.
+    """
+    from core import tools
+    from domains.meteor import prompts
+    STALE = ("その率を上げる", "提高该比率", "relève ce taux",
+             "額÷", "额÷", "mnt÷")
+    for lang, t in prompts.T.items():
+        blob = "\n".join(str(v) for v in t.values())
+        for w in STALE:
+            assert w not in blob, (lang, w)
+    d = next(t["function"]["description"] for t in tools.TOOLS
+             if t["function"]["name"] == "invest")
+    assert "raises how much one point buys" not in d
+    assert "one fixed amount" in d                   # 대신 고정이라고 적는다

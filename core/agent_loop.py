@@ -46,25 +46,6 @@ class Sink:
 
 # ── 학습 비용 (spec 3.4) ──────────────────────────────────────────────────────
 
-def invest_per_ap(agent, world, cfg) -> float:
-    """**AP 1.0 어치의 투자량.** 국가 기술력이 넓힌다.
-
-        AP 1.0 당 = invest_per_ap × 자국 생산배수
-        소모 AP   = 금액 ÷ 그 값          (턴당 AP 가 1.0 이라 그것이 곧 천장)
-
-    `invest` 는 AP 를 안 쓰고 있었다 — 돈만 들고 **아무것도 포기하지 않았다.**
-    실측에서 invest 211건으로 speak 176건보다 많았다. AP 에 연동하면 상한이 저절로
-    생기고 **말하기·배우기·관측과 경쟁하게 된다.**
-
-    그리고 돈을 일로 바꾸는 **속도**가 정해지므로, 몰아붓기가 막히고(★A) 늙어서 다 못
-    쓸 돈이 생겨 `procreate` 가 처음으로 이득이 된다. 그전에는 예산이 내 손에 있는 편이
-    언제나 나아서 죽을 이유가 없었다 (실측: 21명 전원 자연사, procreate 0건).
-
-    `wellness` 는 걸지 않는다 — 사적 재화이고, 막으면 수명이 예산에 안 반응한다.
-    """
-    return cfg.facility.invest_per_ap * world.countries[agent.country].multiplier(cfg)
-
-
 def risk_sigma(country, cfg) -> float:
     """관측의 **상대 표준편차**. 국가 자본(기술력)이 좁힌다.
 
@@ -221,39 +202,28 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
 
     if name == "invest":
         target = args.get("target")
-        try:
-            amount = float(args.get("amount", 0))
-        except (TypeError, ValueError):
-            return {"ok": False, "error": "amount must be a number"}, None
         if target not in ("wellness", "national", "facility"):
             return {"ok": False, "error": f"unknown invest target: {target}"}, None
-        if amount <= 0:
-            return {"ok": False, "error": "amount must be positive"}, None
-        asked = amount        # 절삭 전 요청액. 다르면 그것만 돌려준다 (_clamped)
         # facility 대상 국가는 예산 차감 전에 검증한다 (LLM 이 국가 대신 에이전트 id 를 줄 수 있음)
         to = None
         if target == "facility":
             to = args.get("to") or agent.country
             if to not in world.countries:
                 return {"ok": False,
-                        "error": f"unknown nation: {to} — facility invest takes a nation id (e.g. Ranoa)"}, None
-        # **남은 AP 로 자르고 나서 예산을 본다.** 순서를 바꾸면 AP 가 잘라줬을 금액을
-        # 그대로 들고 "예산 부족" 으로 거절한다 — 9,999 를 내려다 300 만 냈어야 할 것이
-        # 통째로 실패한다.
+                        "error": f"unknown nation: {to} — facility invest takes a nation id (e.f. Ranoa)"}, None
+        # **한 번에 정해진 액수만 낸다.** 금액을 인자로 받지 않으므로 절삭도 없다 —
+        # 더 넣고 싶으면 같은 행동을 다시 하면 된다.
         #
-        # **세 대상 모두 금액에 비례한다.** wellness 만 정액이던 때는 규칙이 둘이었고,
-        # 관측 문구가 그것을 따라가지 못해 「wellness は無料」 같은 거짓이 남았다.
-        per_ap = invest_per_ap(agent, world, cfg)
-        affordable = agent.ap * per_ap
-        if affordable <= 0:
-            return {"ok": False, "error":
-                    f"no action points left; {per_ap:.0f} of investment costs 1.0 AP "
-                    f"and your nation's technical level sets that rate"}, None
-        # round — 0.667 AP × 300 이 200.00000000000003 로 나와 그대로 청구된다.
-        amount = round(min(amount, affordable), 6)   # 넘치게 내면 AP 가 닿는 데까지만
-        ap_used = min(agent.ap, amount / per_ap)     # 부동소수로 AP 가 음수가 되지 않게
+        # 금액이 자유였을 때는 요청·절삭·과금이 서로 달라서, 응답이 그 차이를 알려야
+        # 했고(`_clamped`) 표에는 「額÷300」 이라는 비율이 필요했다. 고정하면 셋이 하나다.
+        amount, ap_used = cfg.costs.unit, cfg.ap.unit
+        if agent.ap < ap_used:
+            return {"ok": False,
+                    "error": f"not enough action; one investment needs {ap_used}"}, None
         if agent.budget < amount:
-            return {"ok": False, "error": f"not enough budget; need {amount:.0f}, have {agent.budget:.0f}"}, None
+            return {"ok": False,
+                    "error": f"not enough budget; one investment needs {amount:.0f}, "
+                             f"have {agent.budget:.0f}"}, None
         agent.budget -= amount
         agent.ap -= ap_used
         if target == "facility":
@@ -266,17 +236,17 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             # **내가 그 나라에 낸 누적**을 함께 돌려준다. learn 이 그러는데 여기만
             # 안 그러고 있었다 (state.Agent.facility_invested).
             agent.facility_invested[to] = agent.facility_invested.get(to, 0.0) + amount
-            return {"ok": True, **_clamped(asked, amount),
+            return {"ok": True,
                     "your_total_into": round(agent.facility_invested[to], 1),
                     "budget_left": round(agent.budget, 1),
                     "ap_left": round(agent.ap, 3)}, None
         if target == "wellness":
             sink.wellness.append((agent.id, amount))
-            return {"ok": True, **_clamped(asked, amount),        # λ 변화 비공개
+            return {"ok": True,                                  # λ 변화 비공개
                     "budget_left": round(agent.budget, 1),
                     "ap_left": round(agent.ap, 3)}, None
         sink.national.append((agent.country, amount, agent.id))
-        return {"ok": True, **_clamped(asked, amount),
+        return {"ok": True,
                 "budget_left": round(agent.budget, 1),
                 "ap_left": round(agent.ap, 3)}, None
 
@@ -289,37 +259,31 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         lang = world.countries[country_id].lang
         if lang in agent.known_langs:
             return {"ok": False, "error": f"you already read {country_id}'s language"}, None
-        try:
-            amount = float(args.get("amount", 0))
-        except (TypeError, ValueError):
-            return {"ok": False, "error": "amount must be a number"}, None
-        if amount <= 0:
-            return {"ok": False, "error": "amount must be positive"}, None
-        asked = amount        # 절삭 전 요청액. 다르면 그것만 돌려준다 (_clamped)
         need, reason = learn_cost(agent, country_id, world, cfg)
         done_before = agent.lang_progress.get(lang, 0.0)
-        # 넘치게 내면 필요한 만큼만 받는다 — 남는 돈이 조용히 사라지면 안 된다
+        # **invest 와 같은 단위다.** 한 번에 정해진 액수만 내고, 마지막 한 번은 남은
+        # 만큼만 낸다 — 넘치게 받으면 남는 돈이 조용히 사라진다.
+        amount, ap_used = cfg.costs.unit, cfg.ap.unit
         amount = min(amount, max(0.0, need - done_before))
         if amount <= 0:
             return {"ok": False, "error": f"{country_id}'s language is already paid for"}, None
-        # **AP 도 금액에 비례한다.** 정액이면 분할이 손해다 — 600 을 여섯 번에 나눠 내면
-        # AP 1.8, 한 번에 내면 0.3. 분할을 넣어놓고 분할에 벌을 주게 된다.
-        # 비례로 두면 나눠 내든 몰아 내든 합계가 같고, 정가 전액이 딱 한 턴이 된다.
-        # **invest 와 같은 비율.** 세계에 「돈을 일로 바꾸는 속도」 가 하나만 있는 편이
-        # 읽기 쉽다. 국가 배수는 걸지 않는다 — 걸면 국가 투자가 학습률을 올려서, 지표 1
-        # (학습자 비율)이 노브가 아닌 이유로 움직인다.
-        per_ap = cfg.facility.invest_per_ap
-        affordable = agent.ap * per_ap
-        if affordable <= 0:
-            return {"ok": False, "error":
-                    f"no action points left; {per_ap:.0f} of learning costs 1.0 AP"}, None
-        amount = round(min(amount, affordable), 6)   # AP 가 닿는 데까지만 (invest 와 같다)
+        if agent.ap < ap_used:
+            return {"ok": False,
+                    "error": f"not enough action; one payment needs {ap_used}"}, None
         if agent.budget < amount:
             return {"ok": False,
-                    "error": f"not enough budget; need {amount:.0f}, have {agent.budget:.0f}"}, None
-        ap_used = min(agent.ap, amount / per_ap)
+                    "error": f"not enough budget; one payment needs {amount:.0f}, "
+                             f"have {agent.budget:.0f}"}, None
         agent.budget -= amount
         agent.ap -= ap_used
+        # **진척은 즉시 쌓는다.** 금액이 20 으로 고정되면서 한 해에 여러 번 내는 것이
+        # 정상 경로가 됐는데, 정산 때만 갱신하면 그 해의 두 번째 호출부터 `done_before`
+        # 가 0 으로 보인다 — 응답이 매번 `progress: 20` 이라고 거짓을 말하고, 남은 액이
+        # 20 뿐인데도 계속 20 을 받아 **초과 납부**가 된다.
+        #
+        # `lang_progress` 는 **개인의 것**이라 즉시 바꿔도 병렬이 안전하다. 남이 읽는
+        # 것은 `known_langs` 뿐이고, 그건 아래 sink 로 넘겨 정산 때 반영한다.
+        agent.lang_progress[lang] = done_before + amount
         # known_langs 는 다른 에이전트가 읽으므로(국내 구사자 판정) 즉시 바꾸지 않는다.
         # sink 에 넣어 정산 때(정렬 순) 반영한다 — 병렬 레이스·재현성 방지.
         domestic, parent = learn_discounts(agent, country_id, world)
@@ -335,7 +299,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         done = done_before + amount
         # 남는 것은 **내가 몰랐던 것**뿐이다. 누적 진척과 그때그때의 필요액은 턴을
         # 넘나들며 바뀌고(국내 구사자가 생기면 절반이 된다), 계산으로 알 수 없다.
-        return {"ok": True, **_clamped(asked, amount),
+        return {"ok": True,
                 "progress": round(done, 1), "required": need,
                 "remaining": round(max(0.0, need - done), 1),
                 # **일정을 말하지 않는다 — 다 냈는지만 적는다.**
@@ -546,15 +510,6 @@ def loop_vote_delay() -> int:
     """`core.loop.VOTE_DELAY`. 여기서 import 하면 순환이 되므로 호출 시점에 읽는다."""
     from core.loop import VOTE_DELAY
     return VOTE_DELAY
-
-
-def _clamped(asked: float, charged: float) -> dict:
-    """**청구액은 요청과 다를 때만 돌려준다.** 그 존재 자체가 「잘렸다」 는 신호다.
-
-    같으면 이미 바로 위 `assistant` 메시지에 그 숫자가 있다 — 되돌려주면 군더더기이고,
-    필드가 일곱 개쯤 되면 **정작 잘렸을 때 그것이 묻힌다.**
-    """
-    return {} if abs(charged - asked) < 1e-9 else {"charged": round(charged, 1)}
 
 
 def _redact_args(name: str, args: dict) -> dict:

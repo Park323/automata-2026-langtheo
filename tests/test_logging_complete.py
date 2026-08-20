@@ -128,16 +128,22 @@ def test_failed_calls_keep_their_reason(tmp_path, cfg, world):
     assert c["error"] == "unknown nation: NOPE" and c["args"]["country"] == "NOPE"
 
 
-def test_calls_record_what_was_actually_charged(tmp_path, cfg, world):
-    """`actions` 는 **요청한 값**이다. AP 가 9,999 를 300 으로 잘라도 거기엔 9,999 가
-    남는다 — 실제 과금은 결과에만 있다."""
+def test_calls_record_the_real_cost_not_the_request(tmp_path, cfg, world):
+    """`actions` 는 **요청한 인자**다. 실제로 얼마가 나갔는지는 `calls` 의 결과에만 있다.
+
+    금액을 인자로 받던 때는 요청과 과금이 갈릴 수 있어서 응답이 그 차이를 알렸다.
+    지금은 금액이 고정이라 **요청에 금액이 아예 없다** — 그래서 sink·결과 말고는 얼마가
+    나갔는지 알 길이 없고, 로그가 그것을 담아야 한다.
+    """
     from core.agent_loop import Sink, execute_tool
     world.countries["Asla"].land = "interceptor"
     a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
-    res, _ = execute_tool("invest", {"target": "facility", "amount": 9999, "reasoning": "r"},
-                          world, a, cfg, Sink(), 48.0)
-    # `charged` 는 **요청과 다를 때만** 온다 — 그 존재 자체가 「잘렸다」 는 신호다
-    assert res["charged"] < 9999 and a.ap == 0.0
+    sink = Sink()
+    res, _ = execute_tool("invest", {"target": "facility", "reasoning": "r"},
+                          world, a, cfg, sink, 48.0)
+    assert res["ok"] and "amount" not in res
+    assert sink.facility == [("Asla", cfg.costs.unit, "Asla1")]
+    assert res["budget_left"] == 10_000.0 - cfg.costs.unit
 
 
 def test_memory_and_testament_are_not_stripped_from_calls():

@@ -67,13 +67,14 @@ def test_ap_cap_fourth_speak_fails(cfg, world):
 
 def test_budget_never_negative(cfg, world):
     world.countries["Asla"].land = "interceptor"   # 투표 전에는 애초에 투자가 막힌다
-    script = [assistant_msg(tool_call("invest", "1", target="facility", amount=999999)),
-              assistant_msg(tool_call("end_turn", "2"))]
-    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=100)
+    inv = assistant_msg(tool_call("invest", "1", target="facility"))
+    script = [inv, inv, assistant_msg(tool_call("end_turn", "2"))]
+    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=30)
     results = _results(client)
+    # 30 원으로 20 원짜리를 두 번 — 두 번째가 거절된다
     assert any((not r["ok"]) and "budget" in r.get("error", "") for r in results)
     assert agent.budget >= 0                            # 음수 안 됨
-    assert sink.facility == []                          # 실패했으니 sink 에 안 들어감
+    assert len(sink.facility) == 1                      # 실패한 것은 sink 에 안 들어감
 
 
 # ── #4 procreate 즉시 종료 ───────────────────────────────────────────────────
@@ -90,14 +91,19 @@ def test_invest_facility_invalid_country(cfg, world):
     assert sink.facility == []
 
 
-def test_invest_amount_not_number(cfg, world):
-    """amount 가 숫자 아닌 문자열이어도 크래시하지 않고 ok:False."""
+def test_invest_ignores_a_stray_amount(cfg, world):
+    """**`amount` 인자는 없어졌다** (8/20). 한 번에 정해진 액수만 낸다.
+
+    모델이 옛 스키마를 기억해 `amount` 를 실어 보내도 **그것 때문에 실패하지는 않는다** —
+    남는 인자는 무시하고 단위만 나간다. 거절하면 프롬프트를 못 따라온 대가를 세계가
+    치르게 된다.
+    """
     world.countries["Asla"].land = "interceptor"
     script = [assistant_msg(tool_call("invest", "1", target="facility", amount="많이")),
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
-    assert any(not r["ok"] for r in _results(client))
-    assert sink.facility == []
+    assert sink.facility == [("Asla", cfg.costs.unit, "Asla1")]
+    assert agent.budget == 10000 - cfg.costs.unit
 
 
 def test_speak_to_self_rejected(cfg, world):
@@ -169,34 +175,34 @@ def test_learn_is_paid_in_instalments(cfg, world):
 
     Asla2 가 Miris(fr) 를 배운다 — Asla 에는 fr 구사자가 없어 정가 600 이다.
     """
-    script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=250)),
-              assistant_msg(tool_call("end_turn", "2"))]
+    learn = assistant_msg(tool_call("learn", "1", country="Miris"))
+    script = [learn, learn, assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla2", script, budget=10000)
-    # **정가 600 은 한 해에 못 낸다** — 600/300 = AP 2.0 > 1.0. AP 가 250 을 300 까지만
-    # 받아들이므로 250 은 그대로 나가지만, 이 상한이 분할을 필수로 만든다.
-    assert agent.budget == 10000 - 250
-    (rec,) = sink.learns
-    assert rec["charged"] == 250 and rec["required"] == 600 and rec["rung"] == 1.0
-    assert rec["progress_before"] == 0.0
+    # 한 번에 20. **정가 600 은 30번이라 AP 3.0** — 최소 3해가 든다.
+    assert agent.budget == 10000 - 2 * cfg.costs.unit
+    assert [r["charged"] for r in sink.learns] == [cfg.costs.unit] * 2
+    assert [r["progress_before"] for r in sink.learns] == [0.0, cfg.costs.unit]
+    (rec,) = sink.learns[:1]
+    assert rec["required"] == 600 and rec["rung"] == 1.0
     # **응답은 내가 몰랐던 것만 담는다** — 요청한 국가·액수는 되돌려주지 않는다.
-    res = next(r for r in _results(client) if "progress" in r)
-    assert res["progress"] == 250 and res["remaining"] == 350
-    assert res["complete"] is False        # 일정이 아니라 사실만
-    assert "charged" not in res and "toward" not in res    # 잘리지 않았으므로 조용하다
+    res = [r for r in _results(client) if "progress" in r]
+    assert [r["progress"] for r in res] == [20.0, 40.0]     # 같은 해에도 쌓인다
+    assert res[-1]["remaining"] == 560.0
+    assert res[-1]["complete"] is False   # 일정이 아니라 사실만
+    assert "toward" not in res[0]         # 요청한 국가를 되돌려주지 않는다
 
 
 def test_learn_never_takes_more_than_needed(cfg, world):
-    """넘치게 내면 **필요한 만큼과 AP 가 닿는 만큼** 중 작은 쪽만 받는다 — 남는 돈이
-    조용히 사라지면 안 된다.
-
-    정가 600 은 AP 2.0 이라 한 해에 못 낸다 (상한 1.0). 그래서 9,999 를 내려 해도 그 해에
-    나가는 것은 300 이다 — **분할이 선택이 아니라 필수다.**
-    """
-    script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=9999)),
-              assistant_msg(tool_call("end_turn", "2"))]
-    agent, sink, client, log = _run(world, cfg, "Asla2", script, budget=10000)
-    assert agent.budget == 10000 - cfg.facility.invest_per_ap
-    assert sink.learns[0]["charged"] == cfg.facility.invest_per_ap
+    """**마지막 한 번은 남은 만큼만 받는다** — 남는 돈이 조용히 사라지면 안 된다."""
+    from core.agent_loop import Sink, execute_tool
+    a = world.agents["Asla2"]; a.ap, a.budget = 1.0, 10_000.0
+    a.lang_progress = {"fr": 595.0}                  # 정가 600 에 5 만 남았다
+    sink = Sink()
+    r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
+                        world, a, cfg, sink, 48.0)
+    assert r["ok"] and r["progress"] == 600.0 and r["complete"] is True
+    assert a.budget == 10_000.0 - 5                  # 20 이 아니라 5 만 나간다
+    assert sink.learns[0]["charged"] == 5
 
 
 def test_learn_rejects_a_language_already_read(cfg, world):
@@ -210,8 +216,8 @@ def test_learn_rejects_a_language_already_read(cfg, world):
 
 
 def test_learn_uses_less_than_a_whole_turn(cfg, world):
-    """한 번의 납부는 한 해를 통째로 쓰지 않는다. AP 는 **금액 ÷ 300** 이다."""
-    assert (100 / cfg.facility.invest_per_ap) < cfg.turn.action_points
+    """한 번의 납부는 한 해의 십분의 일이다 — 열 번이면 AP 를 다 쓴다."""
+    assert cfg.ap.unit * 10 == cfg.turn.action_points
     script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=100)),
               assistant_msg(tool_call("speak", "2", to="Asla3", text="x")),
               assistant_msg(tool_call("end_turn", "3"))]
@@ -228,29 +234,26 @@ def test_learn_action_points_scale_with_the_amount(cfg, world):
     from core.agent_loop import Sink, execute_tool
     base = cfg.costs.learn_base
     lump = world.agents["Asla2"]; lump.ap, lump.budget = 1.0, 10_000.0
-    r, _ = execute_tool("learn", {"country": "Miris", "amount": base, "reasoning": "r"},
-                        world, lump, cfg, Sink(), 48.0)
-    # **정가 전액은 한 해에 못 낸다** — 600/300 = AP 2.0. AP 가 300 까지만 받는다.
-    assert r["ok"] and lump.ap == 0.0 and r["charged"] == cfg.facility.invest_per_ap
-
-    split = world.agents["Asla3"]; split.ap, split.budget = 1.0, 10_000.0
     sink = Sink()
-    for _ in range(3):                            # 100 씩 세 번 = 300 = AP 1.0
-        execute_tool("learn", {"country": "Miris", "amount": base / 6, "reasoning": "r"},
-                     world, split, cfg, sink, 48.0)
-    assert abs(split.ap - lump.ap) < 1e-9        # 합계가 같다 — 나눠 내도 손해가 없다
-    assert abs(split.budget - lump.budget) < 1e-9
+    for _ in range(10):                            # 열 번이면 AP 를 다 쓴다
+        execute_tool("learn", {"country": "Miris", "reasoning": "r"},
+                     world, lump, cfg, sink, 48.0)
+    assert abs(lump.ap) < 1e-9
+    assert lump.budget == 10_000.0 - 10 * cfg.costs.unit
+    r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
+                        world, lump, cfg, sink, 48.0)
+    assert not r["ok"] and "not enough action" in r["error"]
+    assert base / cfg.costs.unit == 30            # 정가 600 은 30번 = 최소 3해
 
 
-def test_learn_is_clamped_by_action_points_not_rejected(cfg, world):
-    """AP 가 모자라면 닿는 데까지만 받는다 — invest 와 같다. 통째로 거절하면 남은
-    0.4 AP 로는 영영 배울 수 없게 된다."""
+def test_learn_stops_when_action_runs_out(cfg, world):
+    """AP 가 한 번 값보다 적으면 그 해에는 더 못 낸다 — 금액이 고정이라 절삭할 것이 없다."""
     from core.agent_loop import Sink, execute_tool
-    a = world.agents["Asla2"]; a.ap, a.budget = 0.4, 10_000.0
-    r, _ = execute_tool("learn", {"country": "Miris", "amount": cfg.costs.learn_base,
-                                  "reasoning": "r"}, world, a, cfg, Sink(), 48.0)
-    assert r["ok"] and abs(r["charged"] - cfg.facility.invest_per_ap * 0.4) < 1e-6
-    assert abs(a.ap) < 1e-9
+    a = world.agents["Asla2"]; a.ap, a.budget = cfg.ap.unit / 2, 10_000.0
+    r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
+                        world, a, cfg, Sink(), 48.0)
+    assert not r["ok"] and "not enough action" in r["error"]
+    assert a.budget == 10_000.0                    # 한 푼도 안 나갔다
 
 
 # ── #11 정보 은닉 (가장 중요) ────────────────────────────────────────────────

@@ -91,10 +91,9 @@ T = {
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
         income="今年の収入: +{v:.0f}",
         ap_now="残り行動力: {v:.2f}",
-        multi="予算が許す限り複数の行動ができます。メッセージは1年に3件まで。\n使い残した予算は翌年に残ります。",
+        multi="予算と行動力が許す限り複数の行動ができます。\n使い残した予算は翌年に残ります。",
         costs_hdr="行動の費用", col_money="お金", col_ap="行動力",
         ap_hdr="行動力は毎年 1.0 に戻り、繰り越せません。何を諦めるかがここで決まります。",
-        ap_prop="額÷{v:.0f}",
         c_dom="  話す（自国内）", c_orig="  話す（国際・original）",
         c_orig_note="   費用は届かなくても請求される",
         c_orig_sure="    {nation} へ — あなたがこの国の言語を扱えるので**必ず届く**",
@@ -109,9 +108,9 @@ T = {
         c_vote_note="何を建てるかの採決を召集する",
         c_obs="  observe_risk",
         c_obs_note="   隕石までの残り年数と interceptor に要る進捗を測る。国家投資が精度を上げる",
-        c_inv="  invest", c_inv_note="指定した額",
+        c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ",
         c_pro="  procreate", c_pro_note="子を残してあなたは死ぬ",
-        inv_hdr="invest の効果", inv_cap="  どの投資にも行動力がかかる — {v:.0f} ごとに 1.0。\n                          自国の技術力がその率を上げる",
+        inv_hdr="invest の効果",
         inv_well="  wellness   あなたの健康が良くなる",
         inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n                          observe_risk の精度も良くなる。国民全員に及ぶ",
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n                          （省くと自国）",
@@ -145,10 +144,9 @@ T = {
         c_mem="  memory_write", c_mem_note="改写你的笔记",
         income="今年的收入: +{v:.0f}",
         ap_now="剩余行动力: {v:.2f}",
-        multi="只要预算允许，你可以采取多项行动。每年最多 3 条消息。\n没用完的预算会留到明年。",
+        multi="只要预算和行动力允许，你可以采取多项行动。\n没用完的预算会留到明年。",
         costs_hdr="行动费用", col_money="钱", col_ap="行动力",
         ap_hdr="行动力每年恢复为 1.0，不能结转。放弃什么，在这里决定。",
-        ap_prop="额÷{v:.0f}",
         c_dom="  说话（本国内）", c_orig="  说话（国际·original）",
         c_orig_note="   送不到也照收费用",
         c_orig_sure="    发往 {nation} — 你会这个国家的语言，**一定送到**",
@@ -163,9 +161,9 @@ T = {
         c_vote_note="召集「建什么」的表决",
         c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 需要多少进度。国家投资会提高精度",
-        c_inv="  invest", c_inv_note="你指定的数额",
+        c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一",
         c_pro="  procreate", c_pro_note="留下孩子，你随即死去",
-        inv_hdr="invest 的效果", inv_cap="  任何投资都消耗行动力 — 每 {v:.0f} 花 1.0。本国技术水平提高该比率",
+        inv_hdr="invest 的效果",
         inv_well="  wellness   你的健康会变好",
         inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n                          observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
@@ -200,10 +198,9 @@ T = {
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
         income="Revenu de cette année : +{v:.0f}",
         ap_now="Action restante : {v:.2f}",
-        multi="Vous pouvez agir plusieurs fois si le budget le permet. Jusqu'à 3 messages par an.\nLe budget non dépensé reste pour l'année suivante.",
+        multi="Vous pouvez agir plusieurs fois si le budget et l'action le permettent.\nLe budget non dépensé reste pour l'année suivante.",
         costs_hdr="Coûts des actions", col_money="argent", col_ap="action",
         ap_hdr="L'action revient à 1.0 chaque année et ne se reporte pas. Ce que vous renoncez se décide ici.",
-        ap_prop="mnt÷{v:.0f}",
         c_dom="  parler (dans votre nation)", c_orig="  parler (international, original)",
         c_orig_note="   le coût est prélevé même s'il n'arrive pas",
         c_orig_sure="    vers {nation} — vous maniez sa langue, **il arrive à coup sûr**",
@@ -218,9 +215,9 @@ T = {
         c_vote_note="convoquer un scrutin sur quoi bâtir",
         c_obs="  observe_risk",
         c_obs_note="   mesure les années restantes et la progression qu'exige un interceptor ; l'investissement national affine",
-        c_inv="  invest", c_inv_note="le montant choisi",
+        c_inv="  invest", c_inv_note="vers wellness · national · facility",
         c_pro="  procreate", c_pro_note="vous laissez un enfant et vous mourez",
-        inv_hdr="effets d'invest", inv_cap="  tout investissement coûte de l'action : 1.0 par tranche de {v:.0f} ;\n             le niveau technique de votre nation relève ce taux",
+        inv_hdr="effets d'invest",
         inv_well="  wellness   votre santé s'améliore",
         inv_natl="  national   élève le niveau technique de votre nation : le revenu, le rendement\n"
                           "             de ce qu'on verse à une installation et la précision d'observe_risk\n"
@@ -343,25 +340,21 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
             note = (t["c_both"] if domestic and parent
                     else t["c_cheap"] if domestic
                     else t["c_disc"] if parent else "")
-            # **AP 는 금액에 비례한다** — invest 와 같은 꼴로 적는다 (額÷600).
-            #
-            # 전에는 「눈금을 끝까지 내는 데 드는 AP」 를 적어서 그냥 `1` 이었다. 100 을
-            # 넣으려는 사람이 그 `1` 을 보면 **한 해를 통째로 쓰는 일**로 읽는다.
-            lines.append(row(t["c_learn"].format(nation=c.id), cost,
-                             t["ap_prop"].format(v=cfg.facility.invest_per_ap),
-                             note))
-            # **진척 줄은 언제나 적는다.** 0 일 때 빼면 표가 일시불처럼 보인다 —
-            # 600 이라는 한 숫자만 남고, 예산 100 을 든 사람은 손도 못 댈 값으로 읽는다.
-            # 「0 / 600」 이면 쌓인다는 것이 숫자의 모양으로 보인다.
+            # **비용 칸은 한 번의 값이다** (20 · 0.1). 총액은 바로 아래 진척 줄이
+            # 말한다 — 전에는 비용 칸에 총액(600)이 있고 아래에 또 0/600 이 나와서
+            # 같은 숫자가 두 번 보였고, 「20 을 낸다」 와 「600 이 든다」 가 한 줄에
+            # 섞여 읽혔다.
+            lines.append(row(t["c_learn"].format(nation=c.id), cfg.costs.unit,
+                             cfg.ap.unit, note))
+            # 얼마를 냈고 얼마가 남았는지. **0 일 때도 적는다** — 「0 / 600」 이면
+            # 쌓인다는 것이 숫자의 모양으로 보인다.
             done = agent.lang_progress.get(c.lang, 0.0)
             lines.append(t["c_learn_prog"].format(done=done, need=cost))
     lines.append(row(t["c_vote"], cfg.costs.propose_vote, cfg.ap.propose_vote,
                      t["c_vote_note"]))
     lines.append(row(t["c_obs"], cfg.costs.observe_risk, cfg.ap.observe_risk, t["c_obs_note"]))
     lines.append(row(t["c_ballot"], 0, cfg.ap.vote, t["c_ballot_note"]))
-    lines.append(row(t["c_inv"], "",
-                     t["ap_prop"].format(v=agent_loop.invest_per_ap(agent, world, cfg)),
-                     t["c_inv_note"]))
+    lines.append(row(t["c_inv"], cfg.costs.unit, cfg.ap.unit, t["c_inv_note"]))
     lines.append(row(t["c_mem"], 0, cfg.ap.memory_write, t["c_mem_note"]))
     lines.append(row(t["c_pro"], 0, cfg.ap.procreate, t["c_pro_note"]))
     lines.append(t["ap_hdr"])
@@ -506,7 +499,6 @@ def render_observation(world, agent, cfg, knob_ai: float,
         render_costs(world, agent, cfg, knob_ai),
         "",
         t["inv_hdr"], t["inv_well"], t["inv_natl"], t["inv_fac"],
-        t["inv_cap"].format(v=agent_loop.invest_per_ap(agent, world, cfg)),
         # **내가 어느 나라 시설에 얼마를 냈는지.** 내 행동의 합이라 상대 국가 정보를
         # 흘리지 않는다. 그 나라의 총 진척은 여전히 안 알려준다 (자국은 위에 있고,
         # 타국은 4.1).

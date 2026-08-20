@@ -65,11 +65,8 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["to", "text"]),
 
     fn("invest",
-        "Invest in a resource. `national` and `facility` cost action points in proportion "
-        "to the amount, and your nation's technical level is what raises how much one point "
-        "buys — you cannot hoard and pour it all in at the end, and investing competes with "
-        "speaking, learning and observing. `wellness` costs a small flat amount of action "
-        "instead, whatever the sum. "
+        "Put one fixed amount into a resource; the observation shows how much money and "
+        "how much action it takes. "
         "`national` raises your nation's technical level, which "
         "lifts income, how much progress a facility gets out of what is put into it, and "
         "the precision of observe_risk — for everyone in that nation. "
@@ -80,22 +77,20 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "settled its territory has nothing to build, so the money buys no progress. "
         "Only that nation knows which it is.",
         {"target": {"type": "string", "enum": ["wellness", "national", "facility"]},
-         "amount": {"type": "number", "description": "amount taken from your budget"},
          "to": {"type": "string", "description": "facility only: any nation id, yours or another's. "
                                "Defaults to your own nation"}},
-        ["target", "amount"]),
+        ["target"]),
 
     fn("learn",
-        "Put money toward learning another nation's language. Give a nation id, not a "
-        "language code. You do not have to pay it all at once — what you put in "
-        "accumulates, and your observation shows how far along you are and how much is "
-        "still needed. You can read the language once the accumulated amount reaches "
-        "what it costs. The cost can fall while you are partway through — if someone in "
-        "your nation comes to speak it, or if your parent did — and then you may finish "
-        "sooner than you expected.",
-        {"country": {"type": "string", "description": "the nation whose language to learn (e.g. Ranoa)"},
-         "amount": {"type": "number", "description": "amount taken from your budget"}},
-        ["country", "amount"]),
+        "Put one fixed amount toward learning another nation's language; it costs the "
+        "same money and action as an investment. Give a nation id, not a language code. "
+        "What you put in accumulates, and your observation shows how far along you are "
+        "and how much is still needed. You can read and write the language once the "
+        "accumulated amount reaches what it costs. That cost can fall while you are "
+        "partway through — if someone in your nation comes to speak it, or if your parent "
+        "did — and then you may finish sooner than you expected.",
+        {"country": {"type": "string", "description": "the nation whose language to learn (e.g. Ranoa)"}},
+        ["country"]),
 
     fn("observe_risk",
         "Measure how many years remain until the meteorite strikes, and how much "
