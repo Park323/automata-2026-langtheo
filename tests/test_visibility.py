@@ -191,3 +191,79 @@ def test_a_delivery_failure_reaches_only_the_sender(cfg, world):
                       48.0, itertools.count(900), loop.RunResult(world=world), {}, [], [])
     fails = [e for e in world.inbox_queue if "delivery_failed_to" in e["msg"]]
     assert [e["to"] for e in fails] == ["Asla2"]
+
+
+# ── SECRET 이 프롬프트에 새지 않는가 ────────────────────────────────────────
+
+def test_no_secret_value_reaches_any_rendered_string(cfg):
+    """**표를 기준으로 관측 전체를 훑는다.**
+
+    지금까지 은닉 검사가 사례별로 흩어져 있었다 — 「배수가 없나」, 「임계가 없나」,
+    「success_prob 이 없나」 를 각각 다른 테스트가 봤다. 그래서 새 값이 새면 그것을 보는
+    테스트가 없었다.
+
+    여기서는 SECRET 값들에 **눈에 띄는 숫자**를 박고, 에이전트가 볼 수 있는 문자열
+    전부(SYSTEM+관측 · 해 시작 문구 · 사건 · 도구 응답)에 그 숫자가 나오는지 본다.
+    """
+    import dataclasses
+    import json
+
+    from core.agent_loop import Sink, execute_tool
+    from domains.meteor import prompts
+
+    # 우연히 겹치지 않는 값들
+    probe = dataclasses.replace(
+        cfg,
+        world=dataclasses.replace(cfg.world, success_prob=0.4321),
+        survival=dataclasses.replace(cfg.survival, lambda_base=1234.5, k=77),
+        thresholds=dataclasses.replace(cfg.thresholds, interceptor=987654,
+                                       bunker_scale=876543),
+        growth=dataclasses.replace(cfg.growth, growth_coef=0.9753),
+    )
+    world = loop.init_world(probe, itertools.count(1), random.Random(1))
+    world.turn = 3
+    world.countries["Asla"].land = "interceptor"
+    world.countries["Asla"].national_capital = 5000.0
+    a = world.agents["Asla1"]
+    a.ap, a.budget = 1.0, 500.0
+    a.lam = 1234.5                                  # 개인의 λ
+
+    seen = [prompts.system_for(a, world, probe, 48.0),
+            prompts.render_turn_open(world, a, probe, 48.0, [])]
+    sink = Sink()
+    for name, args in (("observe_risk", {"reasoning": "r"}),
+                       ("invest", {"target": "wellness", "reasoning": "r"}),
+                       ("invest", {"target": "national", "reasoning": "r"}),
+                       ("invest", {"target": "facility", "reasoning": "r"}),
+                       ("learn", {"country": "Miris", "reasoning": "r"}),
+                       ("speak", {"to": "Asla2", "text": "x", "reasoning": "r"})):
+        a.ap = 1.0
+        r, _ = execute_tool(name, args, world, a, probe, sink, 48.0)
+        seen.append(json.dumps(r, ensure_ascii=False))
+    # 사건도 — 이 판에서 생긴 것 전부
+    loop._settle_step(world, probe, random.Random(0), sink, None, 48.0,
+                      itertools.count(900), loop.RunResult(world=world), {}, [], [])
+    for e in world.inbox_queue:
+        seen.append(prompts.render_events(world.agents[e["to"]], [e["msg"]]))
+
+    blob = "\n".join(seen)
+    for secret in ("0.4321", "1234.5", "1234", "987654", "876543", "0.9753", "77"):
+        assert secret not in blob, f"SECRET 이 새어 나갔다: {secret}"
+
+
+def test_the_audit_would_actually_catch_a_leak(cfg):
+    """**감사가 감사를 하는지** 본다. 위 테스트가 늘 통과하기만 하면 그물이 없는 것과
+    같으므로, 일부러 새게 만들어 잡히는지 확인한다."""
+    import dataclasses
+
+    from domains.meteor import prompts
+    probe = dataclasses.replace(
+        cfg, thresholds=dataclasses.replace(cfg.thresholds, interceptor=987654))
+    world = loop.init_world(probe, itertools.count(1), random.Random(1))
+    world.turn = 3
+    # 임계를 관측에 실으면 (옛 설계가 그랬다) 그 숫자가 문자열에 나타난다
+    leaked = prompts.render_observation(world, world.agents["Asla1"], probe, 48.0) \
+        + f"\n  interceptor に要る進捗: {probe.thresholds.interceptor}"
+    assert "987654" in leaked                        # 그물이 잡을 수 있는 모양이다
+    clean = prompts.render_observation(world, world.agents["Asla1"], probe, 48.0)
+    assert "987654" not in clean                     # 지금은 안 새고 있다

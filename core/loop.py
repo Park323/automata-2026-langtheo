@@ -552,6 +552,14 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
             c.land, c.progress = chosen, 0.0
         c.proposal = None                       # 바뀌든 안 바뀌든 採決은 닫힌다
         result.land_changes.append(rec)
+        # **採決 결과와 그때 사라진 진척을 그 나라에 알린다** (ballot_result PUBLIC).
+        # 전에는 아무도 통지받지 않았다 — 다음 해에 진척이 0 인 것을 보고 추론해야 했고,
+        # 국토도 같이 바뀌어 「내가 낸 것이 다 날아갔다」 를 알아차릴 단서가 약했다.
+        _notify(world, "ballot_result",
+                {"ballot": "changed" if rec["changed"] else (
+                     "kept" if rec["chosen"] else "none"),
+                 "land": c.land, "lost": rec["progress_lost"]},
+                world.turn, nation=cid)
 
     # f-2. 출자자에게 자기 몫의 진척 기여를 다음 턴에 알린다 (행위 후 공개)
     #
@@ -795,6 +803,14 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
     for o in sink.observations:
         result.risk_log.append({"turn": world.turn, **o})
     # 시설 — 이번 턴 국가별 누적(turn_facility) 기준 **선착순 cap**, 즉시 진척 + 같은 턴 통지
+    #
+    # **진척 변화는 그 나라에 일괄로 알린다** (visibility: progress_change PUBLIC).
+    # 출자자별로 알리면 부피가 3배가 된다 — 실측에서 해당 2.8건이고 각각 3명에게 가면
+    # 해마다 8항목이 대화에 쌓인다. 차례 단위로 묶으면 5항목이다.
+    #
+    # 누가 냈는지는 담지 않는다. 자국민은 자기가 낸 것을 알므로 차이에서 타국 출자를
+    # 짐작할 수 있고, 그 짐작은 흘려도 되는 것이다.
+    prog_delta: dict = {}
     for to_country, amount, agent_id in sink.facility:
         cap = cfg.facility.cap_per_turn
         used = turn_facility.get(to_country, 0.0)
@@ -821,13 +837,25 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
             else:
                 note["fac_moved"] = gain > 0                # 타국은 늘었는지 여부만
             _notify(world, "fac_gain", note, world.turn, actor=agent_id)
+        if gain:
+            prog_delta[to_country] = prog_delta.get(to_country, 0.0) + gain
+    for cid, gain in sorted(prog_delta.items()):
+        _notify(world, "progress_change",
+                {"prog_up": gain, "now": world.countries[cid].progress},
+                world.turn, nation=cid)
     # wellness / national
     for aid, amount in sink.wellness:
         if aid in world.agents:
             world.agents[aid].lam += amount * cfg.wellness.gain
             world.agents[aid].wellness_spent += amount
+    capped: set = set()
     for cid, amount, _ in sink.national:
         world.countries[cid].national_capital += amount
+        capped.add(cid)
+    for cid in sorted(capped):
+        # 수입·시설 전환율·관측 정확도가 다 여기 걸려 있어 국민 전원의 일이다.
+        # **얼마나 올랐는지는 담지 않는다** — 배수 함수는 SECRET 이다.
+        _notify(world, "capital_change", {"cap_up": True}, world.turn, nation=cid)
     # 메시지 — 번역 후 **같은 턴** 배달
     for sent in sink.messages:
         recipient = world.agents.get(sent["to"])
@@ -902,6 +930,14 @@ def _roundrobin_tally(world: World, cfg, result: RunResult, ballots_acc: list) -
             c.land, c.progress = chosen, 0.0
         c.proposal = None
         result.land_changes.append(rec)
+        # **採決 결과와 그때 사라진 진척을 그 나라에 알린다** (ballot_result PUBLIC).
+        # 전에는 아무도 통지받지 않았다 — 다음 해에 진척이 0 인 것을 보고 추론해야 했고,
+        # 국토도 같이 바뀌어 「내가 낸 것이 다 날아갔다」 를 알아차릴 단서가 약했다.
+        _notify(world, "ballot_result",
+                {"ballot": "changed" if rec["changed"] else (
+                     "kept" if rec["chosen"] else "none"),
+                 "land": c.land, "lost": rec["progress_lost"]},
+                world.turn, nation=cid)
 
 
 def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult,

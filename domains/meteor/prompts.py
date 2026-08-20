@@ -126,6 +126,13 @@ T = {
         fac_gain="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
         fac_moved="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
         fac_still="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
+        prog_up="  自国の進捗が {gain:.0f} 進んで {now:.0f} になりました。",
+        cap_up="  自国の技術力が上がりました。",
+        ballot_kept="  採決の結果、国土は {land} のままです。",
+        ballot_new="  採決の結果、国土は {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
+        ballot_none="  採決では何も決まりませんでした。国土は {land} のままです。",
+        outcome_win="  interceptor が完成し、隕石は止まりました。全ての国の人が生き残りました。",
+        outcome_lose="  隕石が落ちました。",
         roster="人々:", roster_you="（あなた）",
         mem_hdr="あなたの覚え書き（memory_write は書き足すのではなく、この全体を書き換えます）:",
         mem_none="  （まだ何もない）",
@@ -178,6 +185,13 @@ T = {
         fac_gain="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
         fac_moved="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
         fac_still="  你去年投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
+        prog_up="  本国的进度前进了 {gain:.0f}，现在是 {now:.0f}。",
+        cap_up="  本国的技术水平提高了。",
+        ballot_kept="  表决的结果，国土仍是 {land}。",
+        ballot_new="  表决的结果，国土定为 {land}。此前的进度 {lost:.0f} 已失去。",
+        ballot_none="  表决没有决定任何事。国土仍是 {land}。",
+        outcome_win="  interceptor 建成，陨石被拦下了。所有国家的人都活了下来。",
+        outcome_lose="  陨石落下了。",
         roster="人们:", roster_you="（你）",
         mem_hdr="你的笔记（memory_write 不是追加，而是整段改写）:",
         mem_none="  （还什么都没有）",
@@ -234,6 +248,13 @@ T = {
         fac_gain="  Votre versement de {amt:.0f} à facility l'an dernier a fait progresser {to} de {gain:.0f}.",
         fac_moved="  Votre versement de {amt:.0f} l'an dernier a fait progresser {to}.",
         fac_still="  Votre versement de {amt:.0f} l'an dernier n'a fait progresser {to} en rien.",
+        prog_up="  La progression de votre nation a avancé de {gain:.0f} ; elle est à {now:.0f}.",
+        cap_up="  Le niveau technique de votre nation s'est élevé.",
+        ballot_kept="  Au scrutin, le territoire reste {land}.",
+        ballot_new="  Au scrutin, le territoire devient {land}. La progression acquise, {lost:.0f}, est perdue.",
+        ballot_none="  Le scrutin n'a rien décidé. Le territoire reste {land}.",
+        outcome_win="  L'interceptor est achevé ; la météorite a été arrêtée. Tous ont survécu.",
+        outcome_lose="  La météorite est tombée.",
         roster="Les gens :", roster_you="(vous)",
         mem_hdr="Vos notes (memory_write n'ajoute rien : il remplace tout ceci) :",
         mem_none="  (rien encore)",
@@ -382,7 +403,8 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
 
 
 # **세계의 사건**을 가르는 키. 사람이 나에게 한 말이 아니라, 세계가 나에게 알리는 것.
-_EVENT_KEYS = ("died", "fac_gain", "fac_moved", "delivery_failed_to")
+_EVENT_KEYS = ("died", "fac_gain", "fac_moved", "delivery_failed_to",
+               "prog_up", "cap_up", "ballot", "outcome")
 
 
 def is_event(m: dict) -> bool:
@@ -442,6 +464,24 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
         if m.get("died"):                      # 같은 나라 사람의 부고 (+ 후임)
             out.append(t["died"].format(who=m["died"], born=m.get("born") or "?",
                                         age=m.get("age") if m.get("age") is not None else "?"))
+            continue
+        if m.get("prog_up") is not None:       # 자국 진척이 늘었다 (PUBLIC · 일괄)
+            out.append(t["prog_up"].format(gain=m["prog_up"], now=m["now"]))
+            continue
+        if m.get("cap_up"):                    # 자국 기술력이 올랐다 (PUBLIC)
+            out.append(t["cap_up"])
+            continue
+        if m.get("ballot"):                    # 採決 결과 (PUBLIC)
+            b = m["ballot"]
+            if b == "changed":
+                out.append(t["ballot_new"].format(land=m["land"], lost=m["lost"]))
+            elif b == "kept":
+                out.append(t["ballot_kept"].format(land=m["land"]))
+            else:
+                out.append(t["ballot_none"].format(land=m["land"] or t["undecided"]))
+            continue
+        if m.get("outcome"):                   # 요격기 완성 · 운석 (GLOBAL)
+            out.append(t["outcome_win" if m["outcome"] == "win" else "outcome_lose"])
             continue
         if m.get("fac_gain") is not None:      # 자국 출자 — 액수까지
             out.append(t["fac_gain"].format(amt=m["amount"], to=m["to"],
