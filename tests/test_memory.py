@@ -288,3 +288,83 @@ def test_the_memo_header_says_it_overwrites(cfg, world):
             assert hdr in obs                     # 채워져 있어도 보인다
             if memo:
                 assert memo in obs
+
+
+# ── 기억을 쓰면 자리를 산다 ────────────────────────────────────────────────────
+
+def _fat_convo(n_blocks: int, chars: int = 2200) -> list[dict]:
+    """user 로 시작하는 블록 n 개. `_turn_blocks` 가 user 를 경계로 쪼갠다."""
+    out = []
+    for i in range(n_blocks):
+        out.append({"role": "user", "content": f"[{i}] " + "x" * chars})
+        out.append({"role": "assistant", "content": None, "tool_calls": []})
+        out.append({"role": "tool", "tool_call_id": "t", "content": '{"ok": true}'})
+    return out
+
+
+def test_writing_memory_under_pressure_buys_room(cfg, world):
+    """**경고를 받고 기억을 적어도 아무것도 줄지 않았다.**
+
+    압박 경고는 사실 통지인데, memory_write 를 해도 대화는 그대로 쌓이고
+    `last_prompt_tokens` 도 그대로여서 경고가 다음 호출에도 계속 붇었다. 20턴 런에서:
+
+        압박 판정      135 에이전트-해 중 **94건(70%)**. 한 번 걸리면 죽을 때까지 유지
+        Miris6 턴14    한 해에 memory_write **10회** — 안 꺼지는 경고를 계속 껐다
+        Asla3 턴7~15   거꾸로 **한 번도 안 적었다**. 안 꺼지는 경고는 잡음이 된다
+
+    그래서 압박 아래의 memory_write 를 **거래**로 만든다 — 적으면 자리가 생긴다.
+    """
+    from core import agent_loop
+    a = world.agents["Asla1"]
+    a.ap, a.convo = 1.0, _fat_convo(8)
+    a.last_prompt_tokens = cfg.llm.context_limit          # 압박 안
+    assert agent_loop.under_pressure(a, cfg)
+
+    dropped = agent_loop.compact_after_memory(a, cfg, agent_loop._TOOL_TOKENS)
+    assert dropped > 0
+    # **경고선 아래로** 내려간다 — 한계선까지만 내리면 다음 호출에 다시 켜진다
+    warn = cfg.llm.context_limit * cfg.llm.warn_ratio
+    assert agent_loop.estimate_tokens(a.convo, agent_loop._TOOL_TOKENS) <= warn
+    # 그리고 그 자리에서 경고가 꺼진다 — 다음 호출을 기다리지 않는다
+    assert not agent_loop.under_pressure(a, cfg)
+
+
+def test_compaction_keeps_the_exchange_in_progress(cfg, world):
+    """**지금 진행 중인 주고받기는 남는다.** 압축은 한계선보다 낮은 값까지 내려가므로
+    블록 하나만 남기면 방금 부른 도구의 결과가 사라질 수 있다."""
+    from core import agent_loop
+    a = world.agents["Asla1"]
+    a.convo = _fat_convo(6)
+    a.convo[-1] = {"role": "tool", "tool_call_id": "t", "content": '{"ok": true, "mine": 1}'}
+    a.last_prompt_tokens = cfg.llm.context_limit
+    agent_loop.compact_after_memory(a, cfg, agent_loop._TOOL_TOKENS)
+    assert len(agent_loop._turn_blocks(a.convo)) >= 2
+    assert a.convo[-1]["content"] == '{"ok": true, "mine": 1}'
+
+
+def test_no_compaction_when_there_is_room(cfg, world):
+    """여유가 있으면 버리지 않는다 — 아무 이득 없이 대화만 잃는다."""
+    from core import agent_loop
+    a = world.agents["Asla1"]
+    a.convo = _fat_convo(2, chars=50)
+    a.last_prompt_tokens = 10
+    assert not agent_loop.under_pressure(a, cfg)
+    before = list(a.convo)
+    assert agent_loop.compact_after_memory(a, cfg, agent_loop._TOOL_TOKENS) == 0
+    assert a.convo == before
+
+
+def test_memory_write_compacts_on_both_paths(cfg, world):
+    """**두 경로가 같이 움직여야 한다.** 순차 라운드로빈에만 넣으면 병렬 경로에서는
+    기억을 적어도 압박이 안 풀리고, 그 차이는 테스트가 한쪽만 보면 안 보인다.
+
+    소스를 읽어 확인한다 — 배선은 두 함수 안에 있고, 한쪽을 지워도 다른 쪽 테스트는
+    통과하기 때문이다.
+    """
+    import inspect
+
+    from core import agent_loop
+    for fn in (agent_loop._agent_one_call, agent_loop.run_agent_turn):
+        src = inspect.getsource(fn)
+        assert "compact_after_memory" in src, fn.__name__
+        assert "under_pressure(agent, cfg)" in src, fn.__name__

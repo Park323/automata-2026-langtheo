@@ -547,14 +547,19 @@ def _turn_blocks(convo: list[dict]) -> list[tuple[int, int]]:
     return [(a, b) for a, b in zip(idx, idx[1:] + [len(convo)])]
 
 
-def evict(convo: list[dict], limit_tokens: int, tool_tokens: int = 0) -> tuple[list[dict], int]:
-    """한계를 넘으면 오래된 턴 블록부터 버린다. 최근 한 턴은 반드시 남긴다.
+def evict(convo: list[dict], limit_tokens: int, tool_tokens: int = 0,
+          min_blocks: int = 1) -> tuple[list[dict], int]:
+    """한계를 넘으면 오래된 턴 블록부터 버린다. 최근 `min_blocks` 개는 반드시 남긴다.
 
     system 은 convo 에 없다 (매 호출 앞에 붙인다). 반환 (남은 대화, 버린 블록 수).
+
+    `min_blocks` 는 기억 압축(`compact_after_memory`)이 쓴다. 그쪽은 한계보다 낮은 값까지
+    내려가므로 더 많이 버리게 되는데, **지금 진행 중인 주고받기**까지 잘라내면 방금 부른
+    도구의 결과가 사라진다. 둘 이상 남겨 두면 현재 블록이 안전하다.
     """
     dropped = 0
     blocks = _turn_blocks(convo)
-    while len(blocks) > 1 and estimate_tokens(convo, tool_tokens) > limit_tokens:
+    while len(blocks) > min_blocks and estimate_tokens(convo, tool_tokens) > limit_tokens:
         convo = convo[blocks[0][1]:]
         dropped += 1
         blocks = _turn_blocks(convo)
@@ -564,6 +569,35 @@ def evict(convo: list[dict], limit_tokens: int, tool_tokens: int = 0) -> tuple[l
 def under_pressure(agent, cfg) -> bool:
     """직전 호출의 실측 토큰이 경고 임계를 넘었나."""
     return agent.last_prompt_tokens >= cfg.llm.context_limit * cfg.llm.warn_ratio
+
+
+def compact_after_memory(agent, cfg, tool_tokens: int) -> int:
+    """**기억을 쓰면 앞쪽 대화를 버린다.** 버린 블록 수를 돌려준다.
+
+    압박 경고는 「한계에 다가가고 있다」 는 사실 통지였는데, 경고를 받고 memory_write 를
+    해도 **아무것도 줄어들지 않았다.** 대화는 그대로 쌓이고 `last_prompt_tokens` 도
+    그대로여서 경고가 다음 호출에도, 그 다음에도 계속 붇는다. 20턴 런에서:
+
+        압박 판정          135 에이전트-해 중 **94건(70%)**. 한 번 걸리면 죽을 때까지 유지
+        Miris6 턴14        한 해에 memory_write **10회** — 경고가 안 꺼지니 계속 적었다
+        Asla3 턴7~15       거꾸로 **한 번도 안 적었다**. 안 꺼지는 경고는 잡음이 된다
+
+    그래서 압박 아래에서의 memory_write 를 **거래**로 만든다 — 적으면 자리가 생긴다.
+    spec 4.5 가 기억을 압축으로 둔 뜻이 그것이고, 압축에서 잃는 것이 관측 대상이다.
+
+    경고선(`context_limit × warn_ratio`) **아래로** 내린다. 한계선까지만 내리면 다음
+    호출에서 경고가 다시 켜져 아무것도 달라지지 않는다.
+
+    `last_prompt_tokens` 를 그 자리에서 새 추정으로 갈아 준다 — 그러지 않으면 다음 호출이
+    돌아올 때까지 옛 값이 남아 경고가 한 번 더 붇는다.
+    """
+    target = cfg.llm.context_limit * cfg.llm.warn_ratio
+    before = len(agent.convo)
+    agent.convo, dropped = evict(agent.convo, target, tool_tokens, min_blocks=2)
+    if dropped:
+        agent.last_prompt_tokens = estimate_tokens(agent.convo, tool_tokens)
+    del before
+    return dropped
 
 
 def _year(turn: int) -> int:
@@ -630,7 +664,8 @@ class _StepAcc:
     (`_agent_one_call`)를 공유하려고 누적 상태를 밖으로 뺐다.
     """
     __slots__ = ("actions", "reasonings", "calls", "seen", "api_reasoning", "steps",
-                 "evicted", "error", "recovered", "no_tool_content", "llm_ms", "pressured")
+                 "evicted", "error", "recovered", "no_tool_content", "llm_ms", "pressured",
+                 "compacted")
 
     def __init__(self):
         self.actions = []
@@ -645,6 +680,10 @@ class _StepAcc:
         self.no_tool_content = ""
         self.llm_ms = 0.0
         self.pressured = False
+        # **기억으로 산 자리.** 한계에 밀려 버린 것(`evicted`)과 가른다 — 하나는 어쩔 수
+        # 없이 잃은 것이고 하나는 적어 두고 바꾼 것이다. 섞으면 거래가 일어났는지 안
+        # 일어났는지 사후에 알 수 없다.
+        self.compacted = 0
 
 
 def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
@@ -742,6 +781,11 @@ def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
             st.actions.append({"type": name, **args})
         agent.convo.append({"role": "tool", "tool_call_id": tc["id"],
                             "content": json.dumps(result, ensure_ascii=False)})
+        # **기억을 쓰면 자리를 산다.** 압박 아래에서만 — 여유가 있을 때 버리면 아무
+        # 이득 없이 대화만 잃는다. 결과를 append 한 **뒤**에 도는 이유는, 방금 부른
+        # 도구의 결과가 남은 블록 안에 들어가야 하기 때문이다.
+        if name == "memory_write" and result.get("ok") and under_pressure(agent, cfg):
+            st.compacted += compact_after_memory(agent, cfg, tool_tokens)
         # 실패한 호출만 센다 (성공은 자원을 쓰므로 can_act 가 이미 막는다).
         if not result.get("ok"):
             key = f"{name}|{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
@@ -761,6 +805,7 @@ def _turn_log(agent, st: "_StepAcc", ended_by: str, t_turn: float) -> dict:
             "reasoning_missing": not any(r["reasoning"] for r in st.reasonings),
             "steps": st.steps, "prompt_tokens": agent.last_prompt_tokens,
             "pressured": st.pressured, "evicted_blocks": st.evicted,
+            "compacted_blocks": st.compacted,
             "memory_len": len(agent.memory),
             "recovered_calls": st.recovered, "no_tool_content": st.no_tool_content,
             "elapsed_ms": round((time.time() - t_turn) * 1000),
@@ -827,6 +872,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     tool_tokens = _TOOL_TOKENS if tool_list is TOOLS else _TOOL_TOKENS_NR
     error = None
     evicted = 0
+    compacted = 0          # 기억으로 산 자리 — 한계에 밀려 버린 것(evicted)과 가른다
     ended_by = "exhausted"  # ended | exhausted | error | repeat_guard | runaway
     calls: list[dict] = []  # 도구 호출 전문 (인자·결과·실패 사유)
     seen: dict[str, int] = {}       # (도구,인자) 반복 카운터 — 실패는 자원을 안 쓴다
@@ -963,6 +1009,11 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
                 actions.append({"type": name, **args})
             agent.convo.append({"role": "tool", "tool_call_id": tc["id"],
                                 "content": json.dumps(result, ensure_ascii=False)})
+            # **두 경로가 같이 움직여야 한다.** 순차 라운드로빈에만 넣어 두면 병렬
+            # 경로에서는 기억을 적어도 자리가 생기지 않고, 그 차이는 테스트가 한쪽만
+            # 보면 안 보인다 (이 프로젝트에서 이미 겪은 부류다).
+            if name == "memory_write" and result.get("ok") and under_pressure(agent, cfg):
+                compacted += compact_after_memory(agent, cfg, tool_tokens)
             # ③ 실패한 호출만 센다. 성공은 자원을 쓰므로 ②가 이미 막는다 —
             #    성공까지 세면 정상 행동(같은 상대에게 3번 말하기)이 끊긴다.
             if not result.get("ok"):
@@ -987,6 +1038,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             "reasoning_missing": not any(r["reasoning"] for r in reasonings),
             "steps": steps, "prompt_tokens": agent.last_prompt_tokens,
             "pressured": pressured, "evicted_blocks": evicted,
+            "compacted_blocks": compacted,
             "memory_len": len(agent.memory),
             "recovered_calls": recovered, "no_tool_content": no_tool_content,
             "elapsed_ms": round((time.time() - t_turn) * 1000),
