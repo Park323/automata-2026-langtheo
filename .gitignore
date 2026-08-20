@@ -18,5 +18,11 @@ venv/
 # Simulation outputs
 outputs/
 results/
+
+# 손으로 파본 흔적 — raw_calls 조각 같은 것. 저장소에 남을 것이 아니다
+memo
+memo/
+scratch/
+*.scratch
 logs/
 runs/
