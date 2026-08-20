@@ -225,11 +225,14 @@ def test_state_lives_in_system_and_never_piles_up_in_the_conversation():
                       parallel=False)
     convo = res.world.agents["Asla1"].convo
     users = [m["content"] for m in convo if m["role"] == "user"]
-    assert len(users) == 3                       # 턴마다 한 마디
+    assert len(users) == 3                       # 해마다 한 마디
     for u in users:
-        assert "予算" not in u                    # 상태가 대화에 없다
-        assert "行動の費用" not in u               # 비용표도 없다
-        assert "になりました" in u                 # 턴을 여는 한 마디는 있다
+        assert "行動の費用" not in u               # 비용표는 대화에 없다
+        assert "自国の進捗" not in u                # 진척·국토도 없다
+        assert "になりました" in u                 # 해를 여는 한 마디는 있다
+        # **소득과 그때의 예산은 있다** — 그 해에 일어난 일이고, 관측에 두면 매 콜 다시
+        # 계산돼 값이 흔들린다 (실측: 한 해 안에 +100 → +104 → +105).
+        assert "今年の収入は" in u
 
 
 def test_arrived_messages_stay_in_the_conversation():
@@ -266,10 +269,38 @@ def test_an_empty_inbox_says_nothing_at_all():
     world.turn = 3
     a = world.agents["Asla1"]
     empty = prompts.render_turn_open(world, a, cfg, 48.0, [])
-    assert empty.count("\n") == 0                     # 한 줄뿐이다
+    assert empty.count("\n") == 1                     # 소득·예산 한 줄 + 집행 한 줄
     for none_word in ("なし", "没有", "aucun", "Aucun"):
         assert none_word not in empty
     got = prompts.render_turn_open(world, a, cfg, 48.0,
                                    [{"msg_id": 1, "from": "Ranoa1", "label": None,
                                      "text": "MARK", "original": None}])
     assert "MARK" in got and got.startswith(empty)    # 머리말은 같다
+
+
+def test_income_is_stated_once_a_year_not_recomputed_each_call():
+    """**소득이 관측에 있던 동안 턴 안에서 값이 흔들렸다.**
+
+    실측(`ovh15` · Asla1 · 44년):
+
+        step 2   予算: 100 · 今年の収入: +100     ← 맞다
+        step 3   予算:   0 · 今年の収入: +104
+        step 6   予算:   0 · 今年の収入: +105
+
+    관측은 매 콜 새로 렌더되므로, 남들이 `national` 에 넣어 배수가 커지면 **이미 받은
+    소득**이 올라간다. 그리고 예산 0 옆에 붙어서 「104 를 받았는데 0」 으로 읽힌다.
+
+    소득은 **그 해에 일어난 일**이다. 해가 열릴 때 한 번 적으면 사실로 굳는다.
+    """
+    cfg = _cfg(2)
+    world = init_world(cfg, itertools.count(1))
+    world.turn = 3
+    a = world.agents["Asla1"]
+    a.budget = 137.0
+    open_ = prompts.render_turn_open(world, a, cfg, 48.0, [])
+    assert "+100" in open_ and "137" in open_
+
+    # 그 해 안에 남들이 국가에 투자해 배수가 커져도 이미 적힌 말은 안 변한다
+    world.countries["Asla"].national_capital = 12_000.0
+    obs = prompts.render_observation(world, a, cfg, 48.0)
+    assert "収入:" not in obs and "収入は" not in obs

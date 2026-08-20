@@ -484,12 +484,26 @@ def test_reading_is_private(cfg, world):
     assert "yours alone" in t["function"]["description"]
 
 def test_production_multiplier_is_gone(cfg, world):
-    """배수는 안 알려준다 — 수입에서 추론 가능하다."""
+    """배수는 안 알려준다 — 수입에서 추론 가능하다.
+
+    수입은 **해가 열릴 때** 한 번 말한다 (관측에 두면 매 콜 다시 계산돼 값이 흔들렸다).
+    """
     from domains.meteor import prompts
     world.countries["Asla"].national_capital = 3000.0
-    obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
+    a = world.agents["Asla1"]
+    obs = prompts.render_observation(world, a, cfg, 48.0)
     assert "1.28" not in obs and "倍率: 1" not in obs
-    assert "+128" in obs or "+1" in obs          # 수입에는 반영돼 보인다
+    # 관측에는 수입 **값**이 없다. `invest 효과` 의 「収入も…良くなる」 은 값이 아니라
+    # national 이 무엇을 올리는지의 설명이라 남는다.
+    assert "収入:" not in obs and "収入は" not in obs
+    assert "income" not in prompts.T["ja"]        # 죽은 문구도 남기지 않는다
+    # 배수가 반영된 값으로 **해 시작 문구에** 보인다. 옛 테스트는 `"+128" or "+1"` 이라
+    # "+100" 에도 통과했다 — growth_coef 가 0.3 에서 0.2 로 바뀐 뒤에도 안 걸렸다.
+    open_ = prompts.render_turn_open(world, a, cfg, 48.0, [])
+    mult = world.countries["Asla"].multiplier(cfg)
+    expect = f"+{cfg.income.per_turn * mult:.0f}"
+    assert expect in open_ and expect != "+100"
+    assert f"{mult:.2f}" not in open_             # 배수 자체는 없다
 
 
 def test_ask_is_gone(cfg):

@@ -83,13 +83,12 @@ T = {
         land="自国の国土: {v}", undecided="未定",
         prog="自国の進捗: {v:.0f}", thresh="  interceptor の完成に要る進捗: {v:.0f}",
         year="今年: {y} 年",
-        open="{y} 年になりました。この年を執り行ってください。",
+        open="{y} 年になりました。今年の収入は +{inc:.0f}、手元の予算は {b:.0f} です。\nこの年を執り行ってください。",
         prop="  採決が {vt} 年に開かれます（{by} が召集）。何を建てるかをそこで決めます",
         prop_today="  ★ 今年が採決の年です。vote で interceptor / bunker / abstain を選べます",
         prop_none="  採決は開かれていません。国土は投票でしか決まりません",
         c_ballot="  vote",  c_ballot_note="採決で何を建てるかを選ぶ",
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
-        income="今年の収入: +{v:.0f}",
         ap_now="残り行動力: {v:.2f}",
         multi="予算と行動力が許す限り複数の行動ができます。\n使い残した予算は翌年に残ります。",
         costs_hdr="行動の費用", col_money="お金", col_ap="行動力",
@@ -109,7 +108,7 @@ T = {
         c_obs="  observe_risk",
         c_obs_note="   隕石までの残り年数と interceptor に要る進捗を測る。国家投資が精度を上げる",
         c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ",
-        c_pro="  procreate", c_pro_note="子を残してあなたは死ぬ",
+        c_pro="  procreate", c_pro_note="子を残し、遺産と遺言を渡してあなたは死ぬ",
         inv_hdr="invest の効果",
         inv_well="  wellness   あなたの健康が良くなる",
         inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n                          observe_risk の精度も良くなる。国民全員に及ぶ",
@@ -121,6 +120,7 @@ T = {
         in_fail_plain="  [{id}] 通知 — {to} 宛のメッセージは届きませんでした",
         in_unread="  [{id}] {frm} より — 読めないメッセージが届きました",
         in_from="  [{id}] {frm} より{label}", lbl_direct=" ［通訳なしで通じた］",
+        lbl_ai=" ［送り主が AI に訳させたメッセージです］",
         died="  {who} が {age} 歳で亡くなり、{born} が生まれました。",
         fac_gain="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
         fac_moved="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
@@ -139,10 +139,9 @@ T = {
         prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
         prop_today="  ★ 今年就是表决之年。可以用 vote 选 interceptor / bunker / abstain",
         prop_none="  没有正在进行的表决。国土只能由投票决定",
-        open="到了 {y} 年。请执行这一年。",
+        open="到了 {y} 年。今年的收入是 +{inc:.0f}，手上的预算是 {b:.0f}。\n请执行这一年。",
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
-        income="今年的收入: +{v:.0f}",
         ap_now="剩余行动力: {v:.2f}",
         multi="只要预算和行动力允许，你可以采取多项行动。\n没用完的预算会留到明年。",
         costs_hdr="行动费用", col_money="钱", col_ap="行动力",
@@ -162,7 +161,7 @@ T = {
         c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 需要多少进度。国家投资会提高精度",
         c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一",
-        c_pro="  procreate", c_pro_note="留下孩子，你随即死去",
+        c_pro="  procreate", c_pro_note="留下孩子，把遗产和遗言交给他，你随即死去",
         inv_hdr="invest 的效果",
         inv_well="  wellness   你的健康会变好",
         inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n                          observe_risk 的精度都会变好，惠及全体国民",
@@ -174,6 +173,7 @@ T = {
         in_fail_plain="  [{id}] 通知 — 你发给 {to} 的消息未能送达",
         in_unread="  [{id}] 来自 {frm} — 送到一条你读不懂的消息",
         in_from="  [{id}] 来自 {frm}{label}", lbl_direct="［无需翻译就能听懂］",
+        lbl_ai="［这是发信人用 AI 译过来的消息］",
         died="  {who} 在 {age} 岁去世，{born} 出生了。",
         fac_gain="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
         fac_moved="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
@@ -193,10 +193,9 @@ T = {
         prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
         prop_today="  ★ Le scrutin a lieu cette année. Choisissez avec vote : interceptor / bunker / abstain",
         prop_none="  Aucun scrutin en cours. Le territoire ne se décide que par un vote",
-        open="L'an {y} est arrivé. Menez cette année.",
+        open="L'an {y} est arrivé. Le revenu de cette année est de +{inc:.0f} ; votre budget est de {b:.0f}.\nMenez cette année.",
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
-        income="Revenu de cette année : +{v:.0f}",
         ap_now="Action restante : {v:.2f}",
         multi="Vous pouvez agir plusieurs fois si le budget et l'action le permettent.\nLe budget non dépensé reste pour l'année suivante.",
         costs_hdr="Coûts des actions", col_money="argent", col_ap="action",
@@ -216,7 +215,7 @@ T = {
         c_obs="  observe_risk",
         c_obs_note="   mesure les années restantes et la progression qu'exige un interceptor ; l'investissement national affine",
         c_inv="  invest", c_inv_note="vers wellness · national · facility",
-        c_pro="  procreate", c_pro_note="vous laissez un enfant et vous mourez",
+        c_pro="  procreate", c_pro_note="vous laissez un enfant, votre héritage et votre testament, et vous mourez",
         inv_hdr="effets d'invest",
         inv_well="  wellness   votre santé s'améliore",
         inv_natl="  national   élève le niveau technique de votre nation : le revenu, le rendement\n"
@@ -231,6 +230,7 @@ T = {
         in_fail_plain="  [{id}] Avis — votre message à {to} n'a pas pu être délivré",
         in_unread="  [{id}] de {frm} — un message illisible est arrivé",
         in_from="  [{id}] de {frm}{label}", lbl_direct=" [compris sans traduction]",
+        lbl_ai=" [message que l'expéditeur a fait traduire par une IA]",
         died="  {who} est mort à {age} ans ; {born} est né.",
         fac_gain="  Votre versement de {amt:.0f} à facility l'an dernier a fait progresser {to} de {gain:.0f}.",
         fac_moved="  Votre versement de {amt:.0f} l'an dernier a fait progresser {to}.",
@@ -392,10 +392,14 @@ def render_inbox(inbox: list[dict], lang: str) -> str:
             out.append(t["fac_moved" if m["fac_moved"] else "fac_still"]
                        .format(amt=m["amount"], to=m["to"]))
             continue
-        # 통역 없이 닿은 것은 **수신자 언어로** 표시한다 — 「번역을 안 거쳤는데 뜻이
-        # 통했다」 는 감각이 그 사람의 말로 와야 산다. AI 라벨은 영어 그대로 둔다.
+        # **두 라벨 모두 수신자 언어로.** 「번역을 안 거쳤는데 뜻이 통했다」 도, 「이건
+        # 상대가 기계에 맡긴 말이다」 도 그 사람의 말로 와야 감각이 산다. AI 쪽만 영어
+        # `[AI translation]` 이었는데, 그건 도구 토큰이 아니라 **읽는 사람에게 하는 말**
+        # 이라 번역해야 한다 — 그리고 무엇을 뜻하는지 한 문장으로 적는다.
         raw = m.get("label")
-        label = t["lbl_direct"] if raw == "[direct]" else (f" {raw}" if raw else "")
+        label = (t["lbl_direct"] if raw == "[direct]"
+                 else t["lbl_ai"] if raw == "[AI translation]"
+                 else (f" {raw}" if raw else ""))
         out.append(t["in_from"].format(id=mid, frm=m["from"], label=label))
         out.append(f'      "{m.get("text", "")}"')
     return "\n".join(out)
@@ -414,7 +418,8 @@ def _proposal_line(world, c, t) -> str:
 
 
 def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
-                     inbox: list[dict] | None = None) -> str:
+                     inbox: list[dict] | None = None,
+                     income_this_turn: float | None = None) -> str:
     """**턴을 여는 한 마디 + 이번에 도착한 것.** 이것만 대화에 쌓인다.
 
     관측(지금 그러한 것)은 system 으로 옮겼다 — 매 콜 새로 만들므로 낡은 사본이 남지
@@ -425,7 +430,16 @@ def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
     이므로 반드시 쌓여야 한다 — state 처럼 갈아치우면 누가 무슨 말을 했는지 잊는다.
     """
     t = T[agent.native_lang]
-    head = t["open"].format(y=FIRST_YEAR + world.turn - 1)
+    # **소득은 「그 해에 일어난 일」 이다.** 관측(지금 그러한 것)에 두면 매 호출 다시
+    # 계산돼 턴 안에서 값이 흔들린다 — 실측에서 한 해 안에 +100 → +104 → +105 로
+    # 올라갔다 (남들이 national 에 넣어 배수가 커졌다). 게다가 **이미 받은 돈**인데
+    # 예산 0 옆에 붙어서 「104 를 받았는데 0」 으로 읽힌다.
+    #
+    # 해가 열릴 때 한 번 적으면 그 해의 사실로 굳는다. 지금 예산·행동력은 관측이 매 콜
+    # 새로 말하고, 도구 응답도 매번 돌려준다.
+    inc = (income_this_turn if income_this_turn is not None
+           else cfg.income.per_turn * world.countries[agent.country].multiplier(cfg))
+    head = t["open"].format(y=FIRST_YEAR + world.turn - 1, inc=inc, b=agent.budget)
     if not inbox:
         # **온 것이 없으면 아무 말도 하지 않는다.** 「도착한 메시지: 없음」 을 붙이면
         # 아무 일도 없었다는 사실이 매 턴 대화에 쌓인다. 없는 것을 굳이 적지 않는 것이
@@ -470,7 +484,6 @@ def render_observation(world, agent, cfg, knob_ai: float,
     mult = c.multiplier(cfg)
     cap = cfg.length.message_max_chars[lang]
     langs = ", ".join(_lang_phrase(world, agent, l) for l in sorted(agent.known_langs))
-    income = income_this_turn if income_this_turn is not None else cfg.income.per_turn * mult
 
     parts = [
         t["year"].format(y=FIRST_YEAR + world.turn - 1),
@@ -487,7 +500,6 @@ def render_observation(world, agent, cfg, knob_ai: float,
         t["roster"],
         "  " + _roster(world, agent, t),
         "",
-        t["income"].format(v=income),
         # **남은 행동력.** 비용표는 "얼마 드는지" 만 적고 "얼마 남았는지" 는 안 적고
         # 있었다. 순차 라운드로빈에서는 한 차례마다 관측이 새로 렌더되므로 이 값이 매번
         # 다르고, 그전에는 에이전트가 자기 AP 를 아는 유일한 경로가 **직전 도구 응답의
