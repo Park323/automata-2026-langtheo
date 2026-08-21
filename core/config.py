@@ -58,6 +58,7 @@ class AP:
     propose_vote: float
     memory_write: float
     procreate: float
+    bear_child: float = 1.0
     observe_risk: float = 0.3
     vote: float = 0.05             # 採決과 제안은 무게가 다르다 (4.4)
     # **한 번의 invest·learn 이 먹는 AP.** 금액은 costs.unit 으로 고정이라 금액별 계산이
@@ -114,15 +115,27 @@ class World:
     success_prob: float
     # 초기 나이를 1..이 값에서 뽑는다. 전원 0살이면 한꺼번에 죽어 세계가 백지가 된다.
     init_age_max: int = 10
+    # **성인 나이.** 이 나이부터 아이를 낳을 수 있고, 이 나이부터 소득을 받는다.
+    # 그전에는 부모가 주는 돈이 전부다.
+    adult_age: int = 10
+    # 세계 첫 해의 나이를 `adult_age .. adult_age + 이 값` 에서 뽑는다. 처음 사람들에게는
+    # 줄 부모가 없으므로 성인으로 시작해야 한다 — 그러면서도 한꺼번에 죽지 않게 흩는다.
+    init_age_spread: int = 3
 
 
 @dataclass(frozen=True)
 class Inheritance:
-    testament_max_chars: int
-    testament_carry: int
-    # 반쯤 배운 언어를 아이가 얼마나 물려받는가. 1.0 이면 능력이 사실상 상속돼
-    # "능력은 상속되지 않는다"(3.3)가 무너진다. 감쇠가 곧 구전 감쇠의 정량판이다.
-    lang_progress_carry: float = 0.5
+    """**유언과 언어 진척 상속을 없앴다** (8/21).
+
+    부모가 살아 있으므로 세대 간 전달은 `speak` 로 한다 — 기존 메시지 채널로 관측되고
+    여러 해에 걸쳐 반복할 수도 있다. 그리고 부모가 살아 있는 것 자체가 국내 구사자이므로
+    아이의 학습이 이미 두 겹으로 싸다 (부모 −50 × 국내 −50). 진척 절반까지 얹으면 능력이
+    사실상 상속된다.
+
+    남는 것은 **부모 할인 자격**뿐이다.
+    """
+
+    parent_discount: bool = True
 
 
 @dataclass(frozen=True)

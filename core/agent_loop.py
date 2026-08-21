@@ -5,7 +5,7 @@
       resp = client.chat(messages, tools=TOOLS)
       tool_calls 없으면 종료
       각 tool_call 실행 → 결과를 role="tool" 로 append
-  procreate / end_turn 은 루프를 즉시 끝낸다.
+  end_turn 은 루프를 즉시 끝낸다 (procreate 는 8/21 에 bear_child 로 바뀌며 폐기).
 
 ⚠ 도구는 세계를 즉시 바꾸지 않는다. 자기 budget/ap 만 즉시 차감하고 효과는 Sink 에
   넣는다. 국토 확정·진척 판정·cap 배분·번역은 전원의 루프가 끝난 뒤 loop.py 5단계에서.
@@ -40,7 +40,9 @@ class Sink:
     votes: list = field(default_factory=list)         # 제안 (agent_id, country, target)
     ballots: list = field(default_factory=list)       # 표 (agent_id, country, choice)
     learns: list = field(default_factory=list)        # (agent_id, lang) — 다음 턴부터 유효
-    procreations: list = field(default_factory=list)  # (agent_id, testament)
+    # **아이를 낳은 사람들** (8/21). 전에는 `procreations` 로 (id, 유언) 을 담았다 —
+    # 유언이 없어지고 부모가 죽지 않으므로 id 하나면 된다.
+    births: list = field(default_factory=list)        # agent_id
     observations: list = field(default_factory=list)  # 위험 관측 (진실·관측치·오차)
     observations_by: dict = field(default_factory=dict)   # 이번 턴 개체별 관측 횟수
 
@@ -218,7 +220,7 @@ def recover_tool_calls(content: str | None) -> list[dict]:
 
 def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                  knob_ai: float) -> tuple[dict, str | None]:
-    """(tool_result, control). control="end" 면 턴 종료 (procreate/end_turn)."""
+    """(tool_result, control). control="end" 면 턴 종료 (end_turn)."""
 
     if name == "end_turn":
         return {"ok": True}, "end"
@@ -493,12 +495,25 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         sink.ballots.append((agent.id, agent.country, choice))
         return {"ok": True, "ap_left": round(agent.ap, 1)}, None
 
-    if name == "procreate":
-        if not _afford(agent.ap, cfg.ap.procreate):
-            return {"ok": False, "error": f"not enough action; procreate needs {cfg.ap.procreate}, have {agent.ap:.2f}"}, None
-        _spend(agent, cfg.ap.procreate)
-        sink.procreations.append((agent.id, args.get("testament", "")))
-        return {"ok": True}, "end"
+    if name == "bear_child":
+        # **죽지 않는다** (8/21 개정). 그래서 세 가지를 순서대로 본다 — 나이 · 생애 1회 ·
+        # 행동력. 나이와 횟수는 되돌릴 수 없는 조건이라 자원보다 먼저 말해 준다.
+        if agent.age < cfg.world.adult_age:
+            return {"ok": False, "error":
+                    f"you are not old enough yet; this opens at "
+                    f"{cfg.world.adult_age}"}, None
+        if agent.has_borne:
+            return {"ok": False, "error": "you have already had a child; once in a life"}, None
+        if not _afford(agent.ap, cfg.ap.bear_child):
+            return {"ok": False, "error":
+                    f"not enough action; bear_child needs {cfg.ap.bear_child}, "
+                    f"have {agent.ap:.2f}"}, None
+        _spend(agent, cfg.ap.bear_child)
+        agent.has_borne = True
+        sink.births.append(agent.id)
+        # **턴을 끝내지 않는다.** 죽지 않으므로 뒤이은 호출을 버릴 이유가 없다 — 행동력이
+        # 0 이 된 것뿐이고, 그 판정은 다른 도구들이 각자 한다.
+        return {"ok": True}, None
 
     return {"ok": False, "error": f"unknown tool: {name}"}, None
 
@@ -653,7 +668,7 @@ def _redact_args(name: str, args: dict) -> dict:
 
     `reasoning` 은 같은 이벤트의 `reasonings` 에, `speak` 의 `text` 는 `messages.jsonl` 에
     원문·도착문이 함께 있다. 그 둘 말고는 아무것도 버리지 않는다 — `memory_write` 의
-    본문과 `procreate` 의 유언이 바로 그렇게 사라지고 있었다.
+    본문이 바로 그렇게 사라지고 있었다.
     """
     drop = {"reasoning"} | ({"text"} if name == "speak" else set())
     return {k: v for k, v in args.items() if k not in drop}
@@ -669,8 +684,11 @@ def can_act(agent, cfg, knob_ai: float) -> bool:
     > 종료는 `end_turn` 이고, 폭주는 `RUNAWAY_CAP`(64) 이 막습니다. 그래도 **정직하게
     > 계산합니다** — 여기서 거짓으로 False 를 돌려주면 합법적인 행동을 잘라내게 됩니다.
     """
-    free_ap = min(cfg.ap.memory_write, cfg.ap.procreate)
-    if free_ap <= 0:                                  # 공짜 행동이 하나라도 있으면 참
+    # **공짜 행동이 사라졌다** (8/21). `procreate` 가 AP 0 이었고 `memory_write` 도
+    # 0 인데 압박선 위에서만 열린다. 이제 `bear_child` 가 AP 1.0 을 물므로, AP 가 0 이면
+    # 실제로 할 수 있는 것이 없을 수 있다 — 그래서 정직하게 센다.
+    free_ap = cfg.ap.memory_write if agent.memory_open else None
+    if free_ap is not None and free_ap <= 0:
         return True
     if agent.budget >= cfg.costs.comm_domestic and _afford(agent.ap, cfg.ap.speak):
         return True
@@ -835,7 +853,7 @@ def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
             if st.seen[key] >= cfg.llm.repeat_guard:
                 return "repeat_guard"
         if control == "end":
-            return "ended"     # procreate/end_turn 뒤쪽 tool_call 은 버린다
+            return "ended"     # end_turn 뒤쪽 tool_call 은 버린다
     return None
 
 
@@ -892,7 +910,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     전체 시뮬레이션은 계속된다 — 단일 API 실패가 50턴 런을 죽이면 안 된다.
 
     종료 조건 (임의 상한을 두지 않는다):
-      ① end_turn / procreate
+      ① end_turn
       ② 남은 예산으로도 AP 로도 실행 가능한 도구가 없다
       ③ 동일한 (도구, 인자) 호출이 repeat_guard 회 반복
     """
@@ -1075,7 +1093,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             if control == "end":
                 stop = True
                 ended_by = "ended"
-                break     # procreate 뒤쪽 tool_call 은 버린다
+                break     # end_turn 뒤쪽 tool_call 은 버린다
         if stop:
             break
 

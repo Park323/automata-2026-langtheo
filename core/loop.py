@@ -104,7 +104,15 @@ def init_world(cfg, counter: "itertools.count", rng: random.Random | None = None
                 aid, cdef.id, cdef.lang, cfg.income.initial_budget, set(),
                 turn=0, born_by="natural", cfg=cfg, counter=counter,
             )
-            a.age = rng.randint(1, cfg.world.init_age_max)
+            # **처음 사람들은 성인으로 시작한다** (8/21).
+            #
+            # 소득을 성인 나이부터로 바꾼 순간, 1~10 에서 뽑으면 **처음 사람 대부분이
+            # 빈손인데 줄 부모도 없다** — 아이의 무소득은 「부모가 준다」 가 있어서
+            # 성립하는 규칙이고, 세계 첫 해에는 그 부모가 없다.
+            #
+            # 나이를 흩는 이유(한꺼번에 죽지 않게)는 그대로다. 성인 나이 위로 흩는다.
+            a.age = rng.randint(cfg.world.adult_age,
+                                cfg.world.adult_age + cfg.world.init_age_spread)
             if i == 1:
                 a.known_langs.add(seeded)
             agents[aid] = a
@@ -126,6 +134,24 @@ def _replace(world: World, old: str, child: Agent, carry: list[str]) -> None:
     world.testaments.pop(old, None)
     world.agents[child.id] = child
     world.testaments[child.id] = carry
+
+
+def _earns(a, cfg) -> bool:
+    """소득을 받는가.
+
+    **어린 시절은 부모가 있는 곳에만 있다** (8/21). 소득을 성인 나이부터로 둔 이유는
+    「부모가 용돈을 준다」 가 성립하기 때문인데, 그 부모가 없는 사람에게는 성립하지 않는다.
+
+      · `bear_child` 로 태어난 아이 → 부모가 **살아 있다.** 성인까지 소득이 없고,
+        그 사이의 돈은 받은 것뿐이다. 그 「용돈」 이 실제 결정이 된다.
+      · 자연사 교체로 온 사람 → 그 자리의 앞사람이 **죽어서** 온 것이다. 줄 이가 없다.
+      · 세계 첫 해의 사람들 → 부모가 없다.
+
+    나이로 가르면 안 된다. 교체로 오는 사람을 성인 나이로 태어나게 해 봤더니 **턴당 사망이
+    0.56 에서 1.40 으로 뛰었다** — 나이 10 부터 시작하면 남은 수명이 6해뿐이라 세대 교체가
+    세 배로 빨라지고, 수명 모델이 통째로 어긋난다.
+    """
+    return a.born_by == "born" and a.age < cfg.world.adult_age
 
 
 def _newborn(aid: str, country: str, lang: str, budget: float, parent_langs: set,
@@ -203,45 +229,42 @@ def _death_birth(world: World, cfg, rng: random.Random, snapshot_ids, procreated
             a.age += 1
 
 
-def _procreate_child(world: World, aid: str, testament: str, cfg,
-                     counter: "itertools.count", result: RunResult) -> None:
-    """spec 3.3. procreate 로 죽고, 예산·유언·부모 언어 할인 자격을 아이에게 넘긴다."""
+def _bear_child(world: World, aid: str, cfg,
+                counter: "itertools.count", result: RunResult) -> str:
+    """아이를 낳는다 (spec 3.3, 8/21 개정). **부모는 죽지 않는다.** 아이의 id 를 돌려준다.
+
+    전에는 `procreate` 였다 — 부르면 그 자리에서 죽고 아이가 그 자리를 대신했다. 그래서
+    인구는 늘 고정이었고, 재생산이 **죽음의 형식**이었다.
+
+    이제는 늘어난다. 부모와 아이가 같이 산다. 그러면 세 가지가 달라진다.
+
+      ① **세대 간 전달이 말로 된다.** 유언 한 문장을 짜낼 필요가 없고, 여러 해에 걸쳐
+         `speak` 로 가르칠 수 있다 — spec 3.3 의 구전이 특수 기능이 아니라 **기존 메시지
+         채널**로 관측된다. 그래서 유언 기능을 없앴다.
+      ② **부모가 살아 있는 것이 곧 국내 구사자다.** 아이의 학습이 두 겹으로 싸다
+         (부모 −50 × 국내 −50 = −100). 그래서 학습 진척 절반 상속도 없앴다 — 거기까지
+         얹으면 능력이 사실상 상속된다.
+      ③ **아이는 빈손이고 성인이 되기까지 소득이 없다.** 그 사이의 돈은 누가 준 것뿐이다.
+         부모가 살아 있으므로 줄 수 있고, 그 「용돈」 이 실제 결정이 된다.
+
+    물려주는 것은 **부모 할인 자격**뿐이다 (`parent_langs`).
+    """
     a = world.agents[aid]
-    carry = ([testament] + world.testaments.get(aid, []))[: cfg.inheritance.testament_carry]
     child = _newborn(_next_id(world, a.country), a.country, a.native_lang,
-                     a.budget, a.known_langs, world.turn, "procreate", cfg, counter)
-    # **유언은 기억이 아니라 들은 말이다** (8/21 정정).
+                     0.0, a.known_langs, world.turn, "born", cfg, counter)
+    world.agents[child.id] = child        # **대신하지 않는다** — 새 사람이 늘어난다
+    result.births.append({"turn": world.turn, "id": child.id, "parent": aid,
+                          "uid": child.uid, "born_by": "born",
+                          "budget": child.budget, "parent_age": a.age})
+    # 명단이 바뀌었다 — 명단은 GLOBAL 이므로 전 세계가 안다 (`visibility.FACTS`).
     #
-    # 전에는 `child.memory` 를 유언으로 채웠다. 그러면 아이가 **고르지 않은 것을 이미
-    # 들고 있는** 상태로 태어나고, 「무엇을 남길지 고르는 것」 이 관측 대상인데(3.3) 그
-    # 선택이 한 세대 건너뛴다. 기억을 압박선 위로 옮긴 뒤로는 더 나빠졌다 — 아이가
-    # 여러 해 동안 그 값을 고칠 수도 없다.
-    #
-    # 이제 유언은 **아이에게 도착하는 말**이다. 대화에 남고, 아이가 원하면 그때
-    # `memory_write` 로 옮겨 적는다. 옮기지 않으면 대화가 밀려나며 사라진다 — 그것이
-    # 구전의 감쇠고, 이번에는 **아이의 선택**으로 일어난다.
-    #
-    # **반쯤 배운 언어를 물려준다** — 절반만. 1.0 이면 능력이 사실상 상속돼
-    # "능력은 상속되지 않는다"(3.3)가 무너지고, 0 이면 물려줄 것이 예산뿐이다.
-    keep = cfg.inheritance.lang_progress_carry
-    child.lang_progress = {k: v * keep for k, v in a.lang_progress.items() if v * keep > 0}
-    _replace(world, aid, child, carry)
-    result.deaths += 1
-    result.death_ages.append(a.age)
-    # **유언 본문을 부고에 남긴다.** 그전에는 아이의 기억 초기값으로만 흘러가서, 아이가
-    # `memory_write` 로 덮어쓰면 무엇을 남기고 죽었는지가 로그 어디에도 안 남았다 —
-    # 하필 그 덮어쓰기가 spec 3.3 이 관측하려는 구전의 감쇠 그 자체다.
-    result.deaths_log.append({"turn": world.turn, "who": aid, "born": child.id,
-                              "age": a.age, "country": a.country, "by": "procreate",
-                              "testament": testament})
-    result.births.append({"turn": world.turn, "id": child.id, "replaces": aid,
-                          "uid": child.uid, "born_by": "procreate",
-                          "budget": child.budget})
-    # **아이 본인에게만** 간다 (PRIVATE). 계보에 쌓인 최근 것들을 함께 전한다 —
-    # `testament_carry` 개가 곧 구전이 몇 대를 견디는가다.
-    if carry:
-        _notify(world, "testament", {"testament": list(carry)},
-                world.turn, actor=child.id)
+    # **갓 태어난 본인은 빼고.** 자기가 태어났다는 통지를 받을 이유가 없다 (부고에서
+    # 죽은 사람을 빼는 것과 같은 이유다).
+    n_before = len(world.inbox_queue)
+    _notify(world, "birth", {"born": child.id, "parent": aid}, world.turn)
+    world.inbox_queue[n_before:] = [e for e in world.inbox_queue[n_before:]
+                                    if e["to"] != child.id]
+    return child.id
 
 
 # ─────────────────────────────────────────── 턴 (더미) ─────────────────────────────
@@ -253,7 +276,7 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
     # 1. 소득 지급 + AP 리셋 (이월: 예산은 남고, AP 는 리셋)
     for a in world.agents.values():
         mult = world.countries[a.country].multiplier(cfg)
-        a.budget += cfg.income.per_turn * mult
+        a.budget += 0.0 if _earns(a, cfg) else cfg.income.per_turn * mult
         a.ap = cfg.turn.action_points
 
     # 2. 관측 스냅샷 — 이번 턴 행동하는 인스턴스(uid)를 고정
@@ -290,26 +313,15 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
                 land = world.countries[act["to"]]
                 if land.land is None and amount > 0:
                     land.land = DEFAULT_FACILITY_TYPE
-            elif t == "procreate":
-                if a.ap < cfg.ap.procreate:
+            elif t == "bear_child":
+                # **부모는 죽지 않는다** (8/21). 더미 정책도 같은 규칙을 쓴다 — 나이·생애
+                # 1회·행동력 셋을 다 본다.
+                if (a.age < cfg.world.adult_age or a.has_borne
+                        or a.ap < cfg.ap.bear_child):
                     continue
-                a.ap -= cfg.ap.procreate
-                # 유언 계승 (구전의 감쇠: 최근 testament_carry 개)
-                carry = world.testaments.get(aid, [])
-                carry = ([act.get("testament", "")] + carry)[: cfg.inheritance.testament_carry]
-                child = _newborn(
-                    _next_id(world, a.country), a.country, a.native_lang,
-                    a.budget, a.known_langs, world.turn, "procreate", cfg, counter,
-                )
-                _replace(world, aid, child, carry)
-                procreated.add(aid)
-                result.deaths += 1
-                result.death_ages.append(a.age)   # procreate: 현재 나이에 죽음
-                result.births.append(
-                    {"turn": world.turn, "id": child.id, "replaces": aid,
-                     "uid": child.uid, "born_by": "procreate", "budget": child.budget}
-                )
-                break  # procreate 뒤쪽 행동은 전부 버림 (이미 죽었다)
+                a.ap -= cfg.ap.bear_child
+                a.has_borne = True
+                _bear_child(world, aid, cfg, counter, result)
 
     # 5. 환경 갱신 — 투자 집계 → 확률 판정 → 진척, 국토 확정, national_capital
     #    증가분 = Binomial(n = 투자량 × facility_eff, p = success_prob)
@@ -615,8 +627,8 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
 
     # g. procreate (예산 환급까지 반영된 뒤라 자식 예산이 정확)
     procreated: set = set()
-    for aid, testament in sink.procreations:
-        _procreate_child(world, aid, testament, cfg, counter, result)
+    for aid in sink.births:
+        _bear_child(world, aid, cfg, counter, result)
         procreated.add(aid)
     return procreated
 
@@ -629,7 +641,10 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
     """한 턴 (에이전트). spec 3.1 순서를 지키되 3단계는 9명 병렬, 5단계는 정렬 정산."""
     # 1. 소득 + AP 리셋
     for a in world.agents.values():
-        inc = cfg.income.per_turn * world.countries[a.country].multiplier(cfg)
+        # **부모가 있는 아이만 무소득이다** (`_earns`). 자연사 교체로 온 사람에게는
+        # 줄 부모가 없으므로 그 규칙이 성립하지 않는다.
+        inc = (0.0 if _earns(a, cfg)
+               else cfg.income.per_turn * world.countries[a.country].multiplier(cfg))
         a.budget += inc
         # **받은 값을 적어 둔다.** 해 시작 문구가 렌더 때 다시 계산하면, 순차에서 나중에
         # 차례가 온 사람은 남들이 national 에 넣은 뒤의 값을 보게 된다 — 실제로 100 을
@@ -696,7 +711,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         merged.ballots += s.ballots
         merged.observations += s.observations
         merged.learns += s.learns
-        merged.procreations += s.procreations
+        merged.births += s.births
     procreated = _settle_agentic(world, cfg, rng, merged, translator, knob_ai, counter,
                                  result, msg_ids)
 
@@ -949,8 +964,8 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         ballots_acc.append((by, country, choice))
         result.votes_log.append({"turn": world.turn, "kind": "ballot",
                                  "by": by, "country": country, "choice": choice})
-    for aid, testament in sink.procreations:
-        proc_acc.append((aid, testament))
+    for aid in sink.births:
+        proc_acc.append(aid)
 
 
 def _one_vote_each(cast: list) -> list:
@@ -1013,7 +1028,10 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
     전원 소진까지 돈다. 차례마다 관측을 새로 렌더하고 액션을 즉시 반영한다 (issue #20)."""
     # 1. 소득 + AP 리셋
     for a in world.agents.values():
-        inc = cfg.income.per_turn * world.countries[a.country].multiplier(cfg)
+        # **부모가 있는 아이만 무소득이다** (`_earns`). 자연사 교체로 온 사람에게는
+        # 줄 부모가 없으므로 그 규칙이 성립하지 않는다.
+        inc = (0.0 if _earns(a, cfg)
+               else cfg.income.per_turn * world.countries[a.country].multiplier(cfg))
         a.budget += inc
         # **받은 값을 적어 둔다.** 해 시작 문구가 렌더 때 다시 계산하면, 순차에서 나중에
         # 차례가 온 사람은 남들이 national 에 넣은 뒤의 값을 보게 된다 — 실제로 100 을
@@ -1114,8 +1132,10 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
     # 턴 끝 — 개표 → procreate → 생사판정
     _roundrobin_tally(world, cfg, result, ballots_acc)
     procreated: set = set()
-    for aid, testament in proc_acc:
-        _procreate_child(world, aid, testament, cfg, counter, result)
+    # **아이는 턴 끝에 태어난다.** 낳은 그 해에 바로 차례를 주면, 태어난 사람이 그 해의
+    # 남은 스텝을 도는 셈이 된다 — 나이 0 에 소득도 없으니 할 것도 없다.
+    for aid in proc_acc:
+        _bear_child(world, aid, cfg, counter, result)
         procreated.add(aid)
 
     if not is_last:

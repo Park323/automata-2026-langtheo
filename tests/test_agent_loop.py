@@ -136,15 +136,44 @@ def test_speak_text_coerced_to_str(cfg, world):
     assert sink.messages[0]["text"] == "123"    # str 강제
 
 
-def test_procreate_ends_turn(cfg, world):
-    """procreate 뒤의 tool_call 은 실행되지 않는다."""
+def test_bearing_a_child_does_not_end_the_turn(cfg, world):
+    """**부모가 죽지 않으므로 뒤 호출을 버릴 이유가 없다** (8/21).
+
+    전에는 `procreate` 가 그 자리에서 죽여서 뒤따르는 tool_call 을 전부 버렸다. 이제는
+    행동력이 0 이 된 것뿐이고, 그 판정은 각 도구가 스스로 한다.
+    """
+    world.countries["Asla"].land = "interceptor"
     script = [assistant_msg(
-        tool_call("procreate", "1", testament="믿지 마라"),
-        tool_call("invest", "2", target="facility", amount=10),   # 버려져야 함
-    )]
+        tool_call("bear_child", "1"),
+        tool_call("invest", "2", target="facility"),      # AP 0 이라 실패해야 한다
+    ), assistant_msg(tool_call("end_turn", "3"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
-    assert len(sink.procreations) == 1
-    assert sink.facility == []                          # procreate 뒤 invest 무시
+    assert sink.births == ["Asla1"] and agent.has_borne
+    assert agent.ap == 0.0
+    # **버려진 것이 아니라 실행되고 거절됐다** — 그 차이가 로그에 남는다
+    res = _results(client)
+    assert any((not r["ok"]) and "not enough action" in r.get("error", "") for r in res)
+
+
+def test_a_child_can_be_had_once_and_only_by_an_adult(cfg, world):
+    """생애 1회 · 성인부터. **나이와 횟수를 자원보다 먼저 말한다** — 되돌릴 수 없는
+    조건이라, 「행동력이 없다」 로 거절하면 다음 해에 다시 시도하게 된다."""
+    from core.agent_loop import Sink, execute_tool
+    a = world.agents["Asla1"]
+
+    a.age, a.ap = cfg.world.adult_age - 1, 1.0
+    r, _ = execute_tool("bear_child", {}, world, a, cfg, Sink(), 48.0)
+    assert not r["ok"] and "not old enough" in r["error"]
+    assert not a.has_borne and a.ap == 1.0
+
+    a.age = cfg.world.adult_age
+    r, ctl = execute_tool("bear_child", {}, world, a, cfg, Sink(), 48.0)
+    assert r["ok"] and a.has_borne and ctl is None       # 턴을 끝내지 않는다
+    assert a.ap == 0.0                                  # 그 해를 통째로 쓴다
+
+    a.ap = 1.0
+    r, _ = execute_tool("bear_child", {}, world, a, cfg, Sink(), 48.0)
+    assert not r["ok"] and "already had a child" in r["error"]
 
 
 # ── #10 학습 할인 ────────────────────────────────────────────────────────────

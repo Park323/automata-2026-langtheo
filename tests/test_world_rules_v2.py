@@ -371,35 +371,6 @@ def test_death_is_announced_to_the_same_nation_only(cfg, world):
 
 # ── 유언 ────────────────────────────────────────────────────────────────────────
 
-def test_the_testament_arrives_as_something_heard_not_as_memory(cfg, world):
-    """**유언은 기억이 아니라 들은 말이다** (8/21 정정).
-
-    전에는 `child.memory` 를 유언으로 채웠다. 그러면 아이가 **고르지 않은 것을 이미 들고**
-    태어나고, 「무엇을 남길지 고르는 것」 이 관측 대상인데(3.3) 그 선택이 한 세대
-    건너뛴다. 기억을 압박선 위로 옮긴 뒤로는 더 나빠졌다 — 아이가 여러 해 동안 그 값을
-    고칠 수조차 없다.
-
-    이제 유언은 아이에게 **도착한다.** 대화에 남고, 옮겨 적을지는 아이가 고른다. 안
-    옮기면 대화가 밀려나며 사라진다 — 그것이 구전의 감쇠이고, 이번에는 아이의 선택으로
-    일어난다.
-    """
-    world.agents["Asla1"].memory = "부모의 메모"
-    loop._procreate_child(world, "Asla1", "요격기에만 내라", cfg,
-                          itertools.count(800), loop.RunResult(world=world))
-    child = world.agents["Asla4"]
-    assert child.memory == ""                     # 빈손으로 태어난다
-    assert "부모의 메모" not in child.memory
-
-    # 그리고 **본인에게만** 도착한다 (PRIVATE)
-    q = [e for e in world.inbox_queue if e["to"] == "Asla4"]
-    assert len(q) == 1 and q[0]["msg"]["testament"] == ["요격기에만 내라"]
-    assert not [e for e in world.inbox_queue if e["to"] != "Asla4"]
-
-    from domains.meteor import prompts
-    txt = prompts.render_events(child, [q[0]["msg"]])
-    assert "요격기에만 내라" in txt and "親が残した言葉" in txt
-
-
 def test_observation_has_no_separate_testament_block(cfg, world):
     """유언 블록·'알아낸 것' 블록은 폐지됐다. 전부 memory 하나로 관리된다."""
     from domains.meteor import prompts
@@ -691,15 +662,6 @@ def test_the_obituary_names_the_successor(cfg, world):
     assert d["who"] in line and d["born"] in line
 
 
-def test_procreate_also_announces_the_pair(cfg, world):
-    """스스로 죽는 것도 같은 나라 사람에게는 같은 사건이다."""
-    r = loop.RunResult(world=world)
-    loop._procreate_child(world, "Asla1", "유언", cfg, itertools.count(900), r)
-    (d,) = r.deaths_log
-    assert (d["who"], d["by"]) == ("Asla1", "procreate")
-    assert d["born"] == "Asla4" and d["born"] in world.agents
-
-
 def test_the_delivery_rule_matches_the_loop_that_is_running(cfg, world):
     """**문구가 거짓이었다.** 순차 라운드로빈은 메시지를 **같은 해**에 배달하는데
     (`deliver_turn = world.turn`) 관측은 「翌年に届きます」 라고 적고 도구 설명은
@@ -774,9 +736,13 @@ def test_initial_ages_are_spread(cfg):
     그 6턴 사이에 쌓아둔 기억·관계·예산이 통째로 사라졌다."""
     import random
     w = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    # **처음 사람들은 성인으로 시작한다** (8/21). 소득을 성인부터로 바꾼 순간, 1~10 에서
+    # 뽑으면 대부분이 빈손인데 **줄 부모도 없다** — 아이의 무소득은 「부모가 준다」 가
+    # 있어서 성립하는 규칙이고, 세계 첫 해에는 그 부모가 없다.
     ages = [a.age for a in w.agents.values()]
-    assert all(1 <= x <= cfg.world.init_age_max for x in ages)
-    assert len(set(ages)) >= 4, ages
+    lo, hi = cfg.world.adult_age, cfg.world.adult_age + cfg.world.init_age_spread
+    assert all(lo <= x <= hi for x in ages), ages
+    assert len(set(ages)) >= 3, ages
 
 
 def test_initialisation_is_reproducible(cfg):
@@ -988,23 +954,6 @@ def test_the_action_rate_does_not_grow_with_wealth(cfg, world):
     assert risk_sigma(world.countries["Asla"], cfg) < cfg.risk.sigma_ratio   # 관측 정확도
 
 
-def test_half_learned_language_passes_to_the_child_with_decay(cfg, world):
-    """**반쯤 배운 언어를 물려준다 — 절반만.**
-
-    1.0 이면 능력이 사실상 상속돼 "능력은 상속되지 않는다"(3.3)가 무너지고,
-    0 이면 물려줄 것이 예산뿐이다. 이 감쇠가 곧 구전 감쇠의 정량판이다.
-    """
-    a = world.agents["Asla1"]
-    a.lang_progress = {"fr": 400.0, "zh": 1.0}
-    loop._procreate_child(world, "Asla1", "유언", cfg, itertools.count(900),
-                          loop.RunResult(world=world))
-    child = world.agents["Asla4"]
-    keep = cfg.inheritance.lang_progress_carry
-    assert child.lang_progress["fr"] == 400.0 * keep
-    assert child.parent_langs == a.known_langs          # 할인 자격은 그대로
-    assert "fr" not in child.known_langs                # 능력 자체는 안 넘어간다
-
-
 def test_natural_death_passes_nothing(cfg, world):
     """자연사는 계보와 무관한 뒷세대다 (3.2). 진척도 안 넘어간다."""
     import random
@@ -1037,20 +986,6 @@ def test_memory_and_testament_survive_the_log(cfg, world, tmp_path):
     assert _redact({"type": "speak", "to": "Ranoa2", "text": "x"}) == {"type": "speak",
                                                                       "to": "Ranoa2"}
 
-
-def test_procreate_death_carries_the_testament(cfg, world):
-    """유언이 아이의 기억 초기값으로만 흘러가면, 아이가 덮어쓴 뒤 원문이 사라진다 —
-    하필 그 덮어쓰기가 spec 3.3 이 관측하려는 구전의 감쇠 그 자체다."""
-    import itertools
-
-    from core.loop import RunResult, _procreate_child
-    r = RunResult(world=world)
-    _procreate_child(world, "Asla1", "요격기에 몰아줘라", cfg, itertools.count(99), r)
-    (d,) = [x for x in r.deaths_log if x["by"] == "procreate"]
-    assert d["testament"] == "요격기에 몰아줘라" and d["who"] == "Asla1"
-
-
-# ── 타국 생산배수 누출 (8/18) ────────────────────────────────────────────────
 
 def test_foreign_gain_amount_is_hidden(cfg, world):
     """**액수를 주면 상대국 생산배수가 새어 나온다.**
@@ -1160,16 +1095,67 @@ def test_the_observation_shows_only_my_own_contributions(cfg, world):
     assert "7777" not in obs                          # 타국 진척은 여전히 없다
 
 
-def test_the_child_does_not_inherit_my_contribution_record(cfg, world):
-    """내 생애의 기록이다. 아이는 예산·유언·학습 진척 절반만 물려받는다 (3.3)."""
+def test_the_child_inherits_only_the_discount(cfg, world):
+    """**물려주는 것은 부모 할인 자격뿐이다** (8/21 개정).
+
+    전에는 예산·유언·학습 진척 절반이 함께 넘어갔다. 부모가 죽었으니 넘길 수밖에 없었다.
+    이제 부모가 살아 있으므로 —
+
+      · 돈은 **살아서 주면 된다** (아이는 빈손으로 시작하고 성인까지 소득이 없다)
+      · 유언은 **말로 하면 된다** (`speak` — 여러 해에 걸쳐, 기존 채널로 관측된다)
+      · 학습 진척 절반은 **과하다** — 부모가 살아 있는 것이 이미 국내 구사자이므로
+        아이의 학습이 두 겹으로 싸다 (부모 −50 × 국내 −50)
+
+    내 생애의 기록(어디에 얼마를 냈나)은 물려주지 않는다.
+    """
     import itertools
 
-    from core.loop import RunResult, _procreate_child
-    world.agents["Asla1"].facility_invested = {"Ranoa": 900.0}
+    from core.loop import RunResult, _bear_child
+    a = world.agents["Asla1"]
+    a.facility_invested = {"Ranoa": 900.0}
+    a.lang_progress = {"fr": 400.0}
+    a.budget = 777.0
     r = RunResult(world=world)
-    _procreate_child(world, "Asla1", "유언", cfg, itertools.count(99), r)
-    child = next(a for a in world.agents.values() if a.born_by == "procreate")
+    cid = _bear_child(world, "Asla1", cfg, itertools.count(99), r)
+
+    child = world.agents[cid]
     assert child.facility_invested == {}
+    assert child.lang_progress == {}                   # 진척은 안 넘어간다
+    assert child.budget == 0.0                         # 빈손
+    assert child.parent_langs == a.known_langs         # 할인 자격만
+    assert child.memory == ""
+
+    # **부모는 살아 있다.** 그것이 이 개정의 전부다.
+    assert "Asla1" in world.agents and world.agents["Asla1"] is a
+    assert a.budget == 777.0                           # 돈도 안 뺏긴다
+    assert r.deaths == 0 and not r.deaths_log
+
+    # 그리고 부모가 국내 구사자이므로 아이의 학습이 두 겹으로 싸다
+    from core.agent_loop import learn_cost
+    tgt = next(c.id for c in world.countries.values()
+               if c.lang in a.known_langs and c.id != a.country)
+    cost, why = learn_cost(child, tgt, world, cfg)
+    assert cost == cfg.costs.learn_base - 2 * cfg.costs.learn_discount
+    assert "parent" in why and "nation" in why
+
+
+def test_a_birth_is_announced_to_the_whole_world(cfg, world):
+    """명단은 GLOBAL 이므로 새 사람이 나타난 것은 어차피 보인다. **누구의 아이인가**만
+    새로 새는 것이고, 그건 세대 간 전달을 관측하려면 필요하다 (3.3)."""
+    import itertools
+
+    from core.loop import RunResult, _bear_child
+    cid = _bear_child(world, "Asla1", cfg, itertools.count(900),
+                      RunResult(world=world))
+    got = {e["to"] for e in world.inbox_queue}
+    alive = {a.id for a in world.agents.values() if a.alive and a.id != cid}
+    assert got == alive, "전 세계가 안다 (갓 태어난 본인만 빼고)"
+    msg = world.inbox_queue[0]["msg"]
+    assert msg == {"born": cid, "parent": "Asla1"}
+
+    from domains.meteor import prompts
+    txt = prompts.render_events(world.agents["Ranoa1"], [msg])
+    assert cid in txt and "Asla1" in txt
 
 
 def test_the_observation_never_describes_the_old_ballot(cfg, world):

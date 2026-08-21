@@ -35,22 +35,31 @@ def _with(**overrides) -> Config:
 
 def test_valid_config_loads():
     cfg = config.load(BASE)
-    assert cfg.thresholds.interceptor == 16038
+    assert cfg.thresholds.interceptor == 9558      # 60턴 창의 0.95 지점 (8/21)
     assert cfg.k == pytest.approx(0.3)          # eff 1.0 × success_prob 0.3
 
 
 def test_window_values():
-    """A-4 자가검증: A 5400  B 9000  E 12960  <  임계 16038  <  C×0.6 16200.
+    """A-4 자가검증. **60턴** 기준: A 5400 · B 5400 · E 6480 < 임계 9558 < C×0.6 9720.
 
-    100턴·주기 20 으로 가면서 전부 정확히 2배가 됐다 (창은 total_turns 에 선형).
+    창은 `total_turns` 에 선형이다 (A 만 `epoch_turns` 에 걸린다). 100턴에서 60턴으로
+    내리면서 임계도 같은 **상대 위치(0.95)** 로 옮겼다 — 100턴의 [12960, 16200] 안 16038
+    이 60턴의 [6480, 9720] 안 9558 이다.
+
+    **숫자를 여기 두 번 적지 않는다** — 공식에서 유도하고, 순서만 못으로 박는다.
     """
     cfg = config.load(BASE)
     a, b, c, e = asserts.window(cfg)
-    assert a == pytest.approx(5400)
-    assert b == pytest.approx(9000)
-    assert e == pytest.approx(12960)
-    assert c * 0.6 == pytest.approx(16200)
-    assert a < b < e < cfg.thresholds.interceptor < c * 0.6
+    n, total, epoch = (cfg.world.agents_per_country, cfg.world.total_turns,
+                       cfg.world.epoch_turns)
+    per, k = cfg.income.per_turn, cfg.k
+    assert a == pytest.approx(3 * per * n * epoch * k)
+    assert b == pytest.approx(per * n * total * k)
+    assert e == pytest.approx(3 * per * n * (total - epoch) * k * 0.6)
+    assert c == pytest.approx(3 * per * n * total * k)
+    # **순서가 곧 설계다** — A·B·E 아래면 미루기·독주·휴식이 통하고, C×0.6 위면 아무도 못 짓는다
+    assert max(a, b, e) < cfg.thresholds.interceptor < c * 0.6
+    assert not asserts.check_all(cfg)
 
 
 # ── 일부러 깨뜨리기 (A-4 표) ──────────────────────────────────────────────────

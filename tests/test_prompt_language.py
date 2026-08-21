@@ -101,7 +101,7 @@ def test_tool_tokens_stay_english(world_cfg):
         a = world.agents[aid]
         obs = prompts.render_observation(world, a, cfg, 48.0, [])
         for token in ("wellness", "national", "facility", "propose_vote",
-                      "invest", "procreate"):
+                      "invest", "bear_child"):
             assert token in obs, f"{a.native_lang} 관측에 토큰 '{token}' 이 없다"
 
 

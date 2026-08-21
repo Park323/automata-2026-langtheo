@@ -7,7 +7,6 @@ from __future__ import annotations
 
 # 과제 명세(B-3)의 더미 규칙. 이 값은 정책의 것이지 세계의 것이 아니므로 여기 둔다.
 PROCREATE_AGE = 7
-DUMMY_TESTAMENT = "AI 번역을 믿지 마라"
 
 
 def dummy_policy(world, agent, cfg, procreate_age: int | None = PROCREATE_AGE) -> dict:
@@ -15,7 +14,7 @@ def dummy_policy(world, agent, cfg, procreate_age: int | None = PROCREATE_AGE) -
 
     최소 구현:
       - 예산의 절반을 자국 facility 에 invest
-      - 나이가 7 이상이면 procreate (유언은 고정 문자열)
+      - 나이가 `procreate_age` 이상이면 bear_child (8/21: 부모는 죽지 않는다)
       - speak 은 하지 않는다 (메시지 라우팅은 과제 2)
 
     ⚠ 배열 순서가 곧 우선순위다 (spec 4.2). invest 를 먼저 두어 절반을 시설에 쓴 뒤,
@@ -29,6 +28,6 @@ def dummy_policy(world, agent, cfg, procreate_age: int | None = PROCREATE_AGE) -
         {"type": "invest", "target": "facility", "amount": agent.budget / 2, "to": agent.country},
     ]
     if procreate_age is not None and agent.age >= procreate_age:
-        actions.append({"type": "procreate", "testament": DUMMY_TESTAMENT})
+        actions.append({"type": "bear_child"})
 
     return {"reasoning": "dummy", "actions": actions, "received": []}

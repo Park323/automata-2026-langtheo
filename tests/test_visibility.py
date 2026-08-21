@@ -129,6 +129,11 @@ def test_the_obituary_is_the_only_way_age_gets_out(cfg, world):
     """부고에 나이가 실리는 것이 **의도**다. 그 밖에 남의 나이를 아는 길은 없다 —
     관측은 자기 나이도 안 적고(해 시작 문구가 적는다), 명단은 이름만이다."""
     from domains.meteor import prompts
+    # **나이를 흩어 놓고 본다.** 초기 나이가 성인 나이(10) 근처에서 뽑히므로, 비용표의
+    # 「生涯に一度、10 歳から」 (규칙 상수)와 남의 나이가 우연히 겹친다 — 그 겹침은
+    # 누출이 아니라 검사의 착시다. 겹치지 않는 값으로 옮겨 두고 본다.
+    for i, a in enumerate(world.agents.values()):
+        a.age = 40 + i
     obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
     for aid, a in world.agents.items():
         if aid == "Asla1":

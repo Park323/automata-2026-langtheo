@@ -19,6 +19,17 @@ BASE = Path(__file__).resolve().parent.parent / "configs" / "base.yaml"
 IDS = [f"{n}{i}" for n in ("Asla", "Ranoa", "Miris") for i in (1, 2, 3)]
 
 
+# **인구가 늘어난다** (8/21). `bear_child` 는 부모를 죽이지 않으므로 초기 9명 말고도
+# 사람이 생긴다 — 초기 id 로만 만든 클라이언트 사전은 새 사람에게서 KeyError 를 낸다.
+# 없는 id 는 즉시 끝내는 스텁으로 채운다.
+def _client_for(clients, script_end):
+    def get(aid):
+        if aid not in clients:
+            clients[aid] = StubClient([script_end] * 4)
+        return clients[aid]
+    return get
+
+
 def _cfg(turns=2):
     d = yaml.safe_load(open(BASE, encoding="utf-8"))
     d["world"]["total_turns"] = turns
@@ -182,7 +193,7 @@ def test_state_lives_in_system_and_never_piles_up_in_the_conversation():
     end = assistant_msg(tool_call("end_turn", "e", reasoning="r"))
     ids = [f"{c}{i}" for c in ("Asla", "Ranoa", "Miris") for i in (1, 2, 3)]
     clients = {a: StubClient([end] * 4) for a in ids}
-    res = run_agentic(cfg, random.Random(1), lambda a: clients[a],
+    res = run_agentic(cfg, random.Random(1), _client_for(clients, assistant_msg(tool_call("end_turn", "z", reasoning="r"))),
                       StubClient([{"role": "assistant", "content": "t",
                                    "tool_calls": []}] * 30),
                       48.0, prompts.render_turn_open, prompts.system_for,
@@ -274,7 +285,7 @@ def test_income_is_stated_once_a_year_not_recomputed_each_call():
 def test_growing_older_accumulates_in_the_conversation():
     """**나이가 관측에 있으면 매 콜 덮여서 나이 드는 것이 느껴지지 않는다.**
 
-    해가 열릴 때 적으면 대화에 6살 · 7살 · 8살이 차례로 남는다. 그것이 `procreate` 를
+    해가 열릴 때 적으면 대화에 6살 · 7살 · 8살이 차례로 남는다. 그것이 `bear_child` 를
     고를 시점을 가늠하는 유일한 재료다 — 수명 곡선은 비공개이고(4.1), 부고에 찍힌 나이와
     자기 나이의 흐름만이 단서다. 세 런 21명이 전부 자연사한 뒤에 붙인 것이 부고의
     나이였고, 이건 그 짝이다.
@@ -287,8 +298,15 @@ def test_growing_older_accumulates_in_the_conversation():
         world.turn, a.age = t, age
         seen.append(prompts.render_turn_open(world, a, cfg, 48.0, []))
     assert ["6 歳" in seen[0], "7 歳" in seen[1], "8 歳" in seen[2]] == [True] * 3
+    # 관측에는 자기 나이가 없다 — **다만 비용표의 「10 歳から」 는 규칙 상수다** (8/21).
+    # 그것까지 막으면 아이 낳기의 조건을 적을 수 없다.
+    #
     # 관측에는 없다 — 그리고 죽은 문구도 남기지 않는다
-    assert "歳" not in prompts.render_observation(world, a, cfg, 48.0)
+    obs = prompts.render_observation(world, a, cfg, 48.0)
+    assert f"{a.age} 歳" not in obs                 # 내 나이는 없다
+    for line in obs.splitlines():
+        if "歳" in line:                            # 남는 것은 규칙 상수 한 줄뿐이다
+            assert f"{cfg.world.adult_age} 歳" in line and "bear_child" in line, line
     assert "age" not in prompts.T["ja"]
 
 

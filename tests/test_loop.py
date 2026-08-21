@@ -36,10 +36,21 @@ def test_survival_numbers(cfg):
 
 # ── 합격 기준 표 ─────────────────────────────────────────────────────────────
 
-def test_population_invariant(cfg):
-    """1. 모든 턴에서 살아있는 에이전트가 정확히 9명."""
+def test_population_only_grows_and_never_dips(cfg):
+    """**인구는 이제 늘어난다** (8/21).
+
+    전에는 늘 9명이었다 — `procreate` 가 부모를 죽이고 그 자리를 아이가 대신했으므로
+    재생산이 **죽음의 형식**이었다. `bear_child` 는 부모를 죽이지 않으므로 사람이 늘고,
+    자연사는 그대로 자리를 채운다(교체). 그래서 **바닥은 지켜지고 위로만 열린다.**
+
+    바닥이 지켜지는 것이 중요하다 — 우연히 수명이 짧게 나온 세대가 겹치면 나라가 비어
+    버릴 수 있고, 그러면 조율을 관측할 상대가 사라진다.
+    """
+    n0 = cfg.world.agents_per_country * len(cfg.world.countries)
     r = _run(cfg, 1)
-    assert all(n == 9 for n in r.alive_counts)
+    assert r.alive_counts, "턴별 생존 수가 기록돼야 한다"
+    assert min(r.alive_counts) >= n0, f"바닥이 깨졌다: {min(r.alive_counts)} < {n0}"
+    assert r.alive_counts == sorted(r.alive_counts), "줄어드는 구간이 없어야 한다"
 
 
 def test_reproducibility(cfg):
@@ -121,8 +132,15 @@ def test_death_count(cfg):
     수명 모델을 격리해 재려면 더미의 procreate 를 꺼야 한다(procreate_age=None) —
     procreate(age≥7)를 켜면 수명이 잘려 사망이 더 잦아진다.
     """
+    # **60턴으로 줄였다** (8/21) — 사망 기대치도 그만큼 줄어든다. 턴당 사망률로 재서
+    # total_turns 를 바꿀 때 이 테스트가 낡지 않게 한다.
     counts = [run(cfg, random.Random(s), procreate_age=None).deaths for s in range(30)]
-    assert 45 <= statistics.mean(counts) <= 55, f"평균 사망 {statistics.mean(counts):.1f}"
+    per_turn = statistics.mean(counts) / cfg.world.total_turns
+    n0 = cfg.world.agents_per_country * len(cfg.world.countries)
+    # 기대수명 ~16해이므로 9명이면 턴당 9/16 ≈ 0.56 명이 죽는다
+    assert 0.45 <= per_turn <= 0.65, (
+        f"턴당 사망 {per_turn:.2f} (평균 {statistics.mean(counts):.1f} / "
+        f"{cfg.world.total_turns}턴, 초기 {n0}명)")
 
 
 @pytest.mark.calibration
@@ -138,3 +156,29 @@ def test_lifespan(cfg):
         ages += run(cfg, random.Random(s), procreate_age=None).death_ages
     assert max(ages) <= 24
     assert 14.6 <= statistics.mean(ages) <= 15.5, f"평균 수명 {statistics.mean(ages):.2f}"
+
+
+def test_only_a_child_with_a_living_parent_goes_without_income(cfg, world):
+    """**어린 시절은 부모가 있는 곳에만 있다** (8/21).
+
+    소득을 성인 나이부터로 둔 이유는 「부모가 용돈을 준다」 가 성립하기 때문이다. 그
+    부모가 없는 사람에게는 성립하지 않는다 — 자연사 교체로 온 사람은 그 자리의 앞사람이
+    **죽어서** 온 것이고, 세계 첫 해의 사람들에게도 부모가 없다.
+
+    나이로 가르면 안 된다. 교체로 오는 사람을 성인 나이로 태어나게 해 봤더니 **턴당
+    사망이 0.56 에서 1.40 으로 뛰었다** — 나이 10 부터 시작하면 남은 수명이 6해뿐이라
+    세대 교체가 세 배로 빨라지고 수명 모델이 통째로 어긋난다.
+    """
+    child = loop._newborn("Asla9", "Asla", "ja", 0.0, set(), 1, "born", cfg,
+                          itertools.count(500))
+    heir = loop._newborn("Asla8", "Asla", "ja", 0.0, set(), 1, "natural", cfg,
+                         itertools.count(600))
+    assert child.age == heir.age == 0            # 둘 다 갓 태어난다
+
+    assert loop._earns(child, cfg) is True       # 부모가 살아 있다 → 무소득
+    assert loop._earns(heir, cfg) is False       # 줄 이가 없다 → 소득을 받는다
+    child.age = cfg.world.adult_age
+    assert loop._earns(child, cfg) is False      # 성인이 되면 스스로 번다
+
+    for a in world.agents.values():              # 첫 해 사람들도 번다
+        assert loop._earns(a, cfg) is False
