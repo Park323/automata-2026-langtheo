@@ -107,9 +107,22 @@ def main() -> None:
     ap.add_argument("--sequential", action="store_true",
                     help="순차 라운드로빈 (issue #20 — 한 턴 안에서 서로 반영·대화). "
                          "기본은 병렬·1회정산.")
+    # `minimal` 은 **사고를 0 토큰으로** 만든다. gemini-3.6-flash 실측:
+    #   minimal → 사고 0 · 생성 34 · $0.00021    low → 사고 158 · 생성 192 · $0.00080
+    # 그리고 그 모델은 `reasoning.enabled: false` 를 **거절한다**
+    #   HTTP 400 "Reasoning is mandatory for this endpoint and cannot be disabled."
+    # 즉 config 의 기본값(enabled:false)으로는 한 콜도 못 간다 — 반드시 이 손잡이를 쓴다.
     ap.add_argument("--reasoning-effort", default=None,
-                    choices=["low", "medium", "high"],
-                    help="사고 강도 (config 의 reasoning.max_tokens 를 대신함)")
+                    choices=["minimal", "low", "medium", "high"],
+                    help="사고 강도 (config 의 reasoning 를 통째로 대신함). "
+                         "사고를 못 끄는 모델은 minimal 을 쓴다")
+    # spec 12.1 — 사고형 모델에서는 도구마다 reasoning 을 또 받지 않는다.
+    #
+    # ⚠ **effort=minimal 과 함께 쓰면 근거가 아무것도 안 남는다.** 사고 토큰이 0 이라
+    #   `api_reasoning` 도 비고, 도구 reasoning 도 없으므로 지표 4(의도 실패율)의 ①이
+    #   읽을 것이 사라진다. 그걸 알고 고르는 손잡이다.
+    ap.add_argument("--tool-reasoning", default=None, choices=["on", "off"],
+                    help="도구마다 reasoning 인자를 받을지 (기본: config)")
     ap.add_argument("--deterministic", action="store_true",
                     help="temperature 0 + 샘플링 시드 고정. **버그 재현용** — "
                          "본실험은 0.7 로 두어야 행동의 분산이 데이터가 된다")
@@ -141,7 +154,13 @@ def main() -> None:
     knob = args.knob if args.knob is not None else max(cfg.knob.comm_intl_ai)
     if args.reasoning_effort:                      # 실측 비교용 상단 우선
         raw["llm"]["reasoning"] = {"effort": args.reasoning_effort}
+    if args.tool_reasoning:
+        raw["llm"]["tool_reasoning"] = args.tool_reasoning == "on"
+    if args.reasoning_effort or args.tool_reasoning:
         cfg = config.from_dict(raw)
+    if args.reasoning_effort == "minimal" and cfg.llm.tool_reasoning is False:
+        print("  [경고] 사고 minimal + 도구 reasoning off — **근거가 아무것도 안 남습니다.**")
+        print("         지표 4(의도 실패율)의 ①이 읽을 것이 사라집니다.")
 
     print("=" * 64)
     print(f"모델 검증  (agent={agent_model}, translate={translate_model})")
