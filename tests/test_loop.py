@@ -169,6 +169,9 @@ def test_only_a_child_with_a_living_parent_goes_without_income(cfg):
     사망이 0.56 에서 1.40 으로 뛰었다** — 나이 10 부터 시작하면 남은 수명이 6해뿐이라
     세대 교체가 세 배로 빨라지고 수명 모델이 통째로 어긋난다.
     """
+    import itertools
+
+    from core import loop
     child = loop._newborn("Asla9", "Asla", "ja", 0.0, set(), 1, "born", cfg,
                           itertools.count(500))
     heir = loop._newborn("Asla8", "Asla", "ja", 0.0, set(), 1, "natural", cfg,
