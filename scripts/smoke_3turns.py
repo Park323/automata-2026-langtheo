@@ -123,6 +123,21 @@ def main() -> None:
     #   읽을 것이 사라진다. 그걸 알고 고르는 손잡이다.
     ap.add_argument("--tool-reasoning", default=None, choices=["on", "off"],
                     help="도구마다 reasoning 인자를 받을지 (기본: config)")
+    # **프로바이더를 못으로 박는다.** 같은 모델을 18곳이 서빙하는데 `reasoning` 지원
+    # 표기는 전부 True 인데도 **실제로 먹는 곳은 일부뿐이다.** gemma-4-31b-it 실측:
+    #
+    #   OpenInference  effort=high → 사고 222      Friendli → 485
+    #   Venice · DeepInfra · CoreWeave · Novita   → 사고 0 (다섯 조합 전부)
+    #
+    # 그래서 폴백을 반드시 끈다 — 켜 두면 런 중간에 다른 곳으로 떨어져 **사고가 조용히
+    # 꺼진다.** 조건이 바뀐 것을 로그만 보고는 알아채기 어렵다.
+    ap.add_argument("--provider", default=None,
+                    help="이 프로바이더만 쓴다 (폴백 끔). 예: OpenInference")
+    # **사고를 켜면 2048 로는 모자란다.** config 의 2048 은 「사고를 껐으므로 넉넉하다」
+    # 는 근거로 정한 값인데, 사고를 켜면 사고가 그 자리를 먹고 도구 호출에 닿지 못한다.
+    # gemma-4-31b-it · low 실측에서 37콜 중 11건이 잘렸다.
+    ap.add_argument("--max-tokens", type=int, default=None,
+                    help="응답 상한. 사고를 켤 때는 사고량 + 여유로 올려야 한다")
     ap.add_argument("--deterministic", action="store_true",
                     help="temperature 0 + 샘플링 시드 고정. **버그 재현용** — "
                          "본실험은 0.7 로 두어야 행동의 분산이 데이터가 된다")
@@ -156,8 +171,15 @@ def main() -> None:
         raw["llm"]["reasoning"] = {"effort": args.reasoning_effort}
     if args.tool_reasoning:
         raw["llm"]["tool_reasoning"] = args.tool_reasoning == "on"
-    if args.reasoning_effort or args.tool_reasoning:
+    if args.provider:
+        raw["llm"]["provider"] = {"only": [args.provider], "allow_fallbacks": False}
+    if args.max_tokens:
+        raw["llm"]["max_tokens"] = args.max_tokens
+    if args.reasoning_effort or args.tool_reasoning or args.provider or args.max_tokens:
         cfg = config.from_dict(raw)
+    if args.provider:
+        print(f"  [프로바이더] {args.provider} 고정 · 폴백 끔 — "
+              f"조건이 런 중간에 바뀌지 않게")
     if args.reasoning_effort == "minimal" and cfg.llm.tool_reasoning is False:
         print("  [경고] 사고 minimal + 도구 reasoning off — **근거가 아무것도 안 남습니다.**")
         print("         지표 4(의도 실패율)의 ①이 읽을 것이 사라집니다.")

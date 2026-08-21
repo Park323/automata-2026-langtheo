@@ -665,7 +665,7 @@ class _StepAcc:
     """
     __slots__ = ("actions", "reasonings", "calls", "seen", "api_reasoning", "steps",
                  "evicted", "error", "recovered", "no_tool_content", "llm_ms", "pressured",
-                 "compacted")
+                 "compacted", "truncated")
 
     def __init__(self):
         self.actions = []
@@ -684,6 +684,9 @@ class _StepAcc:
         # 없이 잃은 것이고 하나는 적어 두고 바꾼 것이다. 섞으면 거래가 일어났는지 안
         # 일어났는지 사후에 알 수 없다.
         self.compacted = 0
+        # 응답이 `max_tokens` 에 걸려 잘린 횟수. **행동 없음과 구분해야 한다** — 하나는
+        # 모델이 안 한 것이고 하나는 우리가 자리를 안 준 것이다.
+        self.truncated = 0
 
 
 def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
@@ -718,6 +721,17 @@ def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
     except (KeyError, IndexError, TypeError):
         st.error = f"malformed response: {str(resp)[:150]}"
         return "error"
+    # **잘렸는지를 센다.** 사고를 켜면 사고가 `max_tokens` 를 먹고 도구 호출에 닿기 전에
+    # 끝난다 — 그러면 `no_tool_call` 로만 남아서 「모델이 아무것도 안 했다」 로 읽힌다.
+    #
+    # gemma-4-31b-it · effort low 실측: 37콜 중 **11건(30%)** 이 `length` 였고, 27
+    # 에이전트-해 중 **10해가 아무 행동도 못 했다.** `reasoning` 의 끝을 보면 AP 산수를
+    # 하다 끊겼다 — 「`observe_risk` (0.」 에서 토큰이 끝난다.
+    #
+    # `base.yaml` 의 max_tokens 2048 은 **「사고를 껐으므로 넉넉하다」** 는 근거로 정한
+    # 값이다. 사고를 켠 순간 그 근거가 사라졌는데 값은 그대로였다.
+    if resp["choices"][0].get("finish_reason") == "length":
+        st.truncated += 1
     # message.reasoning 은 추론 모델의 사고이고 spec 의 reasoning 과 다르다 (섞지 않는다).
     think = str(msg.get("reasoning") or "").strip()
     if think:
@@ -805,7 +819,7 @@ def _turn_log(agent, st: "_StepAcc", ended_by: str, t_turn: float) -> dict:
             "reasoning_missing": not any(r["reasoning"] for r in st.reasonings),
             "steps": st.steps, "prompt_tokens": agent.last_prompt_tokens,
             "pressured": st.pressured, "evicted_blocks": st.evicted,
-            "compacted_blocks": st.compacted,
+            "compacted_blocks": st.compacted, "truncated_calls": st.truncated,
             "memory_len": len(agent.memory),
             "recovered_calls": st.recovered, "no_tool_content": st.no_tool_content,
             "elapsed_ms": round((time.time() - t_turn) * 1000),
@@ -873,6 +887,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     error = None
     evicted = 0
     compacted = 0          # 기억으로 산 자리 — 한계에 밀려 버린 것(evicted)과 가른다
+    truncated = 0          # max_tokens 에 걸려 잘린 응답 — 행동 없음과 구분한다
     ended_by = "exhausted"  # ended | exhausted | error | repeat_guard | runaway
     calls: list[dict] = []  # 도구 호출 전문 (인자·결과·실패 사유)
     seen: dict[str, int] = {}       # (도구,인자) 반복 카운터 — 실패는 자원을 안 쓴다
@@ -929,6 +944,8 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
         except (KeyError, IndexError, TypeError) as e:
             error = f"malformed response: {type(e).__name__} {str(resp)[:150]}"
             break
+        if resp["choices"][0].get("finish_reason") == "length":
+            truncated += 1
         # ⚠ message.reasoning 은 추론 모델의 사고 과정이고 spec 의 reasoning 과 다르다.
         #    섞지 않는다 (spec 9장). 원본은 raw_calls.jsonl 에 그대로 남는다.
         think = str(msg.get("reasoning") or "").strip()
@@ -1038,7 +1055,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             "reasoning_missing": not any(r["reasoning"] for r in reasonings),
             "steps": steps, "prompt_tokens": agent.last_prompt_tokens,
             "pressured": pressured, "evicted_blocks": evicted,
-            "compacted_blocks": compacted,
+            "compacted_blocks": compacted, "truncated_calls": truncated,
             "memory_len": len(agent.memory),
             "recovered_calls": recovered, "no_tool_content": no_tool_content,
             "elapsed_ms": round((time.time() - t_turn) * 1000),

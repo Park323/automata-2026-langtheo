@@ -552,3 +552,49 @@ def test_nothing_tells_the_agent_to_repeat_an_action():
     i = next(n for n, l in enumerate(lines) if "apprendre la langue de" in l)
     assert f"{cfg.costs.unit:g}" in lines[i]                     # 한 번의 값
     assert f"/ {cfg.costs.learn_base:.0f}" in lines[i + 1]       # 총액
+
+
+def test_the_year_and_the_steps_inside_it_are_explained():
+    """**한 해와 그 안의 手番을 모델들이 섞고 있었다.**
+
+    순차 라운드로빈은 **스텝 단위**로 돈다 (`run_turn_roundrobin`): 한 사람이 한 응답을
+    내면 다음 사람으로 넘어가고, AP 가 남은 사람끼리 다시 돈다. 그러니
+
+        한 응답에 여러 도구  →  그 전부가 남들보다 먼저 일어난다
+        나눠서 부르면        →  그 사이에 남들이 움직이고, 그 결과가 내 다음 차례에 보인다
+
+    이 구조가 프롬프트에 **한 줄도 없었다.** 그 결과 실측에서
+      · 매 스텝 AP 산수를 처음부터 다시 했고 (gemma 는 그 재계산이 상한을 먹어 30% 잘림)
+      · 採決일과 스텝 사이에 도착한 메시지를 놓쳤다
+
+    **사실만 적는다.** 한 응답에 몰아 넣는 것이 유리한지 나눠 부르는 것이 유리한지는
+    적지 않는다 — 그건 전략이고, 적으면 지시가 된다.
+    """
+    from core import config
+    from domains.meteor import prompts
+    cfg = config.load("configs/base.yaml")
+
+    for lang in ("ja", "zh", "fr"):
+        s = prompts.T[lang]["steps"]
+        assert s and "\n" in s, lang                      # 세 사실을 줄로 나눈다
+        assert len(s.splitlines()) >= 3, lang
+
+    # **유리·불리를 말하지 않는다.** 이런 말이 들어오면 사실이 아니라 조언이 된다.
+    ADVICE = ("有利", "不利", "べきです", "したほうが", "应该", "最好", "建议",
+              "vous devriez", "il vaut mieux", "conseill")
+    for lang in ("ja", "zh", "fr"):
+        s = prompts.T[lang]["steps"]
+        for w in ADVICE:
+            assert w not in s, (lang, w)
+
+    # 그리고 실제로 관측에 실린다
+    import itertools
+    import random
+    from core import loop
+    world = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    world.turn = 1
+    for aid, mark in (("Asla1", "行動力が残っている間"),
+                      ("Ranoa1", "只要还有行动力"),
+                      ("Miris1", "l'année n'est pas terminée")):
+        obs = prompts.system_for(world.agents[aid], world, cfg, 48.0)
+        assert mark in obs, aid

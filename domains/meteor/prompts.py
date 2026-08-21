@@ -92,6 +92,11 @@ T = {
         c_ballot="  vote",  c_ballot_note="採決で何を建てるかを選ぶ",
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
         multi="予算と行動力が許す限り複数の行動ができます。\n使い残した予算は翌年に残ります。",
+        # **一年と、その中の手番。** 実測で模型がここを取り違えていた。
+        steps="行動力が残っている間、その年はまだ続きます。\n"
+              "一度の応答で道具をいくつも呼べます。その分はすべて、ほかの人が動く前に起こります。\n"
+              "応答を分けて呼ぶと、その合間にほかの人が動きます。"
+              "その人たちがしたことや届いたメッセージは、次にあなたが動くときに見えています。",
         costs_hdr="行動の費用", col_money="お金", col_ap="行動力",
         ap_hdr="行動力は毎年 1.0 に戻り、繰り越せません。何を諦めるかがここで決まります。",
         c_dom="  話す（自国内）", c_orig="  話す（国際・original）",
@@ -156,6 +161,10 @@ T = {
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
         multi="只要预算和行动力允许，你可以采取多项行动。\n没用完的预算会留到明年。",
+        steps="只要还有行动力，这一年就还没结束。\n"
+              "一次回应里可以调用多个工具，这些都会在别人行动之前发生。\n"
+              "如果分几次回应来调用，中间别人就会行动。"
+              "他们做了什么、送来了什么消息，你下次行动时就看得到。",
         costs_hdr="行动费用", col_money="钱", col_ap="行动力",
         ap_hdr="行动力每年恢复为 1.0，不能结转。放弃什么，在这里决定。",
         c_dom="  说话（本国内）", c_orig="  说话（国际·original）",
@@ -220,6 +229,12 @@ T = {
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
         multi="Vous pouvez agir plusieurs fois si le budget et l'action le permettent.\nLe budget non dépensé reste pour l'année suivante.",
+        steps="Tant qu'il vous reste de l'action, l'année n'est pas terminée.\n"
+              "Vous pouvez appeler plusieurs outils dans une même réponse ; tout cela "
+              "se produit avant que les autres n'agissent.\n"
+              "Si vous les appelez en plusieurs réponses, les autres agissent "
+              "entre-temps. Ce qu'ils ont fait et les messages arrivés vous seront "
+              "visibles au moment où vous agirez de nouveau.",
         costs_hdr="Coûts des actions", col_money="argent", col_ap="action",
         ap_hdr="L'action revient à 1.0 chaque année et ne se reporte pas. Ce que vous renoncez se décide ici.",
         c_dom="  parler (dans votre nation)", c_orig="  parler (international, original)",
@@ -671,6 +686,16 @@ def render_observation(world, agent, cfg, knob_ai: float,
         # 관측에 두면 **관측이 매 콜 흔들리는 숫자를 담게 된다.** 오늘 그 부류로 세 번
         # 물렸다 — 소득 드리프트(+100→+104→+105) · wellness 정액 모순 · 해 중간 재렌더.
         t["multi"],
+        # **한 해와 그 안의 手番을 갈라 적는다.** 실측에서 모델들이 이 둘을 섞었다 —
+        # 매 스텝마다 AP 산수를 처음부터 다시 하고(사고가 상한을 먹어 잘리기까지 했다),
+        # 採決일이나 도착한 메시지를 스텝 사이에서 놓쳤다.
+        #
+        # 순차 라운드로빈은 **스텝 단위**로 돈다 (`run_turn_roundrobin`): 한 사람이 한
+        # 응답을 내면 다음 사람으로 넘어가고, AP 가 남은 사람끼리 다시 돈다. 그러니
+        # 한 응답에 여러 도구를 담으면 그 전부가 남들보다 먼저 일어나고, 나눠 부르면
+        # 그 사이에 남들이 움직인다. **사실이지 조언이 아니다** — 어느 쪽이 유리한지는
+        # 적지 않는다.
+        t["steps"],
         "",
         render_costs(world, agent, cfg, knob_ai),
         "",
