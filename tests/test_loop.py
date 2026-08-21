@@ -158,7 +158,7 @@ def test_lifespan(cfg):
     assert 14.6 <= statistics.mean(ages) <= 15.5, f"평균 수명 {statistics.mean(ages):.2f}"
 
 
-def test_only_a_child_with_a_living_parent_goes_without_income(cfg, world):
+def test_only_a_child_with_a_living_parent_goes_without_income(cfg):
     """**어린 시절은 부모가 있는 곳에만 있다** (8/21).
 
     소득을 성인 나이부터로 둔 이유는 「부모가 용돈을 준다」 가 성립하기 때문이다. 그
@@ -180,5 +180,8 @@ def test_only_a_child_with_a_living_parent_goes_without_income(cfg, world):
     child.age = cfg.world.adult_age
     assert loop._earns(child, cfg) is False      # 성인이 되면 스스로 번다
 
-    for a in world.agents.values():              # 첫 해 사람들도 번다
+    import random
+    w = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    for a in w.agents.values():                  # 첫 해 사람들도 번다 (성인으로 시작)
         assert loop._earns(a, cfg) is False
+        assert a.age >= cfg.world.adult_age
