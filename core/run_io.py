@@ -239,6 +239,8 @@ class RunWriter:
                 "memory_open": a.memory_open,
                 # 생애 1회 — 아이를 낳았나 (8/21)
                 "has_borne": a.has_borne,
+                # 부모 — 살아 있는지가 무소득 판정이다 (8/22)
+                "parent_id": a.parent_id,
             })
         for m in result.messages_log:
             if m.get("turn") == turn and not m.get("_written"):

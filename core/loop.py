@@ -136,22 +136,31 @@ def _replace(world: World, old: str, child: Agent, carry: list[str]) -> None:
     world.testaments[child.id] = carry
 
 
-def _earns(a, cfg) -> bool:
-    """소득을 받는가.
+def _earns(a, world: World, cfg) -> bool:
+    """소득을 받는가. **부모가 살아 있는 아이만 못 받는다.**
 
-    **어린 시절은 부모가 있는 곳에만 있다** (8/21). 소득을 성인 나이부터로 둔 이유는
-    「부모가 용돈을 준다」 가 성립하기 때문인데, 그 부모가 없는 사람에게는 성립하지 않는다.
+    소득을 성인 나이부터로 둔 이유는 「부모가 용돈을 준다」 가 성립하기 때문이다. 그러니
+    판정도 그 문장 그대로여야 한다 — **줄 사람이 있는가.**
 
-      · `bear_child` 로 태어난 아이 → 부모가 **살아 있다.** 성인까지 소득이 없고,
-        그 사이의 돈은 받은 것뿐이다. 그 「용돈」 이 실제 결정이 된다.
-      · 자연사 교체로 온 사람 → 그 자리의 앞사람이 **죽어서** 온 것이다. 줄 이가 없다.
-      · 세계 첫 해의 사람들 → 부모가 없다.
+      · 부모가 살아 있는 미성년      → 무소득. 그 사이의 돈은 받은 것뿐이고, 그
+                                     「용돈」 이 실제 결정이 된다
+      · 부모가 죽은 미성년(고아)      → 받는다. 줄 이가 없으니 그 규칙이 성립하지 않는다
+      · 자연사 교체로 온 사람        → 받는다. 그 자리의 앞사람이 **죽어서** 온 것이다
+      · 세계 첫 해의 사람들          → 받는다. 부모가 없다
 
-    나이로 가르면 안 된다. 교체로 오는 사람을 성인 나이로 태어나게 해 봤더니 **턴당 사망이
-    0.56 에서 1.40 으로 뛰었다** — 나이 10 부터 시작하면 남은 수명이 6해뿐이라 세대 교체가
-    세 배로 빨라지고, 수명 모델이 통째로 어긋난다.
+    id 는 재사용하지 않으므로 `parent_id in world.agents` 가 곧 부모 생존이다.
+
+    **나이만으로 걸면 안 된다.** 처음엔 `born_by == "born" and age < adult_age` 로 두었는데,
+    그러면 세 살에 부모를 잃은 아이가 **줄 사람도 없이** 일곱 해를 빈손으로 남는다 — 자연사
+    교체자에게서 막으려던 바로 그 상황이다.
+
+    **나이를 올려서 푸는 것도 안 된다.** 교체로 오는 사람을 성인 나이로 태어나게 해 봤더니
+    턴당 사망이 **0.56 → 1.40** 으로 뛰었다. 나이 10 부터면 남은 수명이 6해뿐이라 세대
+    교체가 세 배로 빨라지고 수명 모델이 통째로 어긋난다.
     """
-    return a.born_by == "born" and a.age < cfg.world.adult_age
+    if a.age >= cfg.world.adult_age:
+        return False
+    return bool(a.parent_id) and a.parent_id in world.agents
 
 
 def _newborn(aid: str, country: str, lang: str, budget: float, parent_langs: set,
@@ -252,6 +261,7 @@ def _bear_child(world: World, aid: str, cfg,
     a = world.agents[aid]
     child = _newborn(_next_id(world, a.country), a.country, a.native_lang,
                      0.0, a.known_langs, world.turn, "born", cfg, counter)
+    child.parent_id = aid                 # 이 값이 살아 있는지가 곧 무소득 판정이다
     world.agents[child.id] = child        # **대신하지 않는다** — 새 사람이 늘어난다
     result.births.append({"turn": world.turn, "id": child.id, "parent": aid,
                           "uid": child.uid, "born_by": "born",
@@ -276,7 +286,7 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
     # 1. 소득 지급 + AP 리셋 (이월: 예산은 남고, AP 는 리셋)
     for a in world.agents.values():
         mult = world.countries[a.country].multiplier(cfg)
-        a.budget += 0.0 if _earns(a, cfg) else cfg.income.per_turn * mult
+        a.budget += 0.0 if _earns(a, world, cfg) else cfg.income.per_turn * mult
         a.ap = cfg.turn.action_points
 
     # 2. 관측 스냅샷 — 이번 턴 행동하는 인스턴스(uid)를 고정
@@ -643,7 +653,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
     for a in world.agents.values():
         # **부모가 있는 아이만 무소득이다** (`_earns`). 자연사 교체로 온 사람에게는
         # 줄 부모가 없으므로 그 규칙이 성립하지 않는다.
-        inc = (0.0 if _earns(a, cfg)
+        inc = (0.0 if _earns(a, world, cfg)
                else cfg.income.per_turn * world.countries[a.country].multiplier(cfg))
         a.budget += inc
         # **받은 값을 적어 둔다.** 해 시작 문구가 렌더 때 다시 계산하면, 순차에서 나중에
@@ -1030,7 +1040,7 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
     for a in world.agents.values():
         # **부모가 있는 아이만 무소득이다** (`_earns`). 자연사 교체로 온 사람에게는
         # 줄 부모가 없으므로 그 규칙이 성립하지 않는다.
-        inc = (0.0 if _earns(a, cfg)
+        inc = (0.0 if _earns(a, world, cfg)
                else cfg.income.per_turn * world.countries[a.country].multiplier(cfg))
         a.budget += inc
         # **받은 값을 적어 둔다.** 해 시작 문구가 렌더 때 다시 계산하면, 순차에서 나중에

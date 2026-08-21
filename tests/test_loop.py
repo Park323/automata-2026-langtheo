@@ -159,32 +159,45 @@ def test_lifespan(cfg):
 
 
 def test_only_a_child_with_a_living_parent_goes_without_income(cfg):
-    """**어린 시절은 부모가 있는 곳에만 있다** (8/21).
+    """**판정은 「줄 사람이 있는가」 다.** 소득을 성인 나이부터로 둔 이유가 「부모가 용돈을
+    준다」 이므로, 판정도 그 문장 그대로여야 한다.
 
-    소득을 성인 나이부터로 둔 이유는 「부모가 용돈을 준다」 가 성립하기 때문이다. 그
-    부모가 없는 사람에게는 성립하지 않는다 — 자연사 교체로 온 사람은 그 자리의 앞사람이
-    **죽어서** 온 것이고, 세계 첫 해의 사람들에게도 부모가 없다.
+    처음엔 `born_by == "born" and age < adult_age` 로 두었다. 그러면 **세 살에 부모를 잃은
+    아이가 줄 사람도 없이 일곱 해를 빈손으로** 남는다 — 자연사 교체자에게서 막으려던 바로
+    그 상황이다.
 
-    나이로 가르면 안 된다. 교체로 오는 사람을 성인 나이로 태어나게 해 봤더니 **턴당
-    사망이 0.56 에서 1.40 으로 뛰었다** — 나이 10 부터 시작하면 남은 수명이 6해뿐이라
-    세대 교체가 세 배로 빨라지고 수명 모델이 통째로 어긋난다.
+    **나이를 올려서 푸는 것도 안 된다.** 교체로 오는 사람을 성인 나이로 태어나게 해 봤더니
+    턴당 사망이 **0.56 → 1.40** 으로 뛰었다. 나이 10 부터면 남은 수명이 6해뿐이라 세대
+    교체가 세 배로 빨라지고 수명 모델이 통째로 어긋난다.
     """
     import itertools
+    import random
 
     from core import loop
-    child = loop._newborn("Asla9", "Asla", "ja", 0.0, set(), 1, "born", cfg,
-                          itertools.count(500))
-    heir = loop._newborn("Asla8", "Asla", "ja", 0.0, set(), 1, "natural", cfg,
-                         itertools.count(600))
-    assert child.age == heir.age == 0            # 둘 다 갓 태어난다
-
-    assert loop._earns(child, cfg) is True       # 부모가 살아 있다 → 무소득
-    assert loop._earns(heir, cfg) is False       # 줄 이가 없다 → 소득을 받는다
-    child.age = cfg.world.adult_age
-    assert loop._earns(child, cfg) is False      # 성인이 되면 스스로 번다
-
-    import random
     w = loop.init_world(cfg, itertools.count(1), random.Random(1))
-    for a in w.agents.values():                  # 첫 해 사람들도 번다 (성인으로 시작)
-        assert loop._earns(a, cfg) is False
-        assert a.age >= cfg.world.adult_age
+    parent = w.agents["Asla1"]
+    parent.age = cfg.world.adult_age
+
+    cid = loop._bear_child(w, "Asla1", cfg, itertools.count(500),
+                           loop.RunResult(world=w))
+    child = w.agents[cid]
+    assert child.age == 0 and child.parent_id == "Asla1"
+    assert loop._earns(child, w, cfg) is True          # 부모가 살아 있다 → 무소득
+
+    # **고아가 되면 받는다.** 줄 이가 없으니 그 규칙이 성립하지 않는다.
+    heir = loop._newborn("Asla9", "Asla", "ja", 0.0, set(), 1, "natural", cfg,
+                         itertools.count(600))
+    loop._replace(w, "Asla1", heir, [])
+    assert "Asla1" not in w.agents
+    assert loop._earns(child, w, cfg) is False
+
+    # 성인이 되면 스스로 번다 — 부모가 살아 있어도
+    w.agents["Asla1"] = parent
+    child.age = cfg.world.adult_age
+    assert loop._earns(child, w, cfg) is False
+
+    # 자연사 교체로 온 사람과 첫 해 사람들에게는 부모가 없다
+    assert heir.parent_id is None and loop._earns(heir, w, cfg) is False
+    for a in w.agents.values():
+        if a.parent_id is None:
+            assert loop._earns(a, w, cfg) is False
