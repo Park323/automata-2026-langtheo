@@ -210,14 +210,21 @@ def _procreate_child(world: World, aid: str, testament: str, cfg,
     carry = ([testament] + world.testaments.get(aid, []))[: cfg.inheritance.testament_carry]
     child = _newborn(_next_id(world, a.country), a.country, a.native_lang,
                      a.budget, a.known_langs, world.turn, "procreate", cfg, counter)
-    # 유언은 별도 블록이 아니라 **아이의 기억 초기값**이다. 다른 모든 것과 같은
-    # 컨텍스트에서 관리되고, 아이가 memory_write 로 덮어쓰면 사라진다 — 그게 구전의 감쇠다.
+    # **유언은 기억이 아니라 들은 말이다** (8/21 정정).
+    #
+    # 전에는 `child.memory` 를 유언으로 채웠다. 그러면 아이가 **고르지 않은 것을 이미
+    # 들고 있는** 상태로 태어나고, 「무엇을 남길지 고르는 것」 이 관측 대상인데(3.3) 그
+    # 선택이 한 세대 건너뛴다. 기억을 압박선 위로 옮긴 뒤로는 더 나빠졌다 — 아이가
+    # 여러 해 동안 그 값을 고칠 수도 없다.
+    #
+    # 이제 유언은 **아이에게 도착하는 말**이다. 대화에 남고, 아이가 원하면 그때
+    # `memory_write` 로 옮겨 적는다. 옮기지 않으면 대화가 밀려나며 사라진다 — 그것이
+    # 구전의 감쇠고, 이번에는 **아이의 선택**으로 일어난다.
+    #
     # **반쯤 배운 언어를 물려준다** — 절반만. 1.0 이면 능력이 사실상 상속돼
     # "능력은 상속되지 않는다"(3.3)가 무너지고, 0 이면 물려줄 것이 예산뿐이다.
-    # 이 감쇠가 곧 구전 감쇠의 정량판이다.
     keep = cfg.inheritance.lang_progress_carry
     child.lang_progress = {k: v * keep for k, v in a.lang_progress.items() if v * keep > 0}
-    child.memory = "\n".join(x for x in carry if x)
     _replace(world, aid, child, carry)
     result.deaths += 1
     result.death_ages.append(a.age)
@@ -230,6 +237,11 @@ def _procreate_child(world: World, aid: str, testament: str, cfg,
     result.births.append({"turn": world.turn, "id": child.id, "replaces": aid,
                           "uid": child.uid, "born_by": "procreate",
                           "budget": child.budget})
+    # **아이 본인에게만** 간다 (PRIVATE). 계보에 쌓인 최근 것들을 함께 전한다 —
+    # `testament_carry` 개가 곧 구전이 몇 대를 견디는가다.
+    if carry:
+        _notify(world, "testament", {"testament": list(carry)},
+                world.turn, actor=child.id)
 
 
 # ─────────────────────────────────────────── 턴 (더미) ─────────────────────────────

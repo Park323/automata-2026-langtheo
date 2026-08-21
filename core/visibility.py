@@ -63,6 +63,10 @@ FACTS: dict[str, tuple[Vis, str]] = {
     "lang_progress":     (Vis.PRIVATE, "내 언어 학습 진척"),
     "facility_invested": (Vis.PRIVATE, "내가 어느 나라에 얼마를 냈나"),
     "memory":            (Vis.PRIVATE, "내 메모"),
+    "testament":         (Vis.PRIVATE, "부모가 남긴 말. **아이 본인에게만** 간다 — 기억에 "
+                                       "미리 심지 않고 들은 말로 온다. 옮겨 적을지는 "
+                                       "아이가 고르고, 안 옮기면 대화에서 밀려 사라진다 "
+                                       "(3.3 구전의 감쇠)"),
     "risk_reading":      (Vis.PRIVATE, "내가 observe_risk 로 읽은 값. 남에게 알리려면 말해야 한다"),
     "fac_gain":          (Vis.PRIVATE, "내 출자가 진척을 얼마 올렸나 (타국이면 여부만)"),
     "delivery_failed":   (Vis.PRIVATE, "내가 보낸 말이 닿지 않았다"),

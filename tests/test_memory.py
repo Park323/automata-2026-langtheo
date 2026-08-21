@@ -75,11 +75,11 @@ def test_memory_costs_ap_not_budget(cfg, world):
 
 
 def test_only_the_testament_survives_death(cfg, world):
-    """개인에 속한 것은 전부 소실. **유언 한 문장만** 아이의 기억으로 넘어간다.
+    """개인에 속한 것은 전부 소실. **유언 한 문장만** 아이에게 전해진다.
 
-    유언을 별도 블록이 아니라 `memory` 초기값으로 두는 이유 — 다른 모든 것과 같은
-    컨텍스트에서 관리되고, 아이가 `memory_write` 로 덮어쓰면 사라집니다.
-    **그 덮어쓰기가 곧 구전의 감쇠**이고, 무엇을 남길 가치가 있다고 봤는지가 관측됩니다.
+    기억이 아니라 **들은 말**로 간다 (8/21 정정) — 아이는 빈손으로 태어나고, 그 말을
+    옮겨 적을지 스스로 고른다. 안 옮기면 대화가 밀려나며 사라진다. **그 선택이 곧 구전의
+    감쇠**이고, 무엇을 남길 가치가 있다고 봤는지가 관측됩니다.
     """
     a = world.agents["Asla1"]
     a.memory = "내가 평생 알아낸 것"
@@ -90,8 +90,12 @@ def test_only_the_testament_survives_death(cfg, world):
     child = world.agents["Asla4"]             # 3명 다음이니 4번
     assert child.convo == []                       # 대화 이력은 소실
     assert "내가 평생 알아낸 것" not in child.memory  # 부모의 메모도 소실
-    assert child.memory == "유언만 넘어간다"          # 유언만 기억으로
-    assert world.testaments["Asla4"][0] == "유언만 넘어간다"   # 유언은 아이에게
+    # **유언은 기억이 아니라 들은 말로 온다** (8/21 정정). 아이는 빈손으로 태어나고,
+    # 옮겨 적을지를 스스로 고른다 — 그 선택이 구전의 감쇠다.
+    assert child.memory == ""
+    q = [e for e in world.inbox_queue if e["to"] == "Asla4"]
+    assert len(q) == 1 and q[0]["msg"]["testament"] == ["유언만 넘어간다"]
+    assert world.testaments["Asla4"][0] == "유언만 넘어간다"   # 계보 저장소는 그대로
     assert "Asla1" not in world.testaments                    # 죽은 자리는 비운다
 
 

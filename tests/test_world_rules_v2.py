@@ -371,17 +371,33 @@ def test_death_is_announced_to_the_same_nation_only(cfg, world):
 
 # ── 유언 ────────────────────────────────────────────────────────────────────────
 
-def test_testament_becomes_the_child_s_memory(cfg, world):
-    """유언은 별도 블록이 아니라 아이의 기억 초기값이다.
+def test_the_testament_arrives_as_something_heard_not_as_memory(cfg, world):
+    """**유언은 기억이 아니라 들은 말이다** (8/21 정정).
 
-    아이가 `memory_write` 로 덮어쓰면 사라진다 — **그 덮어쓰기가 구전의 감쇠다.**
+    전에는 `child.memory` 를 유언으로 채웠다. 그러면 아이가 **고르지 않은 것을 이미 들고**
+    태어나고, 「무엇을 남길지 고르는 것」 이 관측 대상인데(3.3) 그 선택이 한 세대
+    건너뛴다. 기억을 압박선 위로 옮긴 뒤로는 더 나빠졌다 — 아이가 여러 해 동안 그 값을
+    고칠 수조차 없다.
+
+    이제 유언은 아이에게 **도착한다.** 대화에 남고, 옮겨 적을지는 아이가 고른다. 안
+    옮기면 대화가 밀려나며 사라진다 — 그것이 구전의 감쇠이고, 이번에는 아이의 선택으로
+    일어난다.
     """
     world.agents["Asla1"].memory = "부모의 메모"
     loop._procreate_child(world, "Asla1", "요격기에만 내라", cfg,
                           itertools.count(800), loop.RunResult(world=world))
     child = world.agents["Asla4"]
-    assert child.memory == "요격기에만 내라"
+    assert child.memory == ""                     # 빈손으로 태어난다
     assert "부모의 메모" not in child.memory
+
+    # 그리고 **본인에게만** 도착한다 (PRIVATE)
+    q = [e for e in world.inbox_queue if e["to"] == "Asla4"]
+    assert len(q) == 1 and q[0]["msg"]["testament"] == ["요격기에만 내라"]
+    assert not [e for e in world.inbox_queue if e["to"] != "Asla4"]
+
+    from domains.meteor import prompts
+    txt = prompts.render_events(child, [q[0]["msg"]])
+    assert "요격기에만 내라" in txt and "親が残した言葉" in txt
 
 
 def test_observation_has_no_separate_testament_block(cfg, world):
