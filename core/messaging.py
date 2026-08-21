@@ -12,7 +12,16 @@ AI_LABEL = "[AI translation]"
 # 통역이 끼지 않았는데 뜻이 닿았다는 표시. `render_inbox` 가 수신자 언어로 옮긴다.
 # AI 라벨은 영어 그대로 둔다 — 기계가 낀 자리를 이물감 있게 두는 편이 낫고,
 # 바꾸면 AI 경로의 자극이 달라져 오늘 런들과의 4a 비교가 흔들린다.
-DIRECT_LABEL = "[direct]"
+# **원문 직통은 두 가지 다른 사실이다** (8/21). 하나로 묶어 「통역 없이 통했다」 라고
+# 적었더니, 못 읽는 언어를 전달하면서 통했다고 말하는 일이 생겼다 — 여섯 런에서 `writer`
+# 덕으로 전달된 16건이 **전부** 그랬고, 한 에이전트가
+#
+#     "あなたのメッセージが分かりません。日本語で説明してください。"
+#
+# 라고 되물었다. 우리 라벨이 거짓말을 한 것이고, 그 되물음이 **정확한 반응**이었다.
+DIRECT_LABEL = "[direct]"                  # 하위 호환 — 읽는 쪽 덕
+DIRECT_READ_LABEL = "[direct:read]"        # 내가 그 말을 읽는다
+DIRECT_WRITE_LABEL = "[direct:write]"      # 나는 못 읽지만 상대가 내 말을 다룬다
 
 
 # ── 길이 절단 (spec 5.3) — 원문에, 발신 언어 상한으로, 번역 전에 ──────────────
@@ -125,7 +134,10 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     if kind == "original":
         if direct:
             meta["text_delivered"] = text_sent      # 원문 그대로 (지표 4d)
-            inbox = {"from": sent["from"], "label": DIRECT_LABEL, "text": text_sent,
+            # 어느 쪽 덕인지 라벨이 데려간다. 읽는 쪽 덕이면 「그대로 읽었다」,
+            # 쓰는 쪽 덕이면 「나는 못 읽지만 상대가 내 말을 다룬다」 — 사실이 다르다.
+            lbl = (DIRECT_READ_LABEL if direct_by == "reader" else DIRECT_WRITE_LABEL)
+            inbox = {"from": sent["from"], "label": lbl, "text": text_sent,
                      "original": None}
             return {"kind": kind, "delivered": True, "inbox": inbox,
                     "sender_notice": None, "meta": meta}

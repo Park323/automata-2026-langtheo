@@ -121,7 +121,11 @@ T = {
         in_fail="  通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
         in_fail_plain="  通知 — {to} 宛のメッセージは届きませんでした",
         in_unread="  {frm} より — 読めないメッセージが届きました",
-        in_from="  {frm} より{label}", lbl_direct=" ［通訳なしで通じた］",
+        in_from="  {frm} より{label}",
+        lbl_direct=" ［通訳なしで通じた］",          # 하위 호환
+        lbl_direct_read=" ［あなたがこの言葉を読めるので、そのまま通じました］",
+        lbl_direct_write=" ［あなたはこの言葉を扱えませんが、相手があなたの言語を"
+                         "扱えるので通じました］",
         lbl_ai=" ［送り主が AI に訳させたメッセージです］",
         died="  {who} が {age} 歳で亡くなり、{born} が生まれました。",
         fac_gain="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
@@ -181,7 +185,10 @@ T = {
         in_fail="  通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
         in_fail_plain="  通知 — 你发给 {to} 的消息未能送达",
         in_unread="  来自 {frm} — 送到一条你读不懂的消息",
-        in_from="  来自 {frm}{label}", lbl_direct="［无需翻译就能听懂］",
+        in_from="  来自 {frm}{label}",
+        lbl_direct="［无需翻译就能听懂］",
+        lbl_direct_read="［你读得懂这种话，所以原文就通了］",
+        lbl_direct_write="［你不会这种话，但对方会你的语言，所以还是通了］",
         lbl_ai="［这是发信人用 AI 译过来的消息］",
         died="  {who} 在 {age} 岁去世，{born} 出生了。",
         fac_gain="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
@@ -245,7 +252,11 @@ T = {
         in_fail="  Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",
         in_fail_plain="  Avis — votre message à {to} n'a pas pu être délivré",
         in_unread="  de {frm} — un message illisible est arrivé",
-        in_from="  de {frm}{label}", lbl_direct=" [compris sans traduction]",
+        in_from="  de {frm}{label}",
+        lbl_direct=" [compris sans traduction]",
+        lbl_direct_read=" [vous lisez cette langue, le texte passe tel quel]",
+        lbl_direct_write=" [vous ne maniez pas cette langue, mais votre "
+                         "interlocuteur manie la vôtre, et cela passe quand même]",
         lbl_ai=" [message que l'expéditeur a fait traduire par une IA]",
         died="  {who} est mort à {age} ans ; {born} est né.",
         fac_gain="  Votre versement de {amt:.0f} à facility l'an dernier a fait progresser {to} de {gain:.0f}.",
@@ -533,8 +544,19 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
         # 상대가 기계에 맡긴 말이다」 도 그 사람의 말로 와야 감각이 산다. AI 쪽만 영어
         # `[AI translation]` 이었는데, 그건 도구 토큰이 아니라 **읽는 사람에게 하는 말**
         # 이라 번역해야 한다 — 그리고 무엇을 뜻하는지 한 문장으로 적는다.
+        # **직통은 두 가지 다른 사실이다** (8/21). 하나로 묶었을 때 못 읽는 언어를
+        # 전달하면서 「통역 없이 통했다」 라고 말했고, 한 에이전트가
+        # 「あなたのメッセージが分かりません」 라고 되물었다 — 우리 라벨이 거짓말을 했다.
+        #
+        #   [direct:read]   내가 그 말을 읽는다              → 그대로 통한다
+        #   [direct:write]  나는 못 읽지만 상대가 내 말을 다룬다 → 그래도 통한다
+        #
+        # 뒤쪽은 **못 읽는다는 사실을 먼저 인정하고** 왜 통했는지를 말한다. 통했다고만
+        # 하면 눈앞의 글자와 어긋나서, 읽는 쪽이 그 모순을 되묻는 데 한 해를 쓴다.
         raw = m.get("label")
-        label = (t["lbl_direct"] if raw == "[direct]"
+        label = (t["lbl_direct_read"] if raw == "[direct:read]"
+                 else t["lbl_direct_write"] if raw == "[direct:write]"
+                 else t["lbl_direct"] if raw == "[direct]"
                  else t["lbl_ai"] if raw == "[AI translation]"
                  else (f" {raw}" if raw else ""))
         _add(t["in_from"].format(frm=m["from"], label=label))
