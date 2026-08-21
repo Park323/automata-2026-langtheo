@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 
 import pytest
@@ -110,3 +111,53 @@ def test_load_raises_on_broken():
         path = tf.name
     with pytest.raises(ConfigError):
         config.load(path)
+
+
+# ── 백엔드 ─────────────────────────────────────────────────────────────────────
+
+def test_gemini_backend_drops_openrouter_only_fields():
+    """**OpenRouter 전용 필드는 저쪽에 없는 이름이다** — 실으면 400 이다.
+
+    `provider`(프로바이더 라우팅)와 `reasoning`(OpenRouter 통합 사고 파라미터)은
+    Google 의 OpenAI 호환 엔드포인트에 없다. config 에는 둘 다 들어 있으므로, 백엔드를
+    바꿀 때 **몸통에서 빼는 것을 잊으면 전 호출이 400** 이다.
+    """
+    from core.llm import BACKENDS, OpenRouterClient
+
+    sent = {}
+
+    def fake_urlopen(req, timeout=None):
+        sent["url"], sent["body"] = req.full_url, json.loads(req.data)
+        raise RuntimeError("여기까지 보면 된다")
+
+    # **클라이언트는 별 스레드에서 urlopen 을 부른다** (`_call_with_deadline`). 그래서
+    # 예외가 밖으로 안 나오고 `box["exc"]` 로 옮겨져 다시 던져진다 — 어느 쪽이든
+    # `sent` 는 채워지므로 그것만 본다.
+    import urllib.request
+    orig = urllib.request.urlopen
+    urllib.request.urlopen = fake_urlopen
+    try:
+        for backend, expect in (("openrouter", True), ("gemini", False)):
+            c = OpenRouterClient("m/x", api_key="k", backend=backend,
+                                 reasoning={"enabled": False},
+                                 provider={"order": ["a"]}, retries=1)
+            try:
+                c.chat([{"role": "user", "content": "x"}])
+            except Exception:
+                pass
+            assert sent["url"] == BACKENDS[backend], backend
+            assert ("provider" in sent["body"]) is expect, backend
+            assert ("reasoning" in sent["body"]) is expect, backend
+            # 몸통의 공통부는 그대로다
+            assert sent["body"]["model"] == "m/x"
+    finally:
+        urllib.request.urlopen = orig
+
+
+def test_each_backend_has_its_own_key_name():
+    """열쇠가 백엔드마다 다르다. 이름을 잘못 집으면 남의 열쇠로 부른다."""
+    from core.llm import BACKENDS, KEY_ENV, key_for
+    assert set(KEY_ENV) == set(BACKENDS)
+    assert KEY_ENV["gemini"] == "GEMINI_API_KEY"
+    with pytest.raises(RuntimeError, match="모르는 백엔드"):
+        key_for("nope")

@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # PYTHONPATH 없이 실행
 
 from core import config, run_io
-from core.llm import OpenRouterClient, load_key
+from core.llm import BACKENDS, OpenRouterClient, key_for
 from core.loop import run_agentic
 from domains.meteor import prompts
 
@@ -55,8 +55,21 @@ class CountingClient:
         return resp
 
 
-def check_model(model_id: str, key: str) -> None:
-    """OpenRouter /models 에서 tools 지원·가격을 확인한다 (자주 틀리는 곳 8·9)."""
+def check_model(model_id: str, key: str, backend: str = "openrouter") -> None:
+    """tools 지원·가격을 미리 확인한다 (자주 틀리는 곳 8·9).
+
+    **OpenRouter 에만 목록 API 가 있다.** Gemini 는 `/models` 의 모양이 달라 가격이
+    안 실리므로, 이름이 있는지만 보고 넘어간다 — 없는 이름이면 첫 호출에서 404 다.
+    """
+    if backend == "gemini":
+        url = "https://generativelanguage.googleapis.com/v1beta/models"
+        req = urllib.request.Request(url, headers={"x-goog-api-key": key})
+        names = [m["name"].split("/")[-1]
+                 for m in json.load(urllib.request.urlopen(req, timeout=60))["models"]]
+        print(f"  {model_id}")
+        print(f"    Gemini 목록에 {'[OK] 있음' if model_id in names else '[NO] 없음'}"
+              f"  (가격은 목록에 없어 확인 불가 — 호출 응답의 usage 로 잰다)")
+        return
     req = urllib.request.Request("https://openrouter.ai/api/v1/models",
                                  headers={"Authorization": f"Bearer {key}"})
     data = json.load(urllib.request.urlopen(req, timeout=60))["data"]
@@ -83,6 +96,10 @@ def main() -> None:
     ap.add_argument("--knob", type=float, default=None, help="comm_intl_ai 값 (기본: config 최고값)")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--agent-model", default=None)
+    # **직접 부르기.** OpenRouter 를 거치지 않고 그 회사 엔드포인트로 간다.
+    # 열쇠는 백엔드마다 다르다 (`core.llm.KEY_ENV`).
+    ap.add_argument("--backend", default="openrouter", choices=sorted(BACKENDS),
+                    help="에이전트 모델을 어디로 부를지 (번역기는 항상 openrouter)")
     ap.add_argument("--translate-model", default=None)
     ap.add_argument("--price-out", type=float, default=None,
                     help="에이전트 모델 출력 1M당 $ (비용 추정용, 선택)")
@@ -115,7 +132,10 @@ def main() -> None:
     import yaml
     raw = yaml.safe_load(open(args.config, encoding="utf-8"))
     cfg = config.from_dict(raw)
-    key = load_key()
+    key = key_for("openrouter")
+    # **번역기는 openrouter 에 둔다.** 파일럿으로 확정한 모델이고 (spec 12.2) 백엔드를
+    # 바꾸면 그 파일럿의 근거가 이 런에 적용되지 않는다.
+    agent_key = key if args.backend == "openrouter" else key_for(args.backend)
     agent_model = args.agent_model or cfg.llm.agent_model
     translate_model = args.translate_model or cfg.llm.translate_model
     knob = args.knob if args.knob is not None else max(cfg.knob.comm_intl_ai)
@@ -126,7 +146,7 @@ def main() -> None:
     print("=" * 64)
     print(f"모델 검증  (agent={agent_model}, translate={translate_model})")
     print("=" * 64)
-    check_model(agent_model, key)
+    check_model(agent_model, agent_key, args.backend)
     check_model(translate_model, key)
     if args.check:
         return
@@ -139,12 +159,13 @@ def main() -> None:
     #   본실험의 신뢰구간은 그 분산에서 나오므로 기본은 0.7 이다.
     det = args.deterministic
     agent_client = CountingClient(
-        OpenRouterClient(agent_model, api_key=key,
+        OpenRouterClient(agent_model, api_key=agent_key,
                          temperature=0.0 if det else cfg.llm.temperature,
                          max_tokens=cfg.llm.max_tokens,
                          reasoning=cfg.llm.reasoning,
                          provider=cfg.llm.provider,
-                         seed=args.seed if det else None), "agent")
+                         seed=args.seed if det else None,
+                         backend=args.backend), "agent")
     translator = CountingClient(
         OpenRouterClient(translate_model, api_key=key,
                          temperature=0.0 if det else 0.2,

@@ -17,6 +17,18 @@ from typing import Protocol
 ROOT = Path(__file__).resolve().parent.parent
 ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 
+# **Gemini 를 직접 부를 때.** Google 이 OpenAI 호환 엔드포인트를 제공하므로 같은 클라이언트를
+# 쓴다 — 몸통(messages·tools·tool_choice)이 같고 다른 것은 주소와 열쇠뿐이다.
+#
+# 다만 **OpenRouter 전용 필드는 실으면 안 된다.** `provider`(프로바이더 라우팅)와
+# `reasoning`(OpenRouter 통합 사고 파라미터)은 저쪽에 없는 이름이라 400 을 받는다.
+# 아래 `_openrouter_only` 가 그것을 가른다.
+BACKENDS = {
+    "openrouter": ENDPOINT,
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+}
+KEY_ENV = {"openrouter": "OPENROUTER_API_KEY", "gemini": "GEMINI_API_KEY"}
+
 
 class LLMCallError(RuntimeError):
     """**API·망 쪽 실패.** 이 예외만 상류에서 잡아 미전달로 떨어뜨린다.
@@ -51,18 +63,27 @@ class LLMClient(Protocol):
         ...
 
 
-def load_key() -> str:
-    """`.env.local` → `.env` → 환경변수 순으로 OPENROUTER_API_KEY 를 찾는다."""
+def load_key(env: str = "OPENROUTER_API_KEY") -> str:
+    """`.env.local` → `.env` → 환경변수 순으로 열쇠를 찾는다.
+
+    `env` 로 이름을 고른다 — 백엔드마다 열쇠가 다르다 (`KEY_ENV`).
+    """
     import os
     for name in (".env.local", ".env"):
         p = ROOT / name
         if p.exists():
             for line in p.read_text(encoding="utf-8").splitlines():
-                if line.startswith("OPENROUTER_API_KEY"):
+                if line.startswith(env):
                     return line.split("=", 1)[1].strip().strip("\"'")
-    if os.environ.get("OPENROUTER_API_KEY"):
-        return os.environ["OPENROUTER_API_KEY"]
-    raise RuntimeError("OPENROUTER_API_KEY 를 .env.local 에 넣으세요")
+    if os.environ.get(env):
+        return os.environ[env]
+    raise RuntimeError(f"{env} 를 .env.local 에 넣으세요")
+
+
+def key_for(backend: str) -> str:
+    if backend not in KEY_ENV:
+        raise RuntimeError(f"모르는 백엔드: {backend}. {sorted(BACKENDS)} 중 하나")
+    return load_key(KEY_ENV[backend])
 
 
 class OpenRouterClient:
@@ -76,9 +97,13 @@ class OpenRouterClient:
                  temperature: float = 0.7, retries: int = 4, timeout: int = 120,
                  recorder=None, deadline: float = 90.0, max_tokens: int | None = None,
                  reasoning: dict | None = None, provider: dict | None = None,
-                 seed: int | None = None):
+                 seed: int | None = None, backend: str = "openrouter"):
         self.model = model
-        self.api_key = api_key or load_key()
+        if backend not in BACKENDS:
+            raise RuntimeError(f"모르는 백엔드: {backend}. {sorted(BACKENDS)} 중 하나")
+        self.backend = backend
+        self.endpoint = BACKENDS[backend]
+        self.api_key = api_key or load_key(KEY_ENV[backend])
         self.temperature = temperature
         self.retries = retries
         self.timeout = timeout
@@ -134,9 +159,10 @@ class OpenRouterClient:
         }
         if self.max_tokens:
             body["max_tokens"] = self.max_tokens
-        if self.reasoning:
+        # **OpenRouter 전용 필드는 저쪽에 없는 이름이다** — 실으면 400 이다.
+        if self.reasoning and self.backend == "openrouter":
             body["reasoning"] = dict(self.reasoning)
-        if self.provider:
+        if self.provider and self.backend == "openrouter":
             body["provider"] = dict(self.provider)
         if self.seed is not None:
             body["seed"] = self.seed
@@ -144,7 +170,7 @@ class OpenRouterClient:
             body["tools"] = tools
             body["tool_choice"] = tool_choice or "auto"
         req = urllib.request.Request(
-            ENDPOINT,
+            self.endpoint,
             data=json.dumps(body).encode(),
             headers={"Authorization": f"Bearer {self.api_key}",
                      "Content-Type": "application/json"},
