@@ -234,6 +234,9 @@ class RunWriter:
                 # 둘 다 집계된 적이 있어(3해 실측) 「한 사람 한 표」 를 상태에서 바로
                 # 대조할 수 있게 남긴다.
                 "voted_turn": a.voted_turn,
+                # 기억 도구가 열려 있었나 — 압박과 함께 움직이지만, 어긋난 적이 있어
+                # 상태에서 바로 대조되게 남긴다
+                "memory_open": a.memory_open,
             })
         for m in result.messages_log:
             if m.get("turn") == turn and not m.get("_written"):

@@ -365,6 +365,35 @@ function describe(e){
 
 function acts(b){
   // **생존자 전원**을 보여준다. 행동이 0건인 것도 관측이고 (실측에서 32%),
+// **도구 호출 전문 — 실패 사유까지.**
+//
+// 그전에는 「실패 3」 이라는 배지만 있고 **왜 실패했는지가 화면에 없었다.** AP 가
+// 모자랐는지, 상대 이름을 빼먹었는지, 이미 아는 언어였는지 구분이 안 됐다 — 그걸 보려면
+// events.jsonl 을 손으로 열어야 했다.
+//
+// `tool_reasoning off` 로 돌린 런에서는 더 심하다. 근거 문자열이 비니 「왜 그랬는가」
+// 블록 자체가 사라지고, 배지 숫자만 남는다.
+//
+// `calls` 는 `_redact_args` 를 거친 인자를 담는다 (speak 의 본문은 messages 에 있다).
+function calls(e){
+  const cs = e.calls || [];
+  if (!cs.length) return "";
+  const bad = cs.filter(c => c.ok === false).length;
+  const arg = a => Object.entries(a || {})
+    .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`).join(" ");
+  return `<details class="reason"><summary>도구 호출 ${cs.length}${
+      bad ? ` · <span style="color:var(--bad)">실패 ${bad}</span>` : ""}</summary>
+    ${cs.map(c => `<div class="r" style="display:flex;gap:6px;align-items:baseline">
+      <span class="muted mono" style="min-width:2.2em;text-align:right">${c.step ?? ""}</span>
+      <span class="mono" style="color:${c.ok === false ? "var(--bad)" : "var(--ok)"}">${
+        c.ok === false ? "✗" : "✓"} ${c.tool}</span>
+      <span class="muted mono" style="font-size:10px;flex:1">${esc(arg(c.args))}</span>
+      </div>${c.ok === false && c.error
+        ? `<div class="r mono" style="font-size:10px;color:var(--bad);padding-left:3.4em">
+             ↳ ${esc(c.error)}</div>`
+        : ""}`).join("")}</details>`;
+}
+
   // 그 사람이 무엇을 시도했다 실패했는지는 reasoning 에만 남는다.
   const turns = b.events.filter(e => e.type === "agent_turn")
     .sort((x, y) => x.agent.localeCompare(y.agent));
@@ -389,13 +418,19 @@ function acts(b){
         <span class="muted" style="flex:1">${
           did.length ? did.join(" · ") : "아무것도 하지 않음"}</span>
         ${failed ? `<span class="badge" style="color:var(--bad)">실패 ${failed}</span>` : ""}
+        ${e.truncated_calls ? `<span class="badge" style="color:var(--bad)"
+          title="응답이 max_tokens 에 걸려 잘렸습니다. 도구 호출에 닿기 전에 끝난 것이라
+모델이 안 한 것이 아니라 우리가 자리를 안 준 것입니다.">잘림 ${e.truncated_calls}</span>` : ""}
         ${e.pressured ? `<span class="badge" style="color:var(--warn)">기억 압박</span>` : ""}
+        ${e.compacted_blocks ? `<span class="badge" style="color:var(--ai)"
+          title="기억을 적어서 앞쪽 대화를 버렸습니다 (압박 해소)">압축 ${e.compacted_blocks}</span>` : ""}
         ${e.error ? `<span class="badge" style="color:var(--bad)">오류</span>` : ""}
       </div>
       <div class="muted mono" style="font-size:10px">
         ${e.steps ?? "?"}스텝${ms != null ? ` · ${(ms / 1000).toFixed(1)}s` : ""}${
           e.ms_per_step != null ? ` · 결정당 ${(e.ms_per_step / 1000).toFixed(1)}s` : ""} · ${
           e.ended_by ?? ""}${e.prompt_tokens ? ` · ${e.prompt_tokens}토큰` : ""}</div>
+      ${calls(e)}
       ${rs.length ? `<details class="reason"><summary>왜 그랬는가 (${rs.length})</summary>
         ${rs.map(r => `<div class="r"><span class="muted mono">${r.tool}${r.ok === false ? " ✗" : ""}</span>
           ${esc(r.reasoning)}</div>`).join("")}</details>` : ""}

@@ -48,7 +48,7 @@ SYSTEM = {
 施設の進捗は国ごとに別々に積まれ、別々に積まれた進捗を足し合わせることはできません。完成したかどうかは、その国の進捗だけで決まります。
 たとえば A 国の interceptor が半分、B 国の interceptor が半分なら、interceptor はどの国にも完成していません。
 何を建てるかがまだ決まっていない国には積むものがありません。そこへ出した分は進捗になりません。
-人はだいたい {life:.0f} 年ほど生きます。
+多くの人は {life:.0f} 歳ごろまでに亡くなります。
 メッセージの本文は必ず日本語で書いてください。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
     "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
 过去曾有巨大的陨石坠落，所有生命就此灭绝。
@@ -61,7 +61,7 @@ SYSTEM = {
 设施的进度按国家分别累积，分别累积的进度不能相加。是否建成，只看那个国家自己的进度。
 比如 A 国的 interceptor 到一半，B 国的 interceptor 也到一半，那么 interceptor 在任何国家都没有建成。
 还没决定要建什么的国家没有可积累的东西。投到那里的钱不会变成进度。
-人大体活 {life:.0f} 年左右。
+多数人在 {life:.0f} 岁前后离世。
 消息正文必须用中文书写。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
     "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
 Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
@@ -74,7 +74,7 @@ Plus un `bunker` est profond, plus les habitants de cette nation ont de chances 
 La progression d'une installation s'accumule séparément pour chaque nation, et des progressions accumulées séparément ne s'additionnent pas. L'achèvement se juge sur la seule progression de cette nation.
 Par exemple, si l'interceptor de la nation A est à moitié fait et celui de la nation B à moitié aussi, l'interceptor n'est achevé dans aucune nation.
 Une nation qui n'a pas encore décidé quoi bâtir n'a rien où accumuler ; ce qu'on y verse ne devient pas de la progression.
-Les gens vivent en général environ {life:.0f} ans.
+La plupart des gens meurent vers {life:.0f} ans.
 Le corps de vos messages doit être rédigé en français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
 }
 
@@ -145,6 +145,7 @@ T = {
         outcome_lose="  隕石が落ちました。",
         roster="人々:", roster_you="（あなた）",
         mem_hdr="あなたの覚え書き（memory_write は書き足すのではなく、この全体を書き換えます）:",
+        mem_hdr_ro="あなたの覚え書き:",
         mem_none="  （まだ何もない）",
         warn="［記憶の圧迫］記憶が限界に近づいています。古いものから消えていきます。",
         own="あなたの言語", other="{nation} の言語",
@@ -212,6 +213,7 @@ T = {
         outcome_lose="  陨石落下了。",
         roster="人们:", roster_you="（你）",
         mem_hdr="你的笔记（memory_write 不是追加，而是整段改写）:",
+        mem_hdr_ro="你的笔记:",
         mem_none="  （还什么都没有）",
         warn="［记忆压力］记忆接近上限，旧的内容会先消失。",
         own="你自己的语言", other="{nation} 的语言",
@@ -286,6 +288,7 @@ T = {
         outcome_lose="  La météorite est tombée.",
         roster="Les gens :", roster_you="(vous)",
         mem_hdr="Vos notes (memory_write n'ajoute rien : il remplace tout ceci) :",
+        mem_hdr_ro="Vos notes :",
         mem_none="  (rien encore)",
         warn="[Pression mémoire] Votre mémoire approche de sa limite ; le plus ancien disparaît d'abord.",
         own="votre propre langue", other="la langue de {nation}",
@@ -371,7 +374,7 @@ def _roster(world, agent, t: dict) -> str:
     return "  ·  ".join(parts)
 
 
-def render_costs(world, agent, cfg, knob_ai: float) -> str:
+def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
     t = T[agent.native_lang]
     w = 37          # 항목명 폭. 라벨 길이가 언어마다 달라 값 정렬을 맞춘다
                     # (fr 의 "parler (international, original)" 이 34 를 꽉 채워 값이 붙었다)
@@ -435,7 +438,10 @@ def render_costs(world, agent, cfg, knob_ai: float) -> str:
     lines.append(row(t["c_obs"], cfg.costs.observe_risk, cfg.ap.observe_risk, t["c_obs_note"]))
     lines.append(row(t["c_ballot"], 0, cfg.ap.vote, t["c_ballot_note"]))
     lines.append(row(t["c_inv"], cfg.costs.unit, cfg.ap.unit, t["c_inv_note"]))
-    lines.append(row(t["c_mem"], 0, cfg.ap.memory_write, t["c_mem_note"]))
+    # **없는 도구를 설명하지 않는다.** 기억은 압박선 아래에서 목록에 없으므로 비용표에도
+    # 없다 — 적어 두면 「부를 수 있다」 는 거짓이 되고, 부르면 거절당한다.
+    if memory:
+        lines.append(row(t["c_mem"], 0, cfg.ap.memory_write, t["c_mem_note"]))
     lines.append(row(t["c_pro"], 0, cfg.ap.procreate, t["c_pro_note"]))
     lines.append(t["ap_hdr"])
     return "\n".join(lines)
@@ -664,6 +670,11 @@ def render_observation(world, agent, cfg, knob_ai: float,
     mult = c.multiplier(cfg)
     cap = cfg.length.message_max_chars[lang]
     langs = ", ".join(_lang_phrase(world, agent, l) for l in sorted(agent.known_langs))
+    # **기억은 자리가 좁아진 뒤에만 열린다.** 도구 목록과 같은 판정을 쓴다 (한쪽만 바뀌면
+    # 비용표에는 있는데 부르면 거절당하는 상태가 된다).
+    # `agent.memory_open` 은 목록을 고를 때 정해진 값이다. 여기서 `under_pressure()` 를
+    # 다시 부르면 경계에서 비용표와 목록이 어긋난다.
+    mem_open = bool(getattr(agent, "memory_open", False))
 
     parts = [
         # **연도는 여기 없다.** 해 시작 문구가 「42 年になりました」 라고 말하고, 그것이
@@ -697,7 +708,7 @@ def render_observation(world, agent, cfg, knob_ai: float,
         # 적지 않는다.
         t["steps"],
         "",
-        render_costs(world, agent, cfg, knob_ai),
+        render_costs(world, agent, cfg, knob_ai, memory=mem_open),
         "",
         t["inv_hdr"], t["inv_well"], t["inv_natl"], t["inv_fac"],
         # **내가 어느 나라 시설에 얼마를 냈는지.** 내 행동의 합이라 상대 국가 정보를
@@ -710,7 +721,11 @@ def render_observation(world, agent, cfg, knob_ai: float,
         t["rtt_same" if same_year else "rtt"],
         "",
     ]
-    parts += [t["mem_hdr"], ("  " + agent.memory) if agent.memory else t["mem_none"]]
+    # 메모 자체는 **늘 보인다** — 물려받은 유언이 여기 들어 있고, 그건 쓸 수 없을 때도
+    # 자기가 들고 다니는 것이다. 다만 머리말이 도구 이름을 말하는 것은 그 도구가 있을
+    # 때뿐이다.
+    parts += [t["mem_hdr"] if mem_open else t["mem_hdr_ro"],
+              ("  " + agent.memory) if agent.memory else t["mem_none"]]
     # **도착한 메시지는 여기 없다.** 그건 사건이라 대화에 쌓여야 하고,
     # render_turn_open 이 담는다. 관측은 「지금 그러한 것」 만 적는다.
     return "\n".join(parts)

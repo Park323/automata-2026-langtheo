@@ -49,7 +49,12 @@ def test_conversation_persists_across_turns(cfg, world):
 
 
 def test_memory_survives_and_shows_in_observation(cfg, world):
-    """memory_write 로 적은 것이 다음 턴 관측에 보인다."""
+    """memory_write 로 적은 것이 다음 턴 관측에 보인다.
+
+    **압박선 위에서만 쓸 수 있다** (8/21) — 그래서 먼저 그 상태로 만든다. 기억은 잃을
+    것이 생긴 뒤에 뜻이 있는 도구다.
+    """
+    world.agents["Asla1"].last_prompt_tokens = cfg.llm.context_limit
     a, _, _ = _turn(world, cfg, "Asla1", [
         assistant_msg(tool_call("memory_write", "1", text="Ranoa2 は我々の言語を読める", reasoning="r")),
         assistant_msg(tool_call("end_turn", "2", reasoning="r"))])
@@ -282,12 +287,33 @@ def test_the_memo_header_says_it_overwrites(cfg, world):
         ag = world.agents[aid]
         hdr = prompts.T[ag.native_lang]["mem_hdr"]
         assert "memory_write" in hdr and marks[ag.native_lang] in hdr, aid
+        # **도구가 열려 있을 때의 머리말이다** (8/21). 기억은 압박선 위에서만 목록에
+        # 오르므로, 그 아래에서는 도구 이름을 말하지 않는 머리말(`mem_hdr_ro`)이 나간다.
+        ag.memory_open = True
         for memo in ("", "요격기에 몰아줘라"):
             ag.memory = memo
             obs = prompts.system_for(ag, world, cfg, 48.0)
             assert hdr in obs                     # 채워져 있어도 보인다
             if memo:
                 assert memo in obs
+
+
+def test_the_memo_is_visible_even_when_the_tool_is_closed(cfg, world):
+    """**메모 자체는 늘 보인다.** 물려받은 유언이 여기 들어 있고, 그건 쓸 수 없을 때도
+    자기가 들고 다니는 것이다 (spec 3.3).
+
+    다만 머리말이 도구 이름을 말하는 것은 그 도구가 있을 때뿐이다 — 없는 도구를 설명하면
+    「부를 수 있다」 는 거짓이 되고, 실제로 부르면 거절당한다.
+    """
+    from domains.meteor import prompts
+    ag = world.agents["Asla1"]
+    ag.memory = "부모의 유언: 요격기에 몰아줘라"
+    ag.memory_open = False                        # 도구가 닫혀 있다
+    obs = prompts.system_for(ag, world, cfg, 48.0)
+    assert ag.memory in obs                       # 유언은 보인다
+    assert prompts.T["ja"]["mem_hdr_ro"] in obs
+    assert "書き足すのではなく" not in obs          # 쓰는 방법은 말하지 않는다
+    assert "  memory_write" not in obs            # 비용표에도 없다
 
 
 # ── 기억을 쓰면 자리를 산다 ────────────────────────────────────────────────────
@@ -368,3 +394,30 @@ def test_memory_write_compacts_on_both_paths(cfg, world):
         src = inspect.getsource(fn)
         assert "compact_after_memory" in src, fn.__name__
         assert "under_pressure(agent, cfg)" in src, fn.__name__
+
+
+def test_memory_write_is_refused_below_the_threshold(cfg, world):
+    """**목록에 없을 때 불러도 거절한다.** 대화에 남은 옛 스키마를 보고 부를 수 있고,
+    그때 조용히 통과시키면 「압박 뒤에만」 이 절반만 지켜진다.
+
+    30해 실측에서 `memory_write` 가 **206번** 불렸다 — 압박이 걸리기 한참 전부터다. 그
+    값이 공짜(돈 0 · AP 0)라 무엇도 막지 않지만, 순차 라운드로빈은 스텝 단위로 도므로
+    한 번 부르면 그만큼 남들이 먼저 움직인다. **공짜가 아니라 차례를 쓴다.**
+    """
+    from core import tools as T
+    from core.agent_loop import Sink, execute_tool
+    a = world.agents["Asla1"]
+    a.ap = 1.0
+
+    a.memory_open = False                         # 압박 아래
+    assert not any(t["function"]["name"] == "memory_write"
+                   for t in T.tools_for(cfg, memory=False))
+    r, _ = execute_tool("memory_write", {"text": "x"}, world, a, cfg, Sink(), 48.0)
+    assert not r["ok"] and "not available yet" in r["error"]
+    assert a.memory == "" and a.ap == 1.0         # 아무것도 쓰지 않고 AP 도 안 쓴다
+
+    a.memory_open = True                          # 압박 위
+    assert any(t["function"]["name"] == "memory_write"
+               for t in T.tools_for(cfg, memory=True))
+    r, _ = execute_tool("memory_write", {"text": "x"}, world, a, cfg, Sink(), 48.0)
+    assert r["ok"] and a.memory == "x"

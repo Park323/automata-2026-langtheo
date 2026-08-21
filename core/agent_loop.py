@@ -21,7 +21,8 @@ from dataclasses import dataclass, field
 
 from core import messaging
 from core.llm import LLMCallError
-from core.tools import TOOLS, TOOL_NAMES, TOOLS_NO_REASONING, tools_for
+from core.tools import (TOOLS, TOOL_NAMES, TOOLS_NO_MEM, TOOLS_NO_REASONING,
+                        TOOLS_NO_REASONING_NO_MEM, tools_for)
 
 
 
@@ -223,6 +224,12 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         return {"ok": True}, "end"
 
     if name == "memory_write":
+        # **목록에 없을 때 부르면 거절한다.** 대화에 남은 옛 스키마를 보고 부를 수 있고,
+        # 그때 조용히 통과시키면 「압박 뒤에만」 이 절반만 지켜진다.
+        if not agent.memory_open:
+            return {"ok": False, "error":
+                    "memory_write is not available yet; it opens when your context "
+                    "is close to full"}, None
         # 예산이 아니라 AP 로 묶는다 (spec 4.5) — 예산을 물리면 기억이 시설 투자와
         # 경쟁해서 "AI 가 싸지면 기억을 덜 하는가" 관측에 교란이 섞인다.
         if not _afford(agent.ap, cfg.ap.memory_write):
@@ -539,6 +546,27 @@ def tool_schema_tokens(tools) -> int:
 
 _TOOL_TOKENS = tool_schema_tokens(TOOLS)
 _TOOL_TOKENS_NR = tool_schema_tokens(TOOLS_NO_REASONING)
+# **기억을 뺀 목록은 스키마도 작다.** `evict` 가 이 값으로 자리를 계산하므로, 큰 값을
+# 그대로 쓰면 있지도 않은 도구의 몫만큼 대화를 더 버린다.
+_TOOL_TOKENS_BY_ID = {id(TOOLS): _TOOL_TOKENS,
+                      id(TOOLS_NO_REASONING): _TOOL_TOKENS_NR,
+                      id(TOOLS_NO_MEM): tool_schema_tokens(TOOLS_NO_MEM),
+                      id(TOOLS_NO_REASONING_NO_MEM):
+                          tool_schema_tokens(TOOLS_NO_REASONING_NO_MEM)}
+
+
+def _wants_tool_reasoning(cfg) -> bool:
+    """도구마다 `reasoning` 인자를 받는 설정인가.
+
+    **목록 동일성으로 판정하지 않는다.** 변종이 네 벌(기억 유무 × reasoning 유무)이 되면서
+    `tool_list is TOOLS` 가 조용히 거짓이 되고, 근거가 빈 문자열로 기록됐다 — 지표 4 의
+    근거가 통째로 사라지는 실패였고 테스트 셋이 그것을 잡았다.
+    """
+    return bool(getattr(cfg.llm, "tool_reasoning", True))
+
+
+def _tool_tokens(tool_list) -> int:
+    return _TOOL_TOKENS_BY_ID.get(id(tool_list), _TOOL_TOKENS)
 
 
 def _turn_blocks(convo: list[dict]) -> list[tuple[int, int]]:
@@ -736,7 +764,7 @@ def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
     think = str(msg.get("reasoning") or "").strip()
     if think:
         st.api_reasoning = think
-        if tool_list is not TOOLS:
+        if not _wants_tool_reasoning(cfg):
             st.reasonings.append({"tool": None, "ok": True, "step": st.steps,
                                   "source": "thinking", "reasoning": think})
     tool_calls = msg.get("tool_calls") or []
@@ -785,7 +813,7 @@ def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
                          "error": result.get("error"),
                          "result": {k: v for k, v in result.items() if k != "error"}})
         why = str(args.get("reasoning", ""))
-        if tool_list is TOOLS:
+        if _wants_tool_reasoning(cfg):
             st.reasonings.append({"tool": name, "ok": bool(result.get("ok")),
                                   "source": "tool", "reasoning": why})
         else:
@@ -847,8 +875,11 @@ def run_agent_step(world, agent, cfg, client, sink: Sink, knob_ai: float,
         st.pressured = True
     if user_prompt:      # **빈 것도 붙이지 않는다** — `is not None` 이면 "" 가 통과한다
         agent.convo.append({"role": "user", "content": user_prompt})
-    tool_list = tools_for(cfg)
-    tool_tokens = _TOOL_TOKENS if tool_list is TOOLS else _TOOL_TOKENS_NR
+    # **기억은 자리가 좁아진 뒤에만 목록에 오른다.** 압박 경고가 뜨는 그때 도구도 함께
+    # 나타나므로, 경고가 곧 안내가 된다 (30해 실측에서 압박 전에 206번 불렸다).
+    agent.memory_open = st.pressured        # 목록과 실행부가 같은 값을 본다
+    tool_list = tools_for(cfg, memory=agent.memory_open)
+    tool_tokens = _tool_tokens(tool_list)
     return _agent_one_call(world, agent, cfg, client, sink, knob_ai,
                            system_prompt, tool_list, tool_tokens, st)
 
@@ -882,8 +913,9 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     # 사고형 모델이면 도구마다 reasoning 을 또 받지 않는다 (spec 12.1).
     # 그 대신 **모델 자신의 사고를 reasonings 스트림에 넣는다** — 안 그러면
     # 지표 4(2단계 판정)가 읽을 근거가 통째로 사라진다.
-    tool_list = tools_for(cfg)
-    tool_tokens = _TOOL_TOKENS if tool_list is TOOLS else _TOOL_TOKENS_NR
+    agent.memory_open = pressured
+    tool_list = tools_for(cfg, memory=agent.memory_open)
+    tool_tokens = _tool_tokens(tool_list)
     error = None
     evicted = 0
     compacted = 0          # 기억으로 산 자리 — 한계에 밀려 버린 것(evicted)과 가른다
@@ -951,7 +983,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
         think = str(msg.get("reasoning") or "").strip()
         if think:
             api_reasoning = think          # 마지막 스텝의 사고 (하위 호환)
-            if tool_list is not TOOLS:
+            if not _wants_tool_reasoning(cfg):
                 # 도구 인자가 없으니 이것이 유일한 근거다. **스텝 단위**라 어느 근거가
                 # 어느 행동인지는 확정되지 않는다 (spec 12.1 이 경고한 그 지점).
                 reasonings.append({"tool": None, "ok": True, "step": steps,
@@ -1016,7 +1048,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
                           "error": result.get("error"),
                           "result": {k: v for k, v in result.items() if k != "error"}})
             why = str(args.get("reasoning", ""))
-            if tool_list is TOOLS:
+            if _wants_tool_reasoning(cfg):
                 reasonings.append({"tool": name, "ok": bool(result.get("ok")),
                                    "source": "tool", "reasoning": why})
             else:

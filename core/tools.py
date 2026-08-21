@@ -151,5 +151,34 @@ TOOLS_NO_REASONING = _build(False)
 TOOL_NAMES = {t["function"]["name"] for t in TOOLS}
 
 
-def tools_for(cfg) -> list[dict]:
-    return TOOLS if getattr(cfg.llm, "tool_reasoning", True) else TOOLS_NO_REASONING
+# ── 기억은 자리가 좁아진 뒤에만 ───────────────────────────────────────────────
+#
+# `memory_write` 는 **잃을 것이 생긴 뒤에** 뜻이 있는 도구다. 대화가 아직 짧으면 적어 둘
+# 이유가 없는데, 30해 실측에서 **206번** 불렸다 — 압박이 걸리기 한참 전부터다.
+#
+# 그 값이 공짜(돈 0 · AP 0)라 무엇도 막지 않고, 순차 라운드로빈은 스텝 단위로 도므로
+# 한 번 부르면 그만큼 남들이 먼저 움직인다. 즉 **공짜가 아니라 차례를 쓴다.**
+#
+# 그래서 압박선(`context_limit × warn_ratio`) 아래에서는 **목록에서 빼고 비용표에서도
+# 숨긴다.** 없는 도구를 설명하지 않는 것이 「사실만 적는다」 에 맞고, 압박 경고가 뜨는
+# 그때 도구도 함께 나타나므로 **경고가 곧 안내**가 된다.
+_NO_MEM = {"memory_write"}
+
+
+def _drop_memory(tools: list[dict]) -> list[dict]:
+    return [t for t in tools if t["function"]["name"] not in _NO_MEM]
+
+
+TOOLS_NO_MEM = _drop_memory(TOOLS)
+TOOLS_NO_REASONING_NO_MEM = _drop_memory(TOOLS_NO_REASONING)
+
+
+def tools_for(cfg, memory: bool = True) -> list[dict]:
+    """모델에게 실어 보낼 도구 목록.
+
+    `memory` 는 「기억을 쓸 수 있는 상태인가」 다 — 호출부가 `under_pressure()` 로 정한다.
+    """
+    reasoning = getattr(cfg.llm, "tool_reasoning", True)
+    if reasoning:
+        return TOOLS if memory else TOOLS_NO_MEM
+    return TOOLS_NO_REASONING if memory else TOOLS_NO_REASONING_NO_MEM

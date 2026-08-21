@@ -410,9 +410,13 @@ def test_system_states_the_typical_lifespan():
 
     from core import loop
     world = loop.init_world(c, itertools.count(1), random.Random(1))
-    marks = {"ja": f"だいたい {life:.0f} 年ほど生きます",
-             "zh": f"大体活 {life:.0f} 年左右",
-             "fr": f"en général environ {life:.0f} ans"}
+    # **「16 년 더」 로 읽히면 안 된다** (8/21). 「だいたい 16 年ほど生きます」 를 모델들이
+    # 남은 수명으로 읽었다 — 16세 에이전트가 "私の寿命はあと60年ほど" 라고 계산하고,
+    # 「죽을 때가 가까워지면 procreate 하겠다」 는 조건이 영원히 충족되지 않았다.
+    # 30해에 procreate 가 1건이었던 이유다. **나이에 붙여 적는다.**
+    marks = {"ja": f"{life:.0f} 歳ごろまでに亡くなります",
+             "zh": f"{life:.0f} 岁前后离世",
+             "fr": f"meurent vers {life:.0f} ans"}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
         txt = prompts.system_for(a, None, c)
