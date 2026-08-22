@@ -615,7 +615,7 @@ income      per_turn 100 · initial_budget 0
 비용        국내 3 / 국제원문 5 · 노브 [6, 12, 24, 48]
             unit 40원 · observe_risk 20 · propose_vote 0
 행동력      speak 0.2 · unit 0.2 · give 0.2 · vote 0.05
-            observe_risk 0.5 · propose_vote 0.6 · bear_child 1.0
+            observe_risk 0.5 · propose_vote 0.6
 학습        learn_base 200 (고정) · speedup +0.5 / 사유
 수명        k 8 · λ 16.52
             살아낸 해 16.06 · Weibull 평균 15.56 (프롬프트는 후자를 반올림해 「16」 로 적는다)

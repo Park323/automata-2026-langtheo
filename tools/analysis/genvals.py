@@ -41,8 +41,7 @@ def main() -> None:
     print(f"            unit {c.costs.unit:.0f}원 · observe_risk {c.costs.observe_risk:.0f} · "
           f"propose_vote {c.costs.propose_vote:.0f}")
     print(f"행동력      speak {c.ap.speak} · unit {c.ap.unit} · give {c.ap.give} · vote {c.ap.vote}")
-    print(f"            observe_risk {c.ap.observe_risk} · propose_vote {c.ap.propose_vote} · "
-          f"bear_child {c.ap.bear_child}")
+    print(f"            observe_risk {c.ap.observe_risk} · propose_vote {c.ap.propose_vote}")
     print(f"학습        learn_base {c.costs.learn_base:.0f} (고정) · "
           f"speedup +{c.costs.learn_speedup} / 사유")
     print(f"수명        k {c.survival.k} · λ {c.survival.lambda_base}")
