@@ -35,7 +35,7 @@ def _with(**overrides) -> Config:
 
 def test_valid_config_loads():
     cfg = config.load(BASE)
-    assert cfg.thresholds.interceptor == 11702     # 실효소득 창의 0.95 지점 (8/22)
+    assert cfg.thresholds.interceptor == 16500     # 실효소득 창의 0.95 지점 (8/22)
     assert cfg.k == pytest.approx(0.3)          # eff 1.0 × success_prob 0.3
 
 
@@ -76,7 +76,11 @@ def test_break_interceptor_4000():
 
 
 def test_break_interceptor_above_window():
-    fails = asserts.check_all(_with(**{"thresholds.interceptor": 16400}))
+    """**창 밖 값을 손으로 적지 않는다** (8/22). 16400 이 창 안으로 들어와 버렸다 —
+    `adult_age` 를 내리며 실효 소득이 커지자 상한이 11900 → 16780 으로 올라갔다."""
+    cfg = config.load(BASE)
+    _, _, c, _ = asserts.window(cfg)
+    fails = asserts.check_all(_with(**{"thresholds.interceptor": c * 0.6 + 1}))
     assert any("★C" in f for f in fails)
 
 
@@ -184,3 +188,30 @@ def test_each_backend_has_its_own_key_name():
     assert KEY_ENV["gemini"] == "GEMINI_API_KEY"
     with pytest.raises(RuntimeError, match="모르는 백엔드"):
         key_for("nope")
+
+
+def test_the_world_section_rejects_keys_it_cannot_use():
+    """**조용한 무시가 가장 나쁜 실패다.**
+
+    `World` 를 다섯 필드만 골라 넘기고 있었다. 그래서 `adult_age`·`init_age_spread`·
+    `init_age_max` 가 **yaml 에서 읽히지 않았고**, 기본값과 우연히 같아서 드러나지 않았다 —
+    config 를 고쳐도 아무 일이 안 일어나는 상태다.
+
+    이제 `world` 절을 통째로 넘기고 dataclass 필드와 대조한다. 새 키를 yaml 에만 넣고
+    배선을 잊으면 로드가 **실패**한다.
+    """
+    import dataclasses
+
+    import yaml
+
+    from core.config import World
+    d = yaml.safe_load(Path(BASE).read_text(encoding="utf-8"))
+    known = {f.name for f in dataclasses.fields(World)}
+    assert set(d["world"]) <= known, set(d["world"]) - known
+
+    # 그리고 yaml 의 값이 **실제로 읽힌다**
+    cfg = _with(**{"world.adult_age": 7})
+    assert cfg.world.adult_age == 7
+
+    with pytest.raises(ConfigError, match="모르는 키"):
+        _with(**{"world.zzz_unwired": 1})

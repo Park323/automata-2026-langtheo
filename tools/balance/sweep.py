@@ -106,8 +106,11 @@ def bounds(c: Cfg):
 def passes_asserts(c: Cfg):
     A, B, C, E = bounds(c)
     k = c.facility_eff * c.success_prob
-    epoch_progress = c.income * c.agents * c.epoch_turns * k
-    whole_progress = c.income * c.agents * c.total_turns * k
+    # **실효 소득으로 잰다** (8/22) — `bounds()` 와 같은 식이다. 여기만 안 곱하면 벙커 창이
+    # 창보다 좁아져서 「전 기간을 부어도 의미 없다」 가 거짓으로 걸린다.
+    eff = c.income * mean_age_multiplier(c)
+    epoch_progress = eff * c.agents * c.epoch_turns * k
+    whole_progress = eff * c.agents * c.total_turns * k
     if not c.interceptor > A:
         return False, "A 미루기 방지 위반"
     if not c.interceptor > B:

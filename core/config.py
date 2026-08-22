@@ -5,6 +5,7 @@ YAML 을 중첩 dataclass 로 표현한다. frozen=True 로 두는 이유 —
 """
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -229,6 +230,27 @@ class Config:
         return self.facility.eff * self.world.success_prob
 
 
+def _world_from(d: dict) -> World:
+    """`world` 절을 통째로 넘긴다. **모르는 키는 거절한다.**
+
+    전에는 다섯 필드만 골라 넘겼다. 그래서 `adult_age`·`init_age_spread`·`init_age_max` 가
+    **YAML 에서 읽히지 않았고**, 기본값과 우연히 같아서 드러나지 않았다 — config 를 고쳐도
+    아무 일이 안 일어나는 상태다. 조용한 무시가 가장 나쁜 실패다.
+
+    이제 dataclass 필드와 대조한다. 새 키를 yaml 에만 넣고 배선을 잊으면 **로드가 실패**한다.
+    """
+    known = {f.name for f in dataclasses.fields(World)}
+    unknown = set(d) - known
+    if unknown:
+        raise ConfigError(
+            f"world 절에 모르는 키: {sorted(unknown)}. "
+            f"`World` 에 필드를 추가하거나 yaml 에서 지우세요 — "
+            f"조용히 무시되면 config 를 고쳐도 아무 일이 안 일어납니다.")
+    kw = dict(d)
+    kw["countries"] = tuple(CountryDef(**c) for c in d["countries"])
+    return World(**kw)
+
+
 def from_dict(d: dict) -> Config:
     """assert 없이 dict 를 Config 로 만든다. (break 테스트가 이걸로 변형본을 만든다)"""
     return Config(
@@ -245,13 +267,7 @@ def from_dict(d: dict) -> Config:
         risk=Risk(**(d.get("risk") or {})),
         facility=Facility(**{**d["facility"], "throughput_spread":
                              tuple(d["facility"].get("throughput_spread", (1.0,)))}),
-        world=World(
-            countries=tuple(CountryDef(**c) for c in d["world"]["countries"]),
-            agents_per_country=d["world"]["agents_per_country"],
-            total_turns=d["world"]["total_turns"],
-            epoch_turns=d["world"]["epoch_turns"],
-            success_prob=d["world"]["success_prob"],
-        ),
+        world=_world_from(d["world"]),
         inheritance=Inheritance(**d["inheritance"]),
         length=Length(**d["length"]),
         llm=LLM(**d["llm"]),
