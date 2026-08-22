@@ -24,7 +24,7 @@ import yaml  # noqa: E402
 
 from tools.balance.sweep import (  # noqa: E402
     POLICIES, POLICY_COEF, W_TARGET, Cfg, bounds, evaluate, expected_life,
-    passes_asserts, required_w, required_w_growth,
+    mean_age_multiplier, passes_asserts, required_w, required_w_growth,
 )
 
 # 무성장 0.45 / 성장 0.20 — 못 박을 때 실측한 값 (todo · RESULTS.md).
@@ -50,6 +50,8 @@ def cfg_from_yaml(path: Path) -> Cfg:
         interceptor=d["thresholds"]["interceptor"],
         bunker=d["thresholds"]["bunker_scale"],
         facility_eff=d["facility"]["eff"],
+        age_growth=d["income"].get("age_growth", 0.0),
+        adult_age=d["world"].get("adult_age", 10),
     )
 
 
@@ -57,7 +59,7 @@ def report(c: Cfg, seeds: int) -> int:
     A, B, C, E = bounds(c)
     lo, hi = max(A, B, E), C * POLICY_COEF
     k = c.facility_eff * c.success_prob
-    epoch_progress = c.income * c.agents * c.epoch_turns * k
+    epoch_progress = c.income * mean_age_multiplier(c) * c.agents * c.epoch_turns * k
     whole_progress = c.income * c.agents * c.total_turns * k
 
     print(f"세계   {c.total_turns}턴 · 주기 {c.epoch_turns} · 국가당 {c.agents}명 · "

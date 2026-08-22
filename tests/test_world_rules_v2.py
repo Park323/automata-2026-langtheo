@@ -1522,3 +1522,45 @@ def test_the_size_of_a_gift_does_not_change_the_effort(cfg, world):
         # 0.19999999999999996 이다 — 코드가 막고 있는 그 부동소수를 테스트가 다시 만든다.
         assert r["ok"] and a.ap == round(before - cfg.ap.give, 3)
         a.budget = 1000.0
+
+
+def test_income_grows_with_age_so_the_end_of_life_cannot_spend_it(cfg, world):
+    """**말년에 소비가 못 따라간다** (8/22).
+
+    10해 실측에서 아이를 낳은 사람이 **0명**이었다. 면담이 이유를 말했다 —
+    *"생애 한 번뿐이니 좀 더 나이 들어 상황이 안정된 뒤에도 늦지 않다"*. 「한 번뿐」 이
+    미루기를 최적으로 만든 것이다.
+
+    미루기를 벌하는 대신 **낳을 이유**를 만든다. 소득이 나이와 함께 오르고, 한 해에 쓸 수
+    있는 돈은 행동력이 묶으므로(invest 40원·0.2AP → 상한 200) 말년에는 잉여가 **강제로**
+    쌓인다. 그 잉여의 용처가 `give` 이고, 줄 사람을 만드는 것이 `bear_child` 다.
+    """
+    a = world.agents["Ranoa1"]
+    g, adult = cfg.income.age_growth, cfg.world.adult_age
+    assert g > 0
+    base = cfg.income.per_turn * world.countries["Ranoa"].multiplier(cfg)
+
+    a.age = adult
+    assert loop.income_for(a, world, cfg) == pytest.approx(base)
+    a.age = adult + 6
+    assert loop.income_for(a, world, cfg) == pytest.approx(base * (1 + 6 * g))
+
+    # **한 해에 쓸 수 있는 돈보다 많아지는 나이가 있다** — 거기부터 잉여가 강제된다
+    ceiling = (cfg.turn.action_points / cfg.ap.unit) * cfg.costs.unit
+    over = next(x for x in range(adult, 60)
+                if base * (1 + g * (x - adult)) > ceiling)
+    assert adult < over < 25, over          # 기대수명(16) 근처여야 뜻이 있다
+
+    # 미성년은 어리다고 더 받지 않는다 (배수는 성인 나이부터)
+    a.age = 0
+    assert loop.income_for(a, world, cfg) == pytest.approx(base)
+
+
+def test_the_rule_that_income_grows_is_stated(cfg, world):
+    """**적지 않으면 계획할 수 없다.** 나이가 들면 더 번다는 것은 세계의 사실이고,
+    그것을 알아야 「지금 쓸까 나중에 쓸까」 를 저울질할 수 있다."""
+    from domains.meteor import prompts
+    marks = {"ja": "収入は増えます", "zh": "收入越多", "fr": "revenu augmente"}
+    for aid in ("Asla1", "Ranoa1", "Miris1"):
+        ag = world.agents[aid]
+        assert marks[ag.native_lang] in prompts.system_for(ag, world, cfg, 48.0), aid

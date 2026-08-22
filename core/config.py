@@ -45,6 +45,11 @@ class Thresholds:
 class Income:
     per_turn: float
     initial_budget: float
+    # **나이가 들면 더 번다** (8/22). 성인 나이 이후 한 해마다 `per_turn × 이 값` 씩.
+    # 말년에 **소비가 못 따라가게** 하는 것이 목적이다 — 한 해에 쓸 수 있는 돈은 행동력이
+    # 묶으므로(invest 40원·0.2AP → 상한 200), 나이 16 을 넘기면 잉여가 강제로 쌓인다.
+    # 그 잉여의 용처가 `give` 이고, 줄 사람을 만드는 것이 `bear_child` 다.
+    age_growth: float = 0.0
 
 
 @dataclass(frozen=True)

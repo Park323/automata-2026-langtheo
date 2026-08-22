@@ -136,6 +136,27 @@ def _replace(world: World, old: str, child: Agent, carry: list[str]) -> None:
     world.testaments[child.id] = carry
 
 
+def income_for(a, world: World, cfg) -> float:
+    """이 사람이 이 해에 받는 소득. **한 곳에서만 센다.**
+
+    세 갈래가 곱해진다.
+
+        기본       `income.per_turn`
+        국가       그 나라 기술력의 생산배수 (`Country.multiplier`)
+        나이       성인 나이 이후 한 해마다 `age_growth` 씩 (8/22)
+
+    부모가 살아 있는 미성년은 0 이다 (`_earns`) — 받는 돈이 전부다.
+
+    나이 배수의 목적은 **말년에 소비가 못 따라가게** 하는 것이다. 한 해에 쓸 수 있는 돈은
+    행동력이 묶으므로(invest 40원·0.2AP → 상한 200) 나이 16(=220)을 넘기면 잉여가 강제로
+    쌓인다. 그 잉여의 용처가 `give` 이고, 줄 사람을 만드는 것이 `bear_child` 다.
+    """
+    if _earns(a, world, cfg):
+        return 0.0
+    grown = 1.0 + cfg.income.age_growth * max(0, a.age - cfg.world.adult_age)
+    return cfg.income.per_turn * world.countries[a.country].multiplier(cfg) * grown
+
+
 def _earns(a, world: World, cfg) -> bool:
     """소득을 받는가. **부모가 살아 있는 아이만 못 받는다.**
 
@@ -285,8 +306,7 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
     """한 턴. 7단계 순서를 바꾸지 말 것. (spec 3.1)"""
     # 1. 소득 지급 + AP 리셋 (이월: 예산은 남고, AP 는 리셋)
     for a in world.agents.values():
-        mult = world.countries[a.country].multiplier(cfg)
-        a.budget += 0.0 if _earns(a, world, cfg) else cfg.income.per_turn * mult
+        a.budget += income_for(a, world, cfg)
         a.ap = cfg.turn.action_points
 
     # 2. 관측 스냅샷 — 이번 턴 행동하는 인스턴스(uid)를 고정
@@ -661,10 +681,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
     """한 턴 (에이전트). spec 3.1 순서를 지키되 3단계는 9명 병렬, 5단계는 정렬 정산."""
     # 1. 소득 + AP 리셋
     for a in world.agents.values():
-        # **부모가 있는 아이만 무소득이다** (`_earns`). 자연사 교체로 온 사람에게는
-        # 줄 부모가 없으므로 그 규칙이 성립하지 않는다.
-        inc = (0.0 if _earns(a, world, cfg)
-               else cfg.income.per_turn * world.countries[a.country].multiplier(cfg))
+        inc = income_for(a, world, cfg)
         a.budget += inc
         # **받은 값을 적어 둔다.** 해 시작 문구가 렌더 때 다시 계산하면, 순차에서 나중에
         # 차례가 온 사람은 남들이 national 에 넣은 뒤의 값을 보게 된다 — 실제로 100 을
@@ -1058,10 +1075,7 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
     전원 소진까지 돈다. 차례마다 관측을 새로 렌더하고 액션을 즉시 반영한다 (issue #20)."""
     # 1. 소득 + AP 리셋
     for a in world.agents.values():
-        # **부모가 있는 아이만 무소득이다** (`_earns`). 자연사 교체로 온 사람에게는
-        # 줄 부모가 없으므로 그 규칙이 성립하지 않는다.
-        inc = (0.0 if _earns(a, world, cfg)
-               else cfg.income.per_turn * world.countries[a.country].multiplier(cfg))
+        inc = income_for(a, world, cfg)
         a.budget += inc
         # **받은 값을 적어 둔다.** 해 시작 문구가 렌더 때 다시 계산하면, 순차에서 나중에
         # 차례가 온 사람은 남들이 national 에 넣은 뒤의 값을 보게 된다 — 실제로 100 을

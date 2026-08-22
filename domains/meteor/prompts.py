@@ -49,6 +49,7 @@ SYSTEM = {
 たとえば A 国の interceptor が半分、B 国の interceptor が半分なら、interceptor はどの国にも完成していません。
 何を建てるかがまだ決まっていない国には積むものがありません。そこへ出した分は進捗になりません。
 多くの人は {life:.0f} 歳ごろまでに亡くなります。
+年を取るほど収入は増えます。
 `ai` で送るときは必ず日本語で書いてください。`original` で送るときは、あなたが扱える言語のどれで書いてもかまいません。自国内も日本語です。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
     "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
 过去曾有巨大的陨石坠落，所有生命就此灭绝。
@@ -62,6 +63,7 @@ SYSTEM = {
 比如 A 国的 interceptor 到一半，B 国的 interceptor 也到一半，那么 interceptor 在任何国家都没有建成。
 还没决定要建什么的国家没有可积累的东西。投到那里的钱不会变成进度。
 多数人在 {life:.0f} 岁前后离世。
+年纪越大，收入越多。
 用 `ai` 发送时必须写中文。用 `original` 发送时，可以用你掌握的任何一种语言来写。国内也用中文。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
     "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
 Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
@@ -75,6 +77,7 @@ La progression d'une installation s'accumule séparément pour chaque nation, et
 Par exemple, si l'interceptor de la nation A est à moitié fait et celui de la nation B à moitié aussi, l'interceptor n'est achevé dans aucune nation.
 Une nation qui n'a pas encore décidé quoi bâtir n'a rien où accumuler ; ce qu'on y verse ne devient pas de la progression.
 La plupart des gens meurent vers {life:.0f} ans.
+Plus on vieillit, plus le revenu augmente.
 Quand vous envoyez par `ai`, écrivez en français. Quand vous envoyez en `original`, vous pouvez écrire dans n'importe quelle langue que vous maniez. Dans votre nation, c'est le français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
 }
 

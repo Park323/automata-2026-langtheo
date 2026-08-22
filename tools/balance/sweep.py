@@ -43,6 +43,10 @@ class Cfg:
     bunker: float
     facility_eff: float
     agents: int = 3
+    # **나이가 들면 더 번다** (8/22). 창은 「한 나라의 전 기간 총소득」 에서 나오므로,
+    # 나이 배수를 안 넣으면 창이 실제보다 좁아지고 임계가 「도달 가능」 쪽에 붙는다.
+    age_growth: float = 0.0
+    adult_age: int = 10
 
 
 # ── 수명 ───────────────────────────────────────────────────────────
@@ -59,6 +63,23 @@ def expected_life(lam: float, k: float, tmax: int = 60) -> float:
 
 
 # ── 창 (spec 7장) ──────────────────────────────────────────────────
+def mean_age_multiplier(c: "Cfg") -> float:
+    """정상 연령분포에서 본 소득 나이 배수의 평균.
+
+    나이 a 에 살아 있을 확률은 S(a) 에 비례한다. `core.asserts.mean_age_multiplier` 와
+    **같은 식**이다 — 두 곳에 두는 것은 이 파일이 config 를 안 읽고 자기 Cfg 로만 도는
+    독립 검산이기 때문이다 (그게 이 자의 요점이다). 식이 갈리면 검산이 아니게 되므로
+    `tests/test_balance_config.py` 가 두 값을 맞춰 본다.
+    """
+    if c.age_growth <= 0:
+        return 1.0
+    horizon = int(c.surv_lambda * 3) + 1
+    w = [math.exp(-((a / c.surv_lambda) ** c.surv_k)) for a in range(horizon)]
+    tot = sum(w) or 1.0
+    return sum(w[a] * (1 + c.age_growth * max(0, a - c.adult_age))
+               for a in range(horizon)) / tot
+
+
 def bounds(c: Cfg):
     """요격기 임계가 놓여야 할 창. 전부 **진척 단위**.
 
@@ -71,7 +92,8 @@ def bounds(c: Cfg):
     성장을 전제로 임계를 잡으면 "국가 투자를 안 하면 구조적으로 도달 불가" 가 된다.
     """
     k = c.facility_eff * c.success_prob
-    per_turn_country = c.income * c.agents
+    # 실효 소득 — 나이 배수의 평균을 곱한다 (`core.asserts.mean_age_multiplier` 와 같은 식)
+    per_turn_country = c.income * mean_age_multiplier(c) * c.agents
     whole = per_turn_country * c.total_turns
     epoch = per_turn_country * c.epoch_turns
     A = 3 * epoch * k

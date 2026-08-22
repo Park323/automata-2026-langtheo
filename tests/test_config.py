@@ -35,7 +35,7 @@ def _with(**overrides) -> Config:
 
 def test_valid_config_loads():
     cfg = config.load(BASE)
-    assert cfg.thresholds.interceptor == 9558      # 60턴 창의 0.95 지점 (8/21)
+    assert cfg.thresholds.interceptor == 11702     # 실효소득 창의 0.95 지점 (8/22)
     assert cfg.k == pytest.approx(0.3)          # eff 1.0 × success_prob 0.3
 
 
@@ -52,7 +52,11 @@ def test_window_values():
     a, b, c, e = asserts.window(cfg)
     n, total, epoch = (cfg.world.agents_per_country, cfg.world.total_turns,
                        cfg.world.epoch_turns)
-    per, k = cfg.income.per_turn, cfg.k
+    # **실효 소득으로 잡는다** (8/22) — 소득이 나이와 함께 오르므로 「전 기간 총소득」 이
+    # `per_turn × n × total` 보다 크다. 그 값을 그대로 쓰면 창이 좁아지고 임계가
+    # 「도달 가능」 쪽에 붙는다.
+    per = cfg.income.per_turn * asserts.mean_age_multiplier(cfg)
+    k = cfg.k
     assert a == pytest.approx(3 * per * n * epoch * k)
     assert b == pytest.approx(per * n * total * k)
     assert e == pytest.approx(3 * per * n * (total - epoch) * k * 0.6)
@@ -88,9 +92,19 @@ def test_break_bunker_shallow():
 
 
 def test_bunker_just_above_floor():
-    """하한(1800) 바로 위는 통과한다 — 경계가 어디인지를 코드로 고정."""
-    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": 2000}))
+    """하한 바로 위는 통과한다 — 경계가 어디인지를 코드로 고정.
+
+    **하한을 손으로 적지 않는다** (8/22). 하한은 「한 주기 전력 진척」 이고, 그 값이
+    실효 소득(나이 배수 포함)에서 나오므로 1800 → 2204 로 움직였다.
+    """
+    cfg = config.load(BASE)
+    eff = cfg.income.per_turn * asserts.mean_age_multiplier(cfg)
+    floor = eff * cfg.world.agents_per_country * cfg.world.epoch_turns * cfg.k
+    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": floor + 1}))
     assert not any("벙커↓" in f for f in fails)
+    # 그리고 하한 **아래**는 걸린다
+    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": floor - 1}))
+    assert any("벙커↓" in f for f in fails)
 
 
 def test_break_success_prob_half():
