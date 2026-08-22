@@ -975,18 +975,6 @@ def test_the_action_rate_does_not_grow_with_wealth(cfg, world):
     assert risk_sigma(world.countries["Asla"], cfg) < cfg.risk.sigma_ratio   # 관측 정확도
 
 
-def test_natural_death_passes_nothing(cfg, world):
-    """자연사는 계보와 무관한 뒷세대다 (3.2). 진척도 안 넘어간다."""
-    import random
-    a = world.agents["Asla1"]
-    a.lang_progress = {"fr": 400.0}
-    a.age = 40
-    r = loop.RunResult(world=world)
-    loop._death_birth(world, cfg, random.Random(1), ["Asla1"], set(),
-                      itertools.count(700), r)
-    child = next(x for x in world.agents.values() if x.country == "Asla" and x.age == 0)
-    assert child.lang_progress == {} and child.parent_langs == set()
-
 
 # ── 로그에 본문이 남는가 (8/18) ─────────────────────────────────────────────
 
@@ -1116,69 +1104,6 @@ def test_the_observation_shows_only_my_own_contributions(cfg, world):
     assert "7777" not in obs                          # 타국 진척은 여전히 없다
 
 
-def test_the_child_inherits_only_the_discount(cfg, world):
-    """**물려주는 것은 부모 할인 자격뿐이다** (8/21 개정).
-
-    전에는 예산·유언·학습 진척 절반이 함께 넘어갔다. 부모가 죽었으니 넘길 수밖에 없었다.
-    이제 부모가 살아 있으므로 —
-
-      · 돈은 **살아서 주면 된다** (아이는 빈손으로 시작하고 성인까지 소득이 없다)
-      · 유언은 **말로 하면 된다** (`speak` — 여러 해에 걸쳐, 기존 채널로 관측된다)
-      · 학습 진척 절반은 **과하다** — 부모가 살아 있는 것이 이미 국내 구사자이므로
-        아이의 학습이 두 겹으로 싸다 (부모 −50 × 국내 −50)
-
-    내 생애의 기록(어디에 얼마를 냈나)은 물려주지 않는다.
-    """
-    import itertools
-
-    from core.loop import RunResult, _bear_child
-    a = world.agents["Asla1"]
-    a.facility_invested = {"Ranoa": 900.0}
-    a.lang_progress = {"fr": 400.0}
-    a.budget = 777.0
-    r = RunResult(world=world)
-    cid = _bear_child(world, "Asla1", cfg, itertools.count(99), r)
-
-    child = world.agents[cid]
-    assert child.facility_invested == {}
-    assert child.lang_progress == {}                   # 진척은 안 넘어간다
-    assert child.budget == 0.0                         # 빈손
-    assert child.parent_langs == a.known_langs         # 할인 자격만
-    assert child.memory == ""
-
-    # **부모는 살아 있다.** 그것이 이 개정의 전부다.
-    assert "Asla1" in world.agents and world.agents["Asla1"] is a
-    assert a.budget == 777.0                           # 돈도 안 뺏긴다
-    assert r.deaths == 0 and not r.deaths_log
-
-    # 그리고 부모가 국내 구사자이므로 아이의 학습이 두 겹으로 싸다
-    from core.agent_loop import learn_cost, learn_speed
-    tgt = next(c.id for c in world.countries.values()
-               if c.lang in a.known_langs and c.id != a.country)
-    cost, why = learn_cost(child, tgt, world, cfg)
-    mult, _ = learn_speed(child, tgt, world, cfg)
-    assert cost == cfg.costs.learn_base                       # 목표는 고정
-    assert mult == 1.0 + 2 * cfg.costs.learn_speedup          # 두 배속
-    assert "parent" in why and "nation" in why
-
-
-def test_a_birth_is_announced_to_the_whole_world(cfg, world):
-    """명단은 GLOBAL 이므로 새 사람이 나타난 것은 어차피 보인다. **누구의 아이인가**만
-    새로 새는 것이고, 그건 세대 간 전달을 관측하려면 필요하다 (3.3)."""
-    import itertools
-
-    from core.loop import RunResult, _bear_child
-    cid = _bear_child(world, "Asla1", cfg, itertools.count(900),
-                      RunResult(world=world))
-    got = {e["to"] for e in world.inbox_queue}
-    alive = {a.id for a in world.agents.values() if a.alive and a.id != cid}
-    assert got == alive, "전 세계가 안다 (갓 태어난 본인만 빼고)"
-    msg = world.inbox_queue[0]["msg"]
-    assert msg == {"born": cid, "parent": "Asla1"}
-
-    from domains.meteor import prompts
-    txt = prompts.render_events(world.agents["Ranoa1"], [msg])
-    assert cid in txt and "Asla1" in txt
 
 
 def test_the_observation_never_describes_the_old_ballot(cfg, world):
@@ -1229,7 +1154,7 @@ def test_learn_reports_completion_not_a_schedule(cfg, world):
     # 그리고 순차 정산은 실제로 같은 턴에 반영한다
     res = loop.RunResult(world=world)
     loop._settle_step(world, cfg, random.Random(0), sink, None, 48.0,
-                      itertools.count(900), res, {}, [], [])
+                      itertools.count(900), res, {}, [])
     assert "zh" in world.agents["Asla2"].known_langs
 
 
@@ -1638,21 +1563,98 @@ def test_my_multipliers_show_but_nobody_elses_do(cfg):
             assert f"{theirs:g}" not in inv_row, other.id
 
 
-def test_a_child_does_not_inherit_the_multipliers(cfg):
-    """부모와 아이의 배수는 **독립**이다. 물려받으면 한 계보가 누적 우위를 갖고, spec 3.3
-    의 「능력은 상속되지 않는다」 와도 어긋난다."""
+def test_an_heir_does_not_inherit_the_multipliers(cfg):
+    """앞사람과 뒷사람의 배수는 **독립**이다. 물려받으면 한 자리가 누적 우위를 갖고,
+    spec 3.3 의 「능력은 상속되지 않는다」 와도 어긋난다.
+
+    넘어가는 것은 예산과 **부모 할인 자격**뿐이다 (8/22).
+    """
     import random
     rng = random.Random(7)
     w = loop.init_world(cfg, itertools.count(1), rng)
-    parent = w.agents["Asla1"]
-    parent.age = cfg.world.adult_age
-    parent.income_mult, parent.invest_mult = 1.4, 1.4
-
-    kids = []
+    w.turn = 5
+    heirs = []
     for _ in range(12):
-        parent.has_borne = False
-        cid = loop._bear_child(w, "Asla1", cfg, itertools.count(900),
-                               loop.RunResult(world=w), rng)
-        kids.append(w.agents[cid])
-    # 열두 명이 전부 부모와 같을 확률은 사실상 0 이다
-    assert any(k.income_mult != 1.4 or k.invest_mult != 1.4 for k in kids)
+        aid = sorted(w.agents)[0]
+        a = w.agents[aid]
+        a.income_mult = a.invest_mult = 1.4
+        a.lam = 0.001                        # 반드시 죽는다
+        before = set(w.agents)
+        loop._death_birth(w, cfg, random.Random(0), [aid], set(),
+                          itertools.count(900 + len(heirs) * 10),
+                          loop.RunResult(world=w))
+        new_ids = set(w.agents) - before
+        if new_ids:
+            heirs.append(w.agents[next(iter(new_ids))])
+    assert heirs, "후손이 하나도 안 생겼다"
+    # 열두 번이 전부 1.4 일 확률은 사실상 0 이다
+    assert any(h.income_mult != 1.4 or h.invest_mult != 1.4 for h in heirs)
+
+
+
+# ── 마지막 말 (8/22) ─────────────────────────────────────────────────────────
+
+def test_a_dying_person_is_asked_for_last_words(cfg, world):
+    """**자연사는 예고가 없다.** 그래서 「죽을 때 유언을 남긴다」 를 도구로 두면 아무도 못
+    쓴다 — `procreate` 가 30해에 1건이었던 이유가 그것이었고, 면담에서 넷이 「죽을 때가
+    가까워지면」 이라고 말한 뒤 그 정산에서 죽었다.
+
+    대신 죽는 그 순간에 **우리가 묻는다.** 도구를 안 싣는다 — 행동이 아니라 말이다.
+
+    메모를 그대로 옮기지 않는다. 메모는 자기가 쓰던 것이고 남길 말은 다른 것이다 — 무엇을
+    골라 남기는지가 spec 3.3 이 관측하려는 것이다.
+    """
+    from core.llm import StubClient
+    from domains.meteor import prompts
+
+    world.turn = 5
+    a = world.agents["Asla1"]
+    a.lam, a.budget, a.memory = 0.001, 300.0, "내가 쓰던 메모"
+    before = set(world.agents)
+    said = "要撃機に集めろ。翻訳を信じるな。"
+    client = StubClient([{"role": "assistant", "content": said, "tool_calls": []}])
+
+    r = loop.RunResult(world=world)
+    loop._death_birth(world, cfg, random.Random(0), ["Asla1"], set(),
+                      itertools.count(900), r,
+                      client_for=lambda _aid: client, system_prompt=prompts.system_for)
+
+    (heir_id,) = set(world.agents) - before
+    heir = world.agents[heir_id]
+    # **들은 말로 온다** — 기억에 심지 않는다
+    assert heir.memory == ""
+    got = [e for e in world.inbox_queue if e["to"] == heir_id]
+    assert len(got) == 1 and got[0]["msg"]["testament"] == [said]
+    assert not [e for e in world.inbox_queue if e["to"] != heir_id]   # 뒷사람만
+
+    # 로그에도 남는다 — 옮겨 적지 않으면 대화에서 사라지므로
+    (d,) = r.deaths_log
+    assert d["testament"] == said and d["budget_passed"] == 300.0
+
+    txt = prompts.render_events(heir, [got[0]["msg"]])
+    assert said in txt and "残した言葉" in txt
+
+    # 청한 말에 길이 상한이 들어 있다
+    ask = prompts.render_last_words(a, cfg)
+    assert str(cfg.length.message_max_chars["ja"]) in ask
+
+
+def test_a_run_survives_a_failed_last_words_call(cfg, world):
+    """**마지막 말은 있으면 좋은 것이다.** 못 받는 것보다 런이 죽는 것이 나쁘다."""
+    from domains.meteor import prompts
+
+    world.turn = 5
+    world.agents["Asla1"].lam = 0.001
+    before = set(world.agents)
+
+    class Boom:
+        def chat(self, *a, **k):
+            raise RuntimeError("망")
+
+    r = loop.RunResult(world=world)
+    loop._death_birth(world, cfg, random.Random(0), ["Asla1"], set(),
+                      itertools.count(900), r,
+                      client_for=lambda _aid: Boom(), system_prompt=prompts.system_for)
+    assert set(world.agents) - before                 # 후손은 그대로 태어난다
+    assert r.deaths_log[0]["testament"] == ""
+    assert not world.inbox_queue                      # 빈 유언은 보내지 않는다

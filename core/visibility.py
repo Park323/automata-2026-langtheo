@@ -63,6 +63,11 @@ FACTS: dict[str, tuple[Vis, str]] = {
     "lang_progress":     (Vis.PRIVATE, "내 언어 학습 진척"),
     "facility_invested": (Vis.PRIVATE, "내가 어느 나라에 얼마를 냈나"),
     "memory":            (Vis.PRIVATE, "내 메모"),
+    "testament":         (Vis.PRIVATE, "앞사람이 죽으며 남긴 말. **뒷사람에게만** — "
+                                       "기억에 심지 않고 들은 말로 온다. 옮겨 적을지는 "
+                                       "본인이 고르고, 안 옮기면 대화에서 밀려 사라진다 "
+                                       "(3.3 구전의 감쇠). 자연사는 예고가 없어 도구로는 "
+                                       "남길 수 없으므로 죽는 그 순간에 우리가 묻는다"),
     "gift":              (Vis.PRIVATE, "누가 나에게 얼마를 주었나. **받는 이만** — "
                                        "예산은 PRIVATE 이고, 갑자기 늘어난 이유를 "
                                        "본인이 모르면 그 돈을 쓸 판단을 못 한다"),

@@ -237,10 +237,6 @@ class RunWriter:
                 # 기억 도구가 열려 있었나 — 압박과 함께 움직이지만, 어긋난 적이 있어
                 # 상태에서 바로 대조되게 남긴다
                 "memory_open": a.memory_open,
-                # 생애 1회 — 아이를 낳았나 (8/21)
-                "has_borne": a.has_borne,
-                # 부모 — 살아 있는지가 무소득 판정이다 (8/22)
-                "parent_id": a.parent_id,
                 # **개체 차이** — 소득·처리량 배수 (8/22). 남에게는 안 보이지만
                 # 로그에는 남는다: 비교우위가 실제로 교환으로 이어졌는지 재려면 필요하다
                 "income_mult": a.income_mult, "invest_mult": a.invest_mult,

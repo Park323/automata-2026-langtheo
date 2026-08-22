@@ -177,7 +177,7 @@ def test_roundrobin_same_turn_delivery():
         "text": "HELLO_SAME_TURN", "translate_instruction": None})
     _settle_step(world, cfg, random.Random(1), sink,
                  StubClient([{"role": "assistant", "content": "x", "tool_calls": []}] * 5),
-                 48, itertools.count(1000), RunResult(world=world), {}, [], [])
+                 48, itertools.count(1000), RunResult(world=world), {}, [])
     got = _dequeue_inbox_pop(world, "Asla2")
     assert "HELLO_SAME_TURN" in str(got)                    # 같은 턴에 도착
     assert _dequeue_inbox_pop(world, "Asla2") == []         # 두 번 안 옴 (제거됨)

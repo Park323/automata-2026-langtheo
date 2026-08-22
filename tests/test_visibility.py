@@ -179,7 +179,7 @@ def test_a_message_reaches_only_its_recipient(cfg, world):
         "text": "OVERHEARD?", "translate_instruction": None})
     loop._settle_step(world, cfg, random.Random(0), sink,
                       StubClient([{"role": "assistant", "content": "x", "tool_calls": []}] * 3),
-                      48.0, itertools.count(900), loop.RunResult(world=world), {}, [], [])
+                      48.0, itertools.count(900), loop.RunResult(world=world), {}, [])
     told = [e["to"] for e in world.inbox_queue]
     assert told == ["Asla2"]                       # Asla3 도 못 듣는다
 
@@ -198,7 +198,7 @@ def test_a_delivery_failure_reaches_only_the_sender(cfg, world):
         "text": "NOT_DELIVERED", "translate_instruction": None})
     loop._settle_step(world, cfg, random.Random(0), sink,
                       StubClient([{"role": "assistant", "content": "x", "tool_calls": []}] * 3),
-                      48.0, itertools.count(900), loop.RunResult(world=world), {}, [], [])
+                      48.0, itertools.count(900), loop.RunResult(world=world), {}, [])
     fails = [e for e in world.inbox_queue if "delivery_failed_to" in e["msg"]]
     assert [e["to"] for e in fails] == ["Asla2"]
 
@@ -252,7 +252,7 @@ def test_no_secret_value_reaches_any_rendered_string(cfg):
         seen.append(json.dumps(r, ensure_ascii=False))
     # 사건도 — 이 판에서 생긴 것 전부
     loop._settle_step(world, probe, random.Random(0), sink, None, 48.0,
-                      itertools.count(900), loop.RunResult(world=world), {}, [], [])
+                      itertools.count(900), loop.RunResult(world=world), {}, [])
     for e in world.inbox_queue:
         seen.append(prompts.render_events(world.agents[e["to"]], [e["msg"]]))
 

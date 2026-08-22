@@ -48,7 +48,7 @@ class Income:
     # **나이가 들면 더 번다** (8/22). 성인 나이 이후 한 해마다 `per_turn × 이 값` 씩.
     # 말년에 **소비가 못 따라가게** 하는 것이 목적이다 — 한 해에 쓸 수 있는 돈은 행동력이
     # 묶으므로(invest 40원·0.2AP → 상한 200), 나이 16 을 넘기면 잉여가 강제로 쌓인다.
-    # 그 잉여의 용처가 `give` 이고, 줄 사람을 만드는 것이 `bear_child` 다.
+    # 그 잉여의 용처가 `give` 다 — 재생산 행위를 없앤 뒤로 **유일한** 용처다.
     age_growth: float = 0.0
     # **사람마다 다르게 번다** (8/22). 태어날 때 이 단계들에서 하나를 뽑는다.
     #
@@ -70,7 +70,6 @@ class AP:
     speak: float
     propose_vote: float
     memory_write: float
-    bear_child: float = 1.0
     give: float = 0.2
     observe_risk: float = 0.3
     vote: float = 0.05             # 採決과 제안은 무게가 다르다 (4.4)

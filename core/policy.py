@@ -27,7 +27,5 @@ def dummy_policy(world, agent, cfg, procreate_age: int | None = PROCREATE_AGE) -
     actions: list[dict] = [
         {"type": "invest", "target": "facility", "amount": agent.budget / 2, "to": agent.country},
     ]
-    if procreate_age is not None and agent.age >= procreate_age:
-        actions.append({"type": "bear_child"})
 
     return {"reasoning": "dummy", "actions": actions, "received": []}

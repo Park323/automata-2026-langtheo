@@ -5,7 +5,7 @@
       resp = client.chat(messages, tools=TOOLS)
       tool_calls 없으면 종료
       각 tool_call 실행 → 결과를 role="tool" 로 append
-  end_turn 은 루프를 즉시 끝낸다 (procreate 는 8/21 에 bear_child 로 바뀌며 폐기).
+  end_turn 은 루프를 즉시 끝낸다 (재생산 행위는 8/22 에 폐기 — 자연사가 후손을 남긴다).
 
 ⚠ 도구는 세계를 즉시 바꾸지 않는다. 자기 budget/ap 만 즉시 차감하고 효과는 Sink 에
   넣는다. 국토 확정·진척 판정·cap 배분·번역은 전원의 루프가 끝난 뒤 loop.py 5단계에서.
@@ -556,26 +556,6 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         return {"ok": True, "budget_left": round(agent.budget, 1),
                 "ap_left": round(agent.ap, 1)}, None
 
-    if name == "bear_child":
-        # **죽지 않는다** (8/21 개정). 그래서 세 가지를 순서대로 본다 — 나이 · 생애 1회 ·
-        # 행동력. 나이와 횟수는 되돌릴 수 없는 조건이라 자원보다 먼저 말해 준다.
-        if agent.age < cfg.world.adult_age:
-            return {"ok": False, "error":
-                    f"you are not old enough yet; this opens at "
-                    f"{cfg.world.adult_age}"}, None
-        if agent.has_borne:
-            return {"ok": False, "error": "you have already had a child; once in a life"}, None
-        if not _afford(agent.ap, cfg.ap.bear_child):
-            return {"ok": False, "error":
-                    f"not enough action; bear_child needs {cfg.ap.bear_child}, "
-                    f"have {agent.ap:.2f}"}, None
-        _spend(agent, cfg.ap.bear_child)
-        agent.has_borne = True
-        sink.births.append(agent.id)
-        # **턴을 끝내지 않는다.** 죽지 않으므로 뒤이은 호출을 버릴 이유가 없다 — 행동력이
-        # 0 이 된 것뿐이고, 그 판정은 다른 도구들이 각자 한다.
-        return {"ok": True}, None
-
     return {"ok": False, "error": f"unknown tool: {name}"}, None
 
 
@@ -746,7 +726,7 @@ def can_act(agent, cfg, knob_ai: float) -> bool:
     > 계산합니다** — 여기서 거짓으로 False 를 돌려주면 합법적인 행동을 잘라내게 됩니다.
     """
     # **공짜 행동이 사라졌다** (8/21). `procreate` 가 AP 0 이었고 `memory_write` 도
-    # 0 인데 압박선 위에서만 열린다. 이제 `bear_child` 가 AP 1.0 을 물므로, AP 가 0 이면
+    # 0 인데 압박선 위에서만 열린다. 출산 행위가 없어진 뒤로 공짜 행동은 그것뿐이라, AP 가 0 이면
     # 실제로 할 수 있는 것이 없을 수 있다 — 그래서 정직하게 센다.
     free_ap = cfg.ap.memory_write if agent.memory_open else None
     if free_ap is not None and free_ap <= 0:

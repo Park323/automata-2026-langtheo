@@ -82,18 +82,6 @@ def test_newborn_no_action(cfg):
         assert b["uid"] not in acted_this_turn
 
 
-def test_procreate_child_budget(cfg):
-    """8. procreate 자식 예산 = 부모의 남은 예산 / 자연사 자식 예산 = initial_budget."""
-    r = _run(cfg, 5)
-    saw_procreate = False
-    for b in r.births:
-        if b["born_by"] == "natural":
-            assert b["budget"] == cfg.income.initial_budget
-        else:
-            saw_procreate = True
-            assert b["budget"] >= 0      # 부모의 남은 예산 (음수 아님)
-    assert saw_procreate                 # 더미는 age≥7 에서 procreate 하므로 반드시 발생
-
 
 def test_dummy_intercept_fails(cfg):
     """요격기 판정이 max(부지별 독립)이므로, 더미(3국 각자 자국 요격기)는 실패해야 한다.
@@ -158,46 +146,45 @@ def test_lifespan(cfg):
     assert 14.6 <= statistics.mean(ages) <= 15.5, f"평균 수명 {statistics.mean(ages):.2f}"
 
 
-def test_only_a_child_with_a_living_parent_goes_without_income(cfg):
-    """**판정은 「줄 사람이 있는가」 다.** 소득을 성인 나이부터로 둔 이유가 「부모가 용돈을
-    준다」 이므로, 판정도 그 문장 그대로여야 한다.
+def test_a_natural_death_passes_the_budget_and_the_discount(cfg):
+    """**자연사가 후손을 남기고, 물려준다** (8/22 개정).
 
-    처음엔 `born_by == "born" and age < adult_age` 로 두었다. 그러면 **세 살에 부모를 잃은
-    아이가 줄 사람도 없이 일곱 해를 빈손으로** 남는다 — 자연사 교체자에게서 막으려던 바로
-    그 상황이다.
+    재생산 행위(`bear_child`)를 없앴다 — 10해 실측 네 번에서 0건이었고, 원인이 유인이 아니라
+    인구 구조였다. 성인 기간이 성장 기간보다 짧아 세대가 이어지지 않았다.
 
-    **나이를 올려서 푸는 것도 안 된다.** 교체로 오는 사람을 성인 나이로 태어나게 해 봤더니
-    턴당 사망이 **0.56 → 1.40** 으로 뛰었다. 나이 10 부터면 남은 수명이 6해뿐이라 세대
-    교체가 세 배로 빨라지고 수명 모델이 통째로 어긋난다.
+    넘어가는 것은 둘이다.
+
+        예산       죽음이 돈을 태우지 않는다
+        할인 자격   `parent_langs` — 앞사람이 알던 말이 뒷사람에게 싸진다 (3.4)
+
+    **언어 자체는 안 넘어간다** (3.3). 이중언어자 멸종은 그대로 관측된다 — 그것이 이 실험의
+    관심사다.
     """
     import itertools
     import random
 
     from core import loop
     w = loop.init_world(cfg, itertools.count(1), random.Random(1))
-    parent = w.agents["Asla1"]
-    parent.age = cfg.world.adult_age
+    w.turn = 5                                   # 후손을 born_turn 으로 찾을 수 있게
+    before = set(w.agents)
+    a = w.agents["Asla1"]
+    a.budget, a.known_langs, a.lang_progress = 500.0, {"ja", "zh"}, {"fr": 100.0}
+    a.memory = "내 메모"
 
-    cid = loop._bear_child(w, "Asla1", cfg, itertools.count(500),
-                           loop.RunResult(world=w))
-    child = w.agents[cid]
-    assert child.age == 0 and child.parent_id == "Asla1"
-    assert loop._earns(child, w, cfg) is True          # 부모가 살아 있다 → 무소득
-
-    # **고아가 되면 받는다.** 줄 이가 없으니 그 규칙이 성립하지 않는다.
-    heir = loop._newborn("Asla9", "Asla", "ja", 0.0, set(), 1, "natural", cfg,
-                         itertools.count(600))
-    loop._replace(w, "Asla1", heir, [])
+    r = loop.RunResult(world=w)
+    # hazard 를 1 로 만들어 반드시 죽게 한다
+    a.lam = 0.001
+    loop._death_birth(w, cfg, random.Random(0), ["Asla1"], set(),
+                      itertools.count(900), r)
     assert "Asla1" not in w.agents
-    assert loop._earns(child, w, cfg) is False
+    (heir,) = [w.agents[k] for k in set(w.agents) - before]
 
-    # 성인이 되면 스스로 번다 — 부모가 살아 있어도
-    w.agents["Asla1"] = parent
-    child.age = cfg.world.adult_age
-    assert loop._earns(child, w, cfg) is False
+    assert heir.budget == 500.0                  # 예산은 넘어간다
+    assert heir.parent_langs == {"ja", "zh"}     # 할인 자격도
+    assert heir.known_langs == {"ja"}            # **언어 자체는 아니다**
+    assert heir.lang_progress == {}              # 진척도 아니다
+    assert heir.memory == ""                     # 메모도 아니다
+    assert heir.age == 0
 
-    # 자연사 교체로 온 사람과 첫 해 사람들에게는 부모가 없다
-    assert heir.parent_id is None and loop._earns(heir, w, cfg) is False
-    for a in w.agents.values():
-        if a.parent_id is None:
-            assert loop._earns(a, w, cfg) is False
+    (d,) = r.deaths_log
+    assert d["by"] == "natural" and d["budget_passed"] == 500.0

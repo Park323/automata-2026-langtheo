@@ -150,17 +150,6 @@ def _build(reasoning_arg: bool) -> list[dict]:
          "amount": {"type": "number", "description": "how much to hand over"}},
         ["to", "amount"]),
 
-    fn("bear_child",
-        "Have a child. You do not die; the child is a new person in your nation, and both "
-        "of you go on from there. It takes your whole year of action, and no money. "
-        "You can do this once in your life, and only once you are old enough — the "
-        "observation shows what that costs and whether it is open to you. "
-        "The child starts with no money of its own and receives no income until it is old "
-        "enough, so whatever it has early on is what someone gives it. It does NOT inherit "
-        "your languages, your notes, or what you have put toward learning — but learning a "
-        "language you can read is cheaper for it.",
-        {}, []),
-
     fn("memory_write",
         "Overwrite your notes. They stay with you next year; nobody else sees them.",
         {"text": {"type": "string", "description": "your notes, replacing whatever was there"}},
