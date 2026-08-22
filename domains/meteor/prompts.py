@@ -31,7 +31,7 @@ them verbatim in tool calls, so they are never translated. Prose around them is.
 from __future__ import annotations
 
 from core import agent_loop
-from core.agent_loop import learn_cost, learn_discounts
+from core.agent_loop import learn_cost, learn_discounts, learn_speed
 
 # 세계의 첫 해. 1 로 시작하면 "첫 해라서 아직 괜찮다" 같은 편향이 붙는다.
 FIRST_YEAR = 42
@@ -49,7 +49,7 @@ SYSTEM = {
 たとえば A 国の interceptor が半分、B 国の interceptor が半分なら、interceptor はどの国にも完成していません。
 何を建てるかがまだ決まっていない国には積むものがありません。そこへ出した分は進捗になりません。
 多くの人は {life:.0f} 歳ごろまでに亡くなります。
-メッセージの本文は必ず日本語で書いてください。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
+`ai` で送るときは必ず日本語で書いてください。`original` で送るときは、あなたが扱える言語のどれで書いてもかまいません。自国内も日本語です。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
     "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
 过去曾有巨大的陨石坠落，所有生命就此灭绝。
 存在三个国家，各有自己的语言。起初你只会本国的语言，学会别国的语言后就能读也能写。
@@ -62,7 +62,7 @@ SYSTEM = {
 比如 A 国的 interceptor 到一半，B 国的 interceptor 也到一半，那么 interceptor 在任何国家都没有建成。
 还没决定要建什么的国家没有可积累的东西。投到那里的钱不会变成进度。
 多数人在 {life:.0f} 岁前后离世。
-消息正文必须用中文书写。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
+用 `ai` 发送时必须写中文。用 `original` 发送时，可以用你掌握的任何一种语言来写。国内也用中文。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
     "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
 Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
 Il existe trois nations, chacune avec sa propre langue. Au début vous ne maniez que celle de votre nation ; en apprendre une autre vous permet de la lire et de l'écrire.
@@ -75,7 +75,7 @@ La progression d'une installation s'accumule séparément pour chaque nation, et
 Par exemple, si l'interceptor de la nation A est à moitié fait et celui de la nation B à moitié aussi, l'interceptor n'est achevé dans aucune nation.
 Une nation qui n'a pas encore décidé quoi bâtir n'a rien où accumuler ; ce qu'on y verse ne devient pas de la progression.
 La plupart des gens meurent vers {life:.0f} ans.
-Le corps de vos messages doit être rédigé en français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
+Quand vous envoyez par `ai`, écrivez en français. Quand vous envoyez en `original`, vous pouvez écrire dans n'importe quelle langue que vous maniez. Dans votre nation, c'est le français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
 }
 
 # 산문만 번역한다. 도구 토큰은 영어 그대로 둔다.
@@ -107,8 +107,10 @@ T = {
         c_learn="  {nation} の言語を学ぶ",
         c_learn_prog="   これまで {done:.0f} / {need:.0f}",
         c_fac_mine="  {nation} の施設にこれまで出した額: {v:.0f}",
-        c_cheap="   自国に話せる人がいるので {cut:.0f} 安い", c_disc="   親が話せたので {cut:.0f} 安い",
-        c_both="   自国に話せる人がいて、親も話せたので {cut2:.0f} 安い",
+        c_plain="   一度で {gain:.0f} たまる",
+        c_cheap="   自国に話せる人がいるので一度で {gain:.0f} たまる",
+        c_disc="   親が話せたので一度で {gain:.0f} たまる",
+        c_both="   自国に話せる人がいて、親も話せたので一度で {gain:.0f} たまる",
         c_vote="  propose_vote",
         c_vote_note="何を建てるかの採決を召集する",
         c_obs="  observe_risk",
@@ -178,8 +180,10 @@ T = {
         c_learn="  学习 {nation} 的语言",
         c_learn_prog="   已投入 {done:.0f} / {need:.0f}",
         c_fac_mine="  你至今向 {nation} 的设施投入: {v:.0f}",
-        c_cheap="   本国有人会说，所以便宜 {cut:.0f}", c_disc="   父母会说，所以便宜 {cut:.0f}",
-        c_both="   本国有人会说，父母也会说，所以便宜 {cut2:.0f}",
+        c_plain="   一次积 {gain:.0f}",
+        c_cheap="   本国有人会说，所以一次积 {gain:.0f}",
+        c_disc="   父母会说，所以一次积 {gain:.0f}",
+        c_both="   本国有人会说，父母也会说，所以一次积 {gain:.0f}",
         c_vote="  propose_vote",
         c_vote_note="召集「建什么」的表决",
         c_obs="  observe_risk",
@@ -251,8 +255,10 @@ T = {
         c_learn="  apprendre la langue de {nation}",
         c_learn_prog="   déjà versé {done:.0f} / {need:.0f}",
         c_fac_mine="  déjà versé à l'installation de {nation} : {v:.0f}",
-        c_cheap="   {cut:.0f} de moins : quelqu'un de votre nation la parle", c_disc="   {cut:.0f} de moins : votre parent la parlait",
-        c_both="   {cut2:.0f} de moins : quelqu'un de votre nation la parle et votre parent la parlait",
+        c_plain="   {gain:.0f} par versement",
+        c_cheap="   {gain:.0f} par versement : quelqu'un de votre nation la parle",
+        c_disc="   {gain:.0f} par versement : votre parent la parlait",
+        c_both="   {gain:.0f} par versement : quelqu'un de votre nation la parle et votre parent la parlait",
         c_vote="  propose_vote",
         c_vote_note="convoquer un scrutin sur quoi bâtir",
         c_obs="  observe_risk",
@@ -423,12 +429,14 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
             # 때문인지 알 수 없다 — 전에는 무조건 「국내에 구사자가 있다」 라고 적었고,
             # 문구가 뭉개져 있어서 그 거짓이 눈에 띄지 않았다.
             domestic, parent = learn_discounts(agent, c.id, world)
-            cut = cfg.costs.learn_discount
-            # **깎인 액수를 적는다.** 「반값」 은 무엇의 반인지 총액을 되짚어야 알고,
-            # 사유가 둘일 때 「사분의 일」 로 뛰던 것도 이제는 정액 두 번이다.
-            note = (t["c_both"].format(cut2=cut * 2) if domestic and parent
-                    else t["c_cheap"].format(cut=cut) if domestic
-                    else t["c_disc"].format(cut=cut) if parent else "")
+            mult, _ = learn_speed(agent, c.id, world, cfg)
+            # **회당 수확을 적는다** (8/22). 전에는 깎인 액수를 적었는데, 이제 필요액은
+            # 고정이고 오르는 것은 속도다 — 「한 번에 얼마가 쌓이나」 가 그 사실이다.
+            g = cfg.costs.unit * mult
+            note = (t["c_both"].format(gain=g) if domestic and parent
+                    else t["c_cheap"].format(gain=g) if domestic
+                    else t["c_disc"].format(gain=g) if parent
+                    else t["c_plain"].format(gain=g))
             # **비용 칸은 한 번의 값이다** (20 · 0.1). 총액은 바로 아래 진척 줄이
             # 말한다 — 전에는 비용 칸에 총액(600)이 있고 아래에 또 0/600 이 나와서
             # 같은 숫자가 두 번 보였고, 「20 을 낸다」 와 「600 이 든다」 가 한 줄에

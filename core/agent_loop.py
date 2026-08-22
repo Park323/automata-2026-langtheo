@@ -112,25 +112,38 @@ def learn_discounts(agent, country_id: str, world) -> tuple[bool, bool]:
     return domestic, target_lang in agent.parent_langs
 
 
-def learn_cost(agent, country_id: str, world, cfg) -> tuple[float, str]:
-    """(비용, 할인사유). **L − 사유당 정액.**
+def learn_speed(agent, country_id: str, world, cfg) -> tuple[float, str]:
+    """(회당 수확 배율, 사유). **필요액은 고정이고 속도가 오른다** (8/22).
 
-    비율(×0.5)이었을 때 사유가 둘이면 ×0.25 라 정가와 네 배가 벌어졌다. L 을 200 으로
-    내리면서 그 배율은 50 이 되어 **두 번 만에 끝나는** 값이 된다. 정액이면 사유 하나가
-    언제나 같은 값어치라 사다리가 200 · 150 · 100 으로 고르다.
+    전에는 필요액을 깎았다 (200 → 150 → 100). 그러면 **목표가 움직인다** — 반쯤 낸 학습이
+    구사자가 생기는 순간 갑자기 완성되는 경로가 생기고, 그 주변에서 이미 버그를 한 번 잡았다.
 
-    한 번의 학습이 20 원이므로 바닥은 그 아래로 내려가지 않게 잡는다.
+    이제 필요액은 `learn_base` 에 고정하고 회당 수확을 올린다. 사유 하나마다 `+0.5` 배다.
+
+        사유 없음   회당 40   →  5회 · 200원 · AP 1.0
+        하나        회당 60   →  4회 · 160원 · AP 0.8
+        둘          회당 80   →  3회 · 120원 · AP 0.6
+
+    **곱이 아니라 합이다.** ×1.5 를 두 번 곱하면 2.25 배라 정가와 너무 벌어진다 — 정액
+    할인으로 바꿀 때 비율을 버린 것과 같은 이유다.
     """
-    base = cfg.costs.learn_base
-    cut = cfg.costs.learn_discount
+    up = cfg.costs.learn_speedup
     domestic, parent = learn_discounts(agent, country_id, world)
     reasons = []
     if domestic:
-        reasons.append(f"someone in your nation speaks it (-{cut:.0f})")
+        reasons.append(f"someone in your nation speaks it (x{1 + up:.1f} faster)")
     if parent:
-        reasons.append(f"your parent spoke it (-{cut:.0f})")
-    cost = max(cfg.costs.unit, base - cut * len(reasons))
-    return cost, " · ".join(reasons) if reasons else "no discount"
+        reasons.append(f"your parent spoke it (x{1 + up:.1f} faster)")
+    return 1.0 + up * len(reasons), " · ".join(reasons) if reasons else "no help"
+
+
+def learn_cost(agent, country_id: str, world, cfg) -> tuple[float, str]:
+    """(필요액, 사유). **필요액은 이제 고정이다** — 사유는 속도에 붙는다 (`learn_speed`).
+
+    이름을 남겨 둔다: 필요액을 묻는 자리가 여러 곳이고, 그 값이 「목표」 라는 뜻은 그대로다.
+    """
+    _, reason = learn_speed(agent, country_id, world, cfg)
+    return cfg.costs.learn_base, reason
 
 
 # ── 새어나온 도구 호출 회수 ──────────────────────────────────────────────────
@@ -307,9 +320,14 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         done_before = agent.lang_progress.get(lang, 0.0)
         # **invest 와 같은 단위다.** 한 번에 정해진 액수만 내고, 마지막 한 번은 남은
         # 만큼만 낸다 — 넘치게 받으면 남는 돈이 조용히 사라진다.
-        amount, ap_used = cfg.costs.unit, cfg.ap.unit
-        amount = min(amount, max(0.0, need - done_before))
-        if amount <= 0:
+        # **돈은 고정이고 수확이 배율을 탄다** (8/22). 마지막 한 번은 남은 만큼만 —
+        # 넘치게 걷으면 남는 돈이 조용히 사라진다. 절삭은 **수확 쪽**에서 하고, 돈은
+        # 그 비율만큼만 받는다.
+        mult, _ = learn_speed(agent, country_id, world, cfg)
+        ap_used = cfg.ap.unit
+        gain = min(cfg.costs.unit * mult, max(0.0, need - done_before))
+        amount = gain / mult                     # 수확에 비례해 낸다
+        if gain <= 0:
             return {"ok": False, "error": f"{country_id}'s language is already paid for"}, None
         if not _afford(agent.ap, ap_used):
             return {"ok": False,
@@ -327,7 +345,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         #
         # `lang_progress` 는 **개인의 것**이라 즉시 바꿔도 병렬이 안전하다. 남이 읽는
         # 것은 `known_langs` 뿐이고, 그건 아래 sink 로 넘겨 정산 때 반영한다.
-        agent.lang_progress[lang] = done_before + amount
+        agent.lang_progress[lang] = done_before + gain
         # known_langs 는 다른 에이전트가 읽으므로(국내 구사자 판정) 즉시 바꾸지 않는다.
         # sink 에 넣어 정산 때(정렬 순) 반영한다 — 병렬 레이스·재현성 방지.
         domestic, parent = learn_discounts(agent, country_id, world)
@@ -340,7 +358,9 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "age": agent.age, "budget_after": round(agent.budget, 2),
             "lam": round(agent.lam, 4),
         })
-        done = done_before + amount
+        # **응답도 수확으로 센다.** 상태는 `gain` 을 쌓는데 응답만 `amount` 로 세면
+        # 「진척 198.3 / 200 · 남음 1.7」 처럼 **완성한 뒤에도 안 끝났다고 말한다.**
+        done = done_before + gain
         # 남는 것은 **내가 몰랐던 것**뿐이다. 누적 진척과 그때그때의 필요액은 턴을
         # 넘나들며 바뀌고(국내 구사자가 생기면 절반이 된다), 계산으로 알 수 없다.
         return {"ok": True,

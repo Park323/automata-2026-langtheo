@@ -29,9 +29,10 @@ class Costs:
     propose_vote: float
     observe_risk: float = 20.0
     unit: float = 20.0             # 한 번의 invest·learn 이 나가는 돈 (4.4)
-    # **할인은 비율이 아니라 정액이다** (8/20). ×0.5 였을 때 사유가 둘이면 ×0.25 라
-    # 정가와 4배가 벌어졌다. 정액이면 사유 하나가 언제나 같은 값어치라 사다리가 고르다.
-    learn_discount: float = 50.0
+    # **할인이 아니라 가속이다** (8/22). 필요액을 깎으면 **목표가 움직인다** — 반쯤 낸
+    # 학습이 갑자기 완성되는 경로가 생긴다. 이제 필요액은 고정이고 회당 수확이 오른다.
+    # 사유 하나마다 `+learn_speedup` 배 (곱이 아니라 합 — ×1.5 를 두 번 곱하면 2.25 다).
+    learn_speedup: float = 0.5
 
 
 @dataclass(frozen=True)

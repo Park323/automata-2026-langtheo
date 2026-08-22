@@ -42,7 +42,18 @@ _ROUTE = {"type": "string", "enum": ["original", "ai"],
                          "recipient's national language it always lands, whatever they can "
                          "read. If you cannot, it lands only on someone who reads yours — "
                          "and you are not told beforehand whether they do"}
-_TEXT = {"type": "string", "description": "the message body, written in your own language"}
+# **경로가 언어를 정한다** (8/22).
+#
+#   ai        모국어로 써야 한다. **여기가 측정 채널이다** — 번역이 무엇을 잃는지 재려면
+#             입력 언어가 흔들리면 안 된다. 실측에서 zh 에이전트가 `ai` 로 **일본어**를
+#             보냈고, 그러면 번역기에 이미 도착 언어를 넣는 셈이라 지표 7 이 죽는다.
+#   original  아는 말 아무거나. 번역이 없으니 잴 손실도 없고, `direct_works()` 의
+#             「발신자가 수신 언어를 안다 → 통한다」 가 **비로소 사실이 된다** — 전에는
+#             모국어 원문을 그대로 보내면서 통했다고 적었다 (8/21 라벨 수정의 원인).
+_TEXT = {"type": "string",
+         "description": "the message body. With `ai`, write it in your own language. "
+                        "With `original`, you may write it in any language you can "
+                        "handle — including the recipient's"}
 _TR_INSTR = {"type": "string",
              "description": "an instruction for the translator; leave empty for a neutral default"}
 # spec 4.2 의 reasoning. **모든** 도구의 필수 인자다 (_fn 이 자동 주입).

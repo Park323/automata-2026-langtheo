@@ -6,9 +6,14 @@
      이 세계에 한국어는 존재하지 않는다. 개발 언어가 새어 들어가면
      에이전트가 한국어로 답하기 시작하고(실측된 적 있다) 채점이 통째로 깨진다.
 
-  ② 에이전트의 산문은 **자기 모국어 하나**로만 되어 있어야 한다.
+  ② **프롬프트의** 산문은 그 에이전트의 모국어 하나로만 되어 있어야 한다.
      ja 프롬프트에 가나가 없으면 그건 일본어가 아니라 한자만 쓴 것이고,
      zh 프롬프트에 가나가 있으면 일본어가 섞인 것이다.
+
+     **에이전트가 쓰는 말은 경로가 정한다** (8/22). `ai` 는 모국어여야 하고 — 거기가
+     번역 손실을 재는 채널이라 입력 언어가 흔들리면 지표 7 이 죽는다 — `original` 은
+     아는 말 아무거나 된다. 번역이 없으니 잴 손실도 없고, 「발신자가 수신 언어를 안다 →
+     통한다」 가 비로소 사실이 된다.
 
 도구 이름·인자 토큰(interceptor, wellness …)과 도구 스키마·도구 결과는 영어다.
 그건 기계 표면이라 의도된 혼용이며, 산문 언어와 구분해서 검사한다.
@@ -273,11 +278,11 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
     from core import config, loop
     from domains.meteor import prompts
     cfg = config.load("configs/base.yaml")
-    L, cut = cfg.costs.learn_base, cfg.costs.learn_discount
+    L = cfg.costs.learn_base
     world = loop.init_world(cfg, itertools.count(1), random.Random(1))
     world.turn = 1
-    # Asla2 는 국내에 zh 구사자(Asla1)가 있어 zh 만 할인가다.
-    for aid, marks in (("Asla2", (f"0 / {L - cut:.0f}", f"0 / {L:.0f}")),
+    # **필요액은 어느 말이든 같다** (8/22) — 다른 것은 회당 수확이다.
+    for aid, marks in (("Asla2", (f"0 / {L:.0f}",)),
                        ("Ranoa1", (f"0 / {L:.0f}",)),
                        ("Miris1", (f"0 / {L:.0f}",))):
         agent = world.agents[aid]
@@ -296,7 +301,7 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
     # 낸 것이 있으면 그대로 보인다
     a = world.agents["Asla2"]
     a.lang_progress = {"zh": 100.0}
-    assert f"100 / {L - cut:.0f}" in prompts.system_for(a, world, cfg, 48.0)
+    assert f"100 / {L:.0f}" in prompts.system_for(a, world, cfg, 48.0)
 
 
 def test_the_observation_says_money_carries_over():
@@ -602,3 +607,36 @@ def test_the_year_and_the_steps_inside_it_are_explained():
                       ("Miris1", "l'année n'est pas terminée")):
         obs = prompts.system_for(world.agents[aid], world, cfg, 48.0)
         assert mark in obs, aid
+
+
+def test_the_route_decides_which_language_the_agent_may_write():
+    """**경로가 언어를 정한다** (8/22).
+
+    실측에서 zh 에이전트가 `ai` 로 **일본어**를 보냈다. 번역기에 이미 도착 언어를 넣는
+    셈이라, `src_lang → dst_lang` 손실을 재는 지표 7 이 무의미해진다.
+
+        ai        모국어로 써야 한다 — 여기가 측정 채널이다
+        original  아는 말 아무거나 — 번역이 없으니 잴 손실이 없고, 그래야
+                  `direct_works()` 의 「발신자가 수신 언어를 안다 → 통한다」 가 사실이 된다
+
+    SYSTEM 이 그 둘을 **갈라서** 말해야 한다. 「반드시 모국어」 만 적으면 `original` 에서
+    상대국 말을 쓸 수 있다는 것이 전달되지 않고, 아무 말도 안 적으면 `ai` 가 오염된다.
+    """
+    from domains.meteor import prompts
+    for lang, (own, route_ai, route_orig) in {
+            "ja": ("日本語", "`ai`", "`original`"),
+            "zh": ("中文", "`ai`", "`original`"),
+            "fr": ("français", "`ai`", "`original`")}.items():
+        sysmsg = prompts.SYSTEM[lang]
+        assert route_ai in sysmsg and route_orig in sysmsg, lang
+        assert own in sysmsg, lang
+        # **두 경로가 같은 문장 안에서 갈린다** — 한쪽만 적으면 갈렸다고 할 수 없다
+        line = next(l for l in sysmsg.splitlines() if "`ai`" in l)
+        assert "`original`" in line, lang
+
+    # 도구 설명도 같은 것을 말한다 (관측과 스키마가 어긋나면 무엇을 믿을지 알 수 없다)
+    from core import tools
+    d = next(t["function"]["parameters"]["properties"]["text"]["description"]
+             for t in tools.TOOLS if t["function"]["name"] == "speak")
+    assert "`ai`" in d and "`original`" in d
+    assert "own language" in d and "any language you can handle" in d

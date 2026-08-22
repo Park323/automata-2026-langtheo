@@ -726,9 +726,12 @@ def test_one_speaker_per_nation_at_the_start(cfg):
                    if a.country == "Asla" and len(a.known_langs) > 1)
     tgt_lang = next(iter(speaker.known_langs - {"ja"}))
     tgt = next(c.id for c in w.countries.values() if c.lang == tgt_lang)
+    # **할인이 아니라 가속이다** (8/22). 필요액은 고정이고 회당 수확이 오른다.
+    from core.agent_loop import learn_speed
     cost, why = learn_cost(other, tgt, w, cfg)
-    # **정액 할인이다** (8/20). L/2 였을 때 사유가 둘이면 L/4 라 정가와 네 배가 벌어졌다.
-    assert cost == cfg.costs.learn_base - cfg.costs.learn_discount and "nation" in why
+    mult, _ = learn_speed(other, tgt, w, cfg)
+    assert cost == cfg.costs.learn_base
+    assert mult == 1.0 + cfg.costs.learn_speedup and "nation" in why
 
 
 def test_initial_ages_are_spread(cfg):
@@ -757,35 +760,42 @@ def test_initialisation_is_reproducible(cfg):
 def test_learning_progress_is_visible_without_paying_to_look(cfg, world):
     """언어별 진척은 **별도 관측 없이** 그대로 보인다. 얼마 냈고 얼마 남았는지."""
     from domains.meteor import prompts
-    L, cut = cfg.costs.learn_base, cfg.costs.learn_discount
+    # **필요액은 어느 말이든 같다** (8/22) — 다른 것은 회당 수확이다
+    L = cfg.costs.learn_base
     a = world.agents["Asla2"]
     a.lang_progress = {"fr": 140.0, "zh": 120.0}
     obs = prompts.render_observation(world, a, cfg, 48.0)
-    assert f"140 / {L:.0f}" in obs          # Miris(fr) 정가 — Asla 에 fr 구사자 없음
-    assert f"120 / {L - cut:.0f}" in obs    # Ranoa(zh) 할인가 — Asla1 이 zh 를 안다
+    assert f"140 / {L:.0f}" in obs          # Miris(fr) — Asla 에 fr 구사자 없음
+    assert f"120 / {L:.0f}" in obs          # Ranoa(zh) — Asla1 이 zh 를 안다 (더 빠르다)
 
 
-def test_a_cheaper_price_can_finish_a_half_paid_language(cfg, world):
-    """완료 판정은 **그 순간의** 학습가로 한다 (3.4).
+def test_the_target_never_moves(cfg, world):
+    """**목표가 움직이면 반쯤 낸 학습이 갑자기 완성된다** — 그 경로를 없앴다 (8/22).
 
-    반쯤 낸 사람이 국내에 구사자가 생기는 순간 그 자리에서 끝난다 — 할인은 상태가
-    아니라 조건이고, 계보가 아니라 **지금 누가 살아 있는가**로 정해진다.
+    전에는 국내 구사자가 생기는 순간 필요액이 200 → 150 으로 내려가, 이미 150 을 낸 사람이
+    **그 자리에서** 말을 하게 됐다. 완료 판정을 「그 순간의 학습가」 로 한 결과였고, 그
+    주변에서 버그를 한 번 잡았다.
+
+    이제 필요액은 고정이고 **회당 수확**이 오른다. 구사자가 생기면 앞으로가 빨라질 뿐,
+    이미 낸 것이 갑자기 충분해지지는 않는다.
     """
     import random
-    L, cut = cfg.costs.learn_base, cfg.costs.learn_discount
+
+    from core.agent_loop import learn_cost, learn_speed
+    L, up = cfg.costs.learn_base, cfg.costs.learn_speedup
     a = world.agents["Asla2"]
-    a.lang_progress = {"fr": L - cut}        # 정가에는 모자라고 할인가에는 딱 맞는 액수
+    a.lang_progress = {"fr": L - cfg.costs.unit}      # 한 번 남았다
     r = loop.RunResult(world=world)
     loop._settle_agentic(world, cfg, random.Random(0), Sink(), None, 48.0,
                          itertools.count(500), r, itertools.count(900))
-    assert "fr" not in a.known_langs         # 아직 모자라다
+    assert "fr" not in a.known_langs                  # 아직 모자라다
 
-    world.agents["Asla3"].known_langs.add("fr")   # 국내 구사자 등장 → 필요액이 내려간다
+    world.agents["Asla3"].known_langs.add("fr")       # 국내 구사자 등장
+    assert learn_cost(a, "Miris", world, cfg)[0] == L     # **목표는 그대로**
+    assert learn_speed(a, "Miris", world, cfg)[0] == 1.0 + up   # 속도만 오른다
     loop._settle_agentic(world, cfg, random.Random(0), Sink(), None, 48.0,
                          itertools.count(500), r, itertools.count(900))
-    assert "fr" in a.known_langs
-    (done,) = [x for x in r.learns_log if x.get("kind") == "acquired"]
-    assert done["charged"] == L - cut and done["required"] == L - cut
+    assert "fr" not in a.known_langs                  # 그래도 완성되지 않는다
 
 
 def test_the_obituary_says_how_old_they_were(cfg, world):
@@ -899,19 +909,16 @@ def test_one_investment_costs_one_fixed_unit(cfg, world):
     assert "charged" not in r          # 절삭이 없으니 알릴 차이가 없다
 
 
-def test_ten_investments_use_up_the_year(cfg, world):
-    """열 번이면 AP 를 다 쓴다 = 200원. **모아둔 걸 한 해에 쏟아붓는 길이 막힌다** (★A)."""
-    from core.agent_loop import Sink, execute_tool
-    world.countries["Asla"].land = "interceptor"
-    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
-    sink = Sink()
-    for _ in range(10):
-        assert execute_tool("invest", {"target": "facility", "reasoning": "r"},
-                            world, a, cfg, sink, 48.0)[0]["ok"]
-    assert abs(a.ap) < 1e-9 and a.budget == 10_000.0 - 10 * cfg.costs.unit
-    r, _ = execute_tool("invest", {"target": "facility", "reasoning": "r"},
-                        world, a, cfg, sink, 48.0)
-    assert not r["ok"] and "not enough action" in r["error"]
+def test_the_year_holds_a_fixed_number_of_investments(cfg, world):
+    """한 해에 몇 번 낼 수 있나 — `turn.action_points / ap.unit`. **횟수를 여기 적지
+    않는다** (8/22 에 0.1 → 0.2 로 바뀌며 열 번이 다섯 번이 됐다)."""
+    a = world.agents["Ranoa1"]
+    a.ap, a.budget = cfg.turn.action_points, 10_000.0
+    n = int(cfg.turn.action_points / cfg.ap.unit)
+    for i in range(n):
+        assert _do(world, cfg, a, "invest", {"target": "wellness"})["ok"], i
+    assert a.ap == 0.0
+    assert not _do(world, cfg, a, "invest", {"target": "wellness"})["ok"]
 
 
 def test_every_target_costs_the_same_unit(cfg, world):
@@ -1131,11 +1138,13 @@ def test_the_child_inherits_only_the_discount(cfg, world):
     assert r.deaths == 0 and not r.deaths_log
 
     # 그리고 부모가 국내 구사자이므로 아이의 학습이 두 겹으로 싸다
-    from core.agent_loop import learn_cost
+    from core.agent_loop import learn_cost, learn_speed
     tgt = next(c.id for c in world.countries.values()
                if c.lang in a.known_langs and c.id != a.country)
     cost, why = learn_cost(child, tgt, world, cfg)
-    assert cost == cfg.costs.learn_base - 2 * cfg.costs.learn_discount
+    mult, _ = learn_speed(child, tgt, world, cfg)
+    assert cost == cfg.costs.learn_base                       # 목표는 고정
+    assert mult == 1.0 + 2 * cfg.costs.learn_speedup          # 두 배속
     assert "parent" in why and "nation" in why
 
 
@@ -1195,7 +1204,9 @@ def test_learn_reports_completion_not_a_schedule(cfg, world):
     a = world.agents["Asla2"]; a.ap, a.budget = 1.0, 10_000.0
     sink = Sink()
     # 국내 구사자가 있어 할인가이고, 5 만 남았다
-    a.lang_progress = {"zh": cfg.costs.learn_base - cfg.costs.learn_discount - 5.0}
+    # 남은 것이 회당 수확보다 작으면 마지막 한 번이 그만큼만 걷는다
+    a.lang_progress = {"zh": cfg.costs.learn_base - 5.0}
+    a.parent_langs = set()                # 배율을 정가로 고정해 계산을 단순하게
     r, _ = execute_tool("learn", {"country": "Ranoa", "reasoning": "r"},
                         world, a, cfg, sink, 48.0)
     assert r["complete"] is True and r["remaining"] == 0.0
@@ -1240,58 +1251,36 @@ def test_my_resources_are_not_in_the_observation(cfg, world):
     assert not r["ok"] and "have 0.01" in r["error"]      # 남은 값을 알려준다
 
 
-def test_the_discount_note_names_the_right_reason(cfg, world):
-    """**금액만 보고 문구를 골라서 부모 할인을 「자국에 구사자가 있다」 로 적었다.**
+def test_the_note_names_the_right_reason_and_the_yield(cfg, world):
+    """사유가 둘로 갈린다 — 국내 구사자냐 부모냐. 그리고 **회당 수확**을 적는다 (8/22).
 
-    L−50 은 두 갈래로 나온다 — 국내 구사자 때문일 수도, 부모 때문일 수도 있다. 문구가
-    「割引あり」 처럼 뭉개져 있던 동안에는 그 거짓이 눈에 띄지 않았다. 사유를 적기로 한
-    순간 드러났다.
+    문구가 「割引あり」 처럼 뭉개져 있던 동안에는 어느 쪽인지 알 수 없었다. 그리고 「반값」
+    은 무엇의 반인지 총액을 되짚어야 알았다 — 이제 「한 번에 얼마가 쌓이나」 를 적는다.
 
-    그리고 「先輩」 같은 말은 쓸 수 없다 — **실측에서 국내 구사자가 배우는 사람보다 어린
-    경우가 13%**(805짝 중 108건)다. 나이 관계는 이 세계에 없다.
+    「先輩」 같은 말은 쓸 수 없다 — **실측에서 국내 구사자가 배우는 사람보다 어린 경우가
+    13%**(805짝 중 108건)다. 나이 관계는 이 세계에 없다.
     """
+    from core.agent_loop import learn_speed
     from domains.meteor import prompts
     t = prompts.T["ja"]
+    u, up = cfg.costs.unit, cfg.costs.learn_speedup
     a = world.agents["Asla2"]                       # Asla1 이 zh 를 안다 (씨앗)
 
     a.parent_langs = {"fr"}
     obs = prompts.system_for(a, world, cfg, 48.0)
     zh = next(l for l in obs.splitlines() if "Ranoa の言語を学ぶ" in l)
     fr = next(l for l in obs.splitlines() if "Miris の言語を学ぶ" in l)
-    L, cut = cfg.costs.learn_base, cfg.costs.learn_discount
-    cheap = t["c_cheap"].format(cut=cut).strip()
-    disc = t["c_disc"].format(cut=cut).strip()
-    assert cheap in zh                               # 국내 구사자
-    assert disc in fr                                # 부모
-    assert cheap not in fr                           # 서로 섞이지 않는다
-    # **깎인 액수를 적는다.** 「반값」 은 무엇의 반인지 총액을 되짚어야 알았다.
-    assert f"{cut:.0f}" in cheap
+    assert t["c_cheap"].format(gain=u * (1 + up)).strip() in zh     # 국내 구사자
+    assert t["c_disc"].format(gain=u * (1 + up)).strip() in fr      # 부모
+    assert "自国に話せる人" not in fr                                # 섞이지 않는다
 
-    a.parent_langs = {"zh"}                          # 둘 다 걸리면 두 번 깎인다
-    obs = prompts.system_for(a, world, cfg, 48.0)
-    lines = obs.splitlines()
-    i = next(n for n, l in enumerate(lines) if "Ranoa の言語を学ぶ" in l)
-    assert t["c_both"].format(cut2=cut * 2).strip() in lines[i]
-    assert f"0 / {L - 2 * cut:.0f}" in lines[i + 1]
-
-    # **눈금은 진척 줄에 있다** — 비용 칸은 한 번의 값(20)이다. 사유 하나짜리로 본다:
-    # 두 개면 깎인 액수(2×50=100)가 필요액(200−100=100)과 같은 숫자가 되어 못 가린다.
-    a.parent_langs = set()
+    a.parent_langs = {"zh"}                          # 둘 다 걸리면 두 배속
     lines = prompts.system_for(a, world, cfg, 48.0).splitlines()
     i = next(n for n, l in enumerate(lines) if "Ranoa の言語を学ぶ" in l)
-    assert f"{cfg.costs.unit:g}" in lines[i]
-    assert f"{L - cut:.0f}" not in lines[i]
-    assert f"0 / {L - cut:.0f}" in lines[i + 1]
-
-    a.parent_langs = set()                           # 정가에는 아무 문구도 없다
-    obs = prompts.system_for(a, world, cfg, 48.0)
-    lines = obs.splitlines()
-    i = next(n for n, l in enumerate(lines) if "Miris の言語を学ぶ" in l)
-    fr = lines[i]
-    assert f"0 / {L:.0f}" in lines[i + 1]
-    for k, kw in (("c_cheap", dict(cut=cut)), ("c_disc", dict(cut=cut)),
-                  ("c_both", dict(cut2=cut * 2))):
-        assert t[k].format(**kw).strip() not in fr
+    assert learn_speed(a, "Ranoa", world, cfg)[0] == 1 + 2 * up
+    assert t["c_both"].format(gain=u * (1 + 2 * up)).strip() in lines[i]
+    # **목표는 진척 줄에 있고 움직이지 않는다**
+    assert f"0 / {cfg.costs.learn_base:.0f}" in lines[i + 1]
 
 
 def test_no_prose_hardcodes_the_grace_period(cfg, world):
@@ -1342,11 +1331,13 @@ def test_exactly_affordable_is_affordable(cfg, world):
     3해 실측에서 **25건** — 투자 20 · 발화 5. 에이전트는 그 뒤 대개 end_turn 을 불렀다.
     """
     a = world.agents["Ranoa1"]
-    a.ap, a.budget = 1.0, 1000.0
-    assert _do(world, cfg, a, "speak", {"to": "Ranoa2", "text": "x"})["ok"]
-    assert _do(world, cfg, a, "speak", {"to": "Ranoa2", "text": "x"})["ok"]
-    assert _do(world, cfg, a, "invest", {"target": "wellness"})["ok"]
-    assert a.ap == 0.3                       # 0.29999… 이 아니라 정확히 0.3
+    a.ap, a.budget = cfg.turn.action_points, 1000.0
+    # **상수에서 짠다** (8/22 에 speak 0.3→0.2, unit 0.1→0.2 로 바뀌었다). AP 를 딱
+    # `speak` 한 번 남기고, 그 한 번이 통하는지 본다.
+    left = cfg.ap.speak
+    while round(a.ap - cfg.ap.unit, 3) >= left:
+        assert _do(world, cfg, a, "invest", {"target": "wellness"})["ok"]
+    assert a.ap == left                      # 0.19999… 이 아니라 정확히 그 값
 
     r = _do(world, cfg, a, "speak", {"to": "Ranoa2", "text": "y"})
     assert r["ok"], r                        # 딱 맞으면 낼 수 있다
@@ -1357,11 +1348,12 @@ def test_ap_stays_on_the_grid_over_a_full_year(cfg, world):
     """단위가 0.05 이므로 소수 세 자리 격자에 계속 붙어 있어야 한다. 비교와 차감이 같은
     격자를 쓰는 한 오차가 누적되지 않는다."""
     a = world.agents["Ranoa1"]
-    a.ap, a.budget = 1.0, 10_000.0
-    for _ in range(10):
+    a.ap, a.budget = cfg.turn.action_points, 10_000.0
+    n = int(cfg.turn.action_points / cfg.ap.unit)
+    for _ in range(n):
         assert _do(world, cfg, a, "invest", {"target": "wellness"})["ok"]
         assert a.ap == round(a.ap, 3)
-    assert a.ap == 0.0                       # 0.1 을 열 번 빼면 정확히 0
+    assert a.ap == 0.0                       # n 번 빼면 정확히 0
     r = _do(world, cfg, a, "invest", {"target": "wellness"})
     assert not r["ok"] and "have 0.00" in r["error"]
 
