@@ -650,3 +650,42 @@ def test_the_route_decides_which_language_the_agent_may_write():
              for t in tools.TOOLS if t["function"]["name"] == "speak")
     assert "`ai`" in d and "`original`" in d
     assert "own language" in d and "any language you can handle" in d
+
+
+def test_the_fact_that_people_differ_is_stated_but_not_the_numbers():
+    """**안 적으면 이 기제가 죽는다.**
+
+    남의 소득·처리량은 관측에 없고, 물어보려면 「다를 수 있다」 를 먼저 의심해야 한다.
+    근거가 없으면 「모두 나와 같겠지」 가 합리적 기본값이고, 그러면 대화가 시작되지 않는다.
+
+    이 프로젝트에서 같은 부류를 여러 번 겪었다 — 진척 합산 불가는 예시를 못 박고 나서야
+    붙었고, 경로별 보장 여부는 나라별로 적어야 했고(자기가 아는 말의 나라에 24원짜리
+    `ai` 를 6번 썼다), `give` 는 도구가 있는데 0건이었다.
+
+    **사실만 적는다.** 단계값·평균·「그러니 교환하라」 는 적지 않는다 — 그건 전략이고,
+    적으면 지시가 된다.
+    """
+    from core import config
+    from domains.meteor import prompts
+    cfg = config.load("configs/base.yaml")
+    marks = {"ja": ("人によって違います", "他人の分は見えません"),
+             "zh": ("因人而异", "别人的数值你看不到"),
+             "fr": ("varient d'une personne à l'autre", "ne vous sont pas visibles")}
+    for lang, (differ, hidden) in marks.items():
+        sysmsg = prompts.SYSTEM[lang]
+        assert differ in sysmsg, lang        # 다르다는 사실
+        assert hidden in sysmsg, lang        # 남의 것은 안 보인다는 사실
+
+    # **숫자는 적지 않는다** — 단계값도, 평균도
+    for lang in ("ja", "zh", "fr"):
+        blob = prompts.SYSTEM[lang]
+        for v in cfg.income.spread:
+            if v != 1.0:
+                assert f"{v}" not in blob, (lang, v)
+
+    # **「그러니 ~하라」 도 적지 않는다**
+    ADVICE = ("交換", "訊いて", "聞いて", "べきです", "交换", "应该", "问一问",
+              "échangez", "demandez", "vous devriez")
+    for lang in ("ja", "zh", "fr"):
+        for w in ADVICE:
+            assert w not in prompts.SYSTEM[lang], (lang, w)
