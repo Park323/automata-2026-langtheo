@@ -116,6 +116,7 @@ T = {
         c_obs="  observe_risk",
         c_obs_note="   隕石までの残り年数と interceptor に要る進捗を測る。国家投資が精度を上げる",
         c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ",
+        c_give="  give", c_give_note="人にお金を渡す。いくらでも一度で。自国でも他国でもよい",
         c_pro="  bear_child", c_pro_note="子をもうける。あなたは死なない。生涯に一度、{age} 歳から",
         c_pro_closed="  bear_child は使えません（すでに子がいます）",
         inv_hdr="invest の効果",
@@ -137,6 +138,7 @@ T = {
         lbl_ai=" ［送り主が AI に訳させたメッセージです］",
         died="  {who} が {age} 歳で亡くなり、{born} が生まれました。",
         borned="  {who} に子が生まれました — {born} です。",
+        gifted="  {frm} があなたに {amt:.0f} を渡しました。",
         fac_gain="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
         fac_moved="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
         fac_still="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
@@ -189,6 +191,7 @@ T = {
         c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 需要多少进度。国家投资会提高精度",
         c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一",
+        c_give="  give", c_give_note="把钱交给某人。一次给多少都行。本国或别国都可以",
         c_pro="  bear_child", c_pro_note="生一个孩子。你不会死。一生只有一次，{age} 岁起",
         c_pro_closed="  bear_child 已用过（你已经有孩子了）",
         inv_hdr="invest 的效果",
@@ -209,6 +212,7 @@ T = {
         lbl_ai="［这是发信人用 AI 译过来的消息］",
         died="  {who} 在 {age} 岁去世，{born} 出生了。",
         borned="  {who} 有了孩子 — {born}。",
+        gifted="  {frm} 给了你 {amt:.0f}。",
         fac_gain="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
         fac_moved="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
         fac_still="  你去年投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
@@ -264,6 +268,7 @@ T = {
         c_obs="  observe_risk",
         c_obs_note="   mesure les années restantes et la progression qu'exige un interceptor ; l'investissement national affine",
         c_inv="  invest", c_inv_note="vers wellness · national · facility",
+        c_give="  give", c_give_note="remettre de l'argent à quelqu'un. N'importe quel montant, en une fois. De votre nation ou d'une autre",
         c_pro="  bear_child", c_pro_note="avoir un enfant. Vous ne mourez pas. Une seule fois dans la vie, à partir de {age} ans",
         c_pro_closed="  bear_child a déjà servi (vous avez déjà un enfant)",
         inv_hdr="effets d'invest",
@@ -288,6 +293,7 @@ T = {
         lbl_ai=" [message que l'expéditeur a fait traduire par une IA]",
         died="  {who} est mort à {age} ans ; {born} est né.",
         borned="  {who} a eu un enfant — {born}.",
+        gifted="  {frm} vous a remis {amt:.0f}.",
         fac_gain="  Votre versement de {amt:.0f} à facility l'an dernier a fait progresser {to} de {gain:.0f}.",
         fac_moved="  Votre versement de {amt:.0f} l'an dernier a fait progresser {to}.",
         fac_still="  Votre versement de {amt:.0f} l'an dernier n'a fait progresser {to} en rien.",
@@ -458,6 +464,7 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
         lines.append(row(t["c_mem"], 0, cfg.ap.memory_write, t["c_mem_note"]))
     # **아이 낳기는 조건이 둘이다** — 나이와 생애 1회. 이미 낳았으면 줄을 갈아 놓는다:
     # 없는 선택지를 값과 함께 적어 두면 매 해 그것을 다시 저울질한다.
+    lines.append(row(t["c_give"], 0, cfg.ap.give, t["c_give_note"]))
     if agent.has_borne:
         lines.append(t["c_pro_closed"])
     else:
@@ -468,7 +475,7 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
 
 
 # **세계의 사건**을 가르는 키. 사람이 나에게 한 말이 아니라, 세계가 나에게 알리는 것.
-_EVENT_KEYS = ("died", "born", "fac_gain", "fac_moved", "delivery_failed_to",
+_EVENT_KEYS = ("died", "born", "gift_from", "fac_gain", "fac_moved", "delivery_failed_to",
                "prog_up", "cap_up", "ballot", "outcome")
 
 
@@ -549,6 +556,9 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
             continue
         if m.get("unreadable"):
             _add(t["in_unread"].format(frm=m["from"]))
+            continue
+        if m.get("gift_from"):                 # 누가 나에게 돈을 주었다 (PRIVATE)
+            _add(t["gifted"].format(frm=m["gift_from"], amt=m["gift"]))
             continue
         if m.get("born") and not m.get("died"):   # 아이가 태어났다 (GLOBAL · 명단이 바뀐다)
             _add(t["borned"].format(who=m.get("parent") or "?", born=m["born"]))

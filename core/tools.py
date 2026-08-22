@@ -135,6 +135,21 @@ def _build(reasoning_arg: bool) -> list[dict]:
         {"choice": {"type": "string", "enum": ["interceptor", "bunker", "abstain"]}},
         ["choice"]),
 
+    # **금액을 인자로 받는 유일한 도구다.**
+    #
+    # `invest`·`learn` 에서 금액을 뺀 이유는 비용표가 `600 · 額÷300` 처럼 두 숫자를 읽게
+    # 만들었기 때문이다. 주는 것은 다르다 — 크기가 **드는 수고를 바꾸지 않는다.** 한 번에
+    # 40 씩만 옮길 수 있으면 435 를 넘기는 데 열한 해가 걸리고, 그러면 잉여의 용처라는
+    # 이 도구의 존재 이유가 사라진다.
+    fn("give",
+        "Give money to one person. Any amount you have, in one go. It can be someone in "
+        "your nation or another. They are told who gave it and how much. "
+        "A child has no income of its own until it is old enough, so what someone gives "
+        "it is all it has.",
+        {"to": {"type": "string", "description": "recipient id (e.g. Ranoa2)"},
+         "amount": {"type": "number", "description": "how much to hand over"}},
+        ["to", "amount"]),
+
     fn("bear_child",
         "Have a child. You do not die; the child is a new person in your nation, and both "
         "of you go on from there. It takes your whole year of action, and no money. "

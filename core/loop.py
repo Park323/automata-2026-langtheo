@@ -496,6 +496,16 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     for cid, amount, _ in sink.national:
         world.countries[cid].national_capital += amount
 
+    # **받는 쪽 예산은 정산에서 넣는다.** 남의 상태이므로 즉시 바꾸면 병렬이 깨진다
+    # (보내는 쪽 차감만 즉시다). 받는 이에게 알린다 — 예산은 PRIVATE 이고, 갑자기 늘어난
+    # 이유를 본인이 모르면 그 돈을 쓸 판단을 못 한다.
+    for frm, to, amount in sorted(sink.gifts):
+        if to not in world.agents:          # 그 사이에 죽었다면 돈은 사라진다
+            continue
+        world.agents[to].budget += amount
+        _notify(world, "gift", {"gift_from": frm, "gift": round(amount, 1)},
+                world.turn, actor=to)
+
     # e. 메시지 → 번역 → 다음 턴 도착
     for sent in sink.messages:
         recipient = world.agents.get(sent["to"])
@@ -913,6 +923,16 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         if aid in world.agents:
             world.agents[aid].lam += amount * cfg.wellness.gain
             world.agents[aid].wellness_spent += amount
+    # **받는 쪽 예산은 정산에서 넣는다.** 남의 상태이므로 즉시 바꾸면 병렬이 깨진다
+    # (보내는 쪽 차감만 즉시다). 받는 이에게 알린다 — 예산은 PRIVATE 이고, 갑자기 늘어난
+    # 이유를 본인이 모르면 그 돈을 쓸 판단을 못 한다.
+    for frm, to, amount in sorted(sink.gifts):
+        if to not in world.agents:          # 그 사이에 죽었다면 돈은 사라진다
+            continue
+        world.agents[to].budget += amount
+        _notify(world, "gift", {"gift_from": frm, "gift": round(amount, 1)},
+                world.turn, actor=to)
+
     capped: set = set()
     for cid, amount, _ in sink.national:
         world.countries[cid].national_capital += amount

@@ -60,6 +60,7 @@ class AP:
     memory_write: float
     procreate: float
     bear_child: float = 1.0
+    give: float = 0.2
     observe_risk: float = 0.3
     vote: float = 0.05             # 採決과 제안은 무게가 다르다 (4.4)
     # **한 번의 invest·learn 이 먹는 AP.** 금액은 costs.unit 으로 고정이라 금액별 계산이

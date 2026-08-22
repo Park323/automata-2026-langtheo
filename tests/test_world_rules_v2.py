@@ -1442,3 +1442,83 @@ def test_the_ballot_day_says_only_that_it_is_today(cfg, world):
     (line,) = prop_lines(world)
     assert "★" in line and "Ranoa1" in line
     assert year not in line                          # 예정 줄이 겹치지 않는다
+
+
+# ── 주기 (8/22) ───────────────────────────────────────────────────────────────
+
+def _exec(name, args, world, agent, cfg, sink, knob=48.0):
+    from core import agent_loop
+    return agent_loop.execute_tool(name, args, world, agent, cfg, sink, knob)
+
+
+def test_giving_moves_money_and_the_receiver_is_told(cfg, world):
+    """**잉여의 용처가 없었다.** 10해 실측에서 성인의 턴 끝 예산이 74 → 198 → 435 로
+    쌓이는데 남은 AP 중앙은 0.0 이었다 — 돈은 남고 쓸 행동력이 없다. 그리고 사람에게 돈을
+    주는 행동이 아예 없었다.
+
+    그래서 `bear_child` 가 순수 비용이었다. 1.0 AP 를 내고, 열 해 동안 아무것도 못 하고,
+    **도울 수도 없는** 사람을 얻는 거래다. 줄 수 있게 되면 「내 잉여를 쓸 손」 이 된다.
+
+    받는 이에게 알린다 — 예산은 PRIVATE 이고, 갑자기 늘어난 이유를 본인이 모르면 그 돈을
+    쓸 판단을 못 한다.
+    """
+    import random
+
+    giver, taker = world.agents["Ranoa1"], world.agents["Ranoa2"]
+    giver.ap, giver.budget = cfg.turn.action_points, 500.0
+    taker.budget = 0.0
+
+    sink = Sink()
+    r, _ = _exec("give", {"to": "Ranoa2", "amount": 300},
+                                   world, giver, cfg, sink, 48.0)
+    assert r["ok"] and giver.budget == 200.0
+    assert giver.ap == cfg.turn.action_points - cfg.ap.give
+    # **받는 쪽은 아직 안 늘었다** — 남의 상태라 정산에서 넣는다 (병렬 안전)
+    assert taker.budget == 0.0 and sink.gifts == [("Ranoa1", "Ranoa2", 300.0)]
+
+    loop._settle_agentic(world, cfg, random.Random(0), sink, None, 48.0,
+                         itertools.count(500), loop.RunResult(world=world),
+                         itertools.count(900))
+    assert taker.budget == 300.0
+    got = [e for e in world.inbox_queue if e["to"] == "Ranoa2"]
+    assert len(got) == 1 and got[0]["msg"] == {"gift_from": "Ranoa1", "gift": 300.0}
+    assert not [e for e in world.inbox_queue if e["to"] != "Ranoa2"]   # 받는 이만
+
+    from domains.meteor import prompts
+    txt = prompts.render_events(taker, [got[0]["msg"]])
+    assert "Ranoa1" in txt and "300" in txt
+
+
+def test_giving_is_refused_when_it_cannot_be_honoured(cfg, world):
+    """**넘치게 주지 않는다.** 잘라서 주면 받는 쪽이 얼마를 받았는지 되짚어야 한다."""
+    a = world.agents["Ranoa1"]
+    a.ap, a.budget = cfg.turn.action_points, 100.0
+    for args, mark in ((  {"amount": 10},                    "`to`"),
+                       ({"to": "Nobody1", "amount": 10},     "unknown recipient"),
+                       ({"to": "Ranoa1", "amount": 10},      "yourself"),
+                       ({"to": "Ranoa2", "amount": 0},       "more than 0"),
+                       ({"to": "Ranoa2", "amount": "많이"},   "must be a number"),
+                       ({"to": "Ranoa2", "amount": 101},     "not enough budget")):
+        r, _ = _exec("give", args, world, a, cfg, Sink(), 48.0)
+        assert not r["ok"] and mark in r["error"], (args, r)
+    assert a.budget == 100.0 and a.ap == cfg.turn.action_points   # 아무것도 안 나갔다
+
+
+def test_the_size_of_a_gift_does_not_change_the_effort(cfg, world):
+    """**금액을 인자로 받는 유일한 도구다.**
+
+    `invest`·`learn` 에서 금액을 뺀 이유는 비용표가 `600 · 額÷300` 처럼 두 숫자를 읽게
+    만들었기 때문이다. 주는 것은 다르다 — 크기가 드는 수고를 바꾸지 않는다. 한 번에 40 씩만
+    옮길 수 있으면 435 를 넘기는 데 열한 해가 걸리고, 그러면 **잉여의 용처**라는 이 도구의
+    존재 이유가 사라진다.
+    """
+    a = world.agents["Ranoa1"]
+    a.ap, a.budget = cfg.turn.action_points, 1000.0
+    for amt in (1, 999):
+        before = a.ap
+        r, _ = _exec("give", {"to": "Ranoa2", "amount": amt},
+                     world, a, cfg, Sink(), 48.0)
+        # **격자에서 비교한다.** `before - a.ap` 를 날로 빼면 1.0 − 0.8 이
+        # 0.19999999999999996 이다 — 코드가 막고 있는 그 부동소수를 테스트가 다시 만든다.
+        assert r["ok"] and a.ap == round(before - cfg.ap.give, 3)
+        a.budget = 1000.0

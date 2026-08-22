@@ -43,6 +43,9 @@ class Sink:
     # **아이를 낳은 사람들** (8/21). 전에는 `procreations` 로 (id, 유언) 을 담았다 —
     # 유언이 없어지고 부모가 죽지 않으므로 id 하나면 된다.
     births: list = field(default_factory=list)        # agent_id
+    # **준 돈** (from, to, amount). 받는 쪽 예산을 즉시 바꾸면 병렬이 깨지므로 (남의
+    # 상태다) 정산에서 넣는다 — 보내는 쪽 차감만 즉시다.
+    gifts: list = field(default_factory=list)
     observations: list = field(default_factory=list)  # 위험 관측 (진실·관측치·오차)
     observations_by: dict = field(default_factory=dict)   # 이번 턴 개체별 관측 횟수
 
@@ -514,6 +517,37 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         agent.voted_turn = world.turn
         sink.ballots.append((agent.id, agent.country, choice))
         return {"ok": True, "ap_left": round(agent.ap, 1)}, None
+
+    if name == "give":
+        to = args.get("to")
+        if to is None:
+            return {"ok": False, "error":
+                    "give needs `to`, the recipient id (e.g. Ranoa2)"}, None
+        if to not in world.agents:
+            return {"ok": False, "error":
+                    f"unknown recipient: {to}. Use an id from the list of people in "
+                    f"your observation"}, None
+        if to == agent.id:
+            return {"ok": False, "error": "you cannot give to yourself"}, None
+        try:
+            amount = float(args.get("amount"))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "amount must be a number"}, None
+        if amount <= 0:
+            return {"ok": False, "error": "amount must be more than 0"}, None
+        if not _afford(agent.ap, cfg.ap.give):
+            return {"ok": False, "error":
+                    f"not enough action; give needs {cfg.ap.give}, "
+                    f"have {agent.ap:.2f}"}, None
+        # **넘치게 주지 않는다.** 잘라서 주면 받는 쪽이 얼마를 받았는지 되짚어야 한다.
+        if agent.budget < amount:
+            return {"ok": False, "error":
+                    f"not enough budget; you have {agent.budget:.0f}"}, None
+        agent.budget -= amount
+        _spend(agent, cfg.ap.give)
+        sink.gifts.append((agent.id, to, amount))
+        return {"ok": True, "budget_left": round(agent.budget, 1),
+                "ap_left": round(agent.ap, 1)}, None
 
     if name == "bear_child":
         # **죽지 않는다** (8/21 개정). 그래서 세 가지를 순서대로 본다 — 나이 · 생애 1회 ·
