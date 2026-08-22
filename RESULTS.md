@@ -611,7 +611,7 @@ give                  —       —       0     ← 도구·비용표 다 정상
 에이전트    qwen/qwen3.6-35b-a3b      「모델 선택」 절
 
 income      per_turn 100 · initial_budget 0
-            age_growth 0.2 · spread [0.6, 0.8, 1.0, 1.2, 1.4]
+            age_growth 0.1 · spread [0.6, 0.8, 1.0, 1.2, 1.4]
 비용        국내 3 / 국제원문 5 · 노브 [6, 12, 24, 48]
             unit 40원 · observe_risk 20 · propose_vote 0
 행동력      speak 0.2 · unit 0.2 · give 0.2 · vote 0.05
@@ -622,9 +622,9 @@ income      per_turn 100 · initial_budget 0
 세계        total_turns 60 · epoch 20 · success_prob 0.3
             adult_age 5 · 첫 해 나이 1~10
             agents_per_country 3
-임계        interceptor 16500 · bunker_scale 6215
-            창 A 9,322 · B 9,322 · E 11,186 < 임계 < C×0.6 16,780
-            실효소득 배수 1.726 (정상 연령분포 — `mean_age_multiplier`)
+임계        interceptor 13029 · bunker_scale 4900
+            창 A 7,361 · B 7,361 · E 8,833 < 임계 < C×0.6 13,250
+            실효소득 배수 1.363 (정상 연령분포 — `mean_age_multiplier`)
 처리량      throughput_spread [0.6, 0.8, 1.0, 1.2, 1.4] · facility.eff 1.0
 성장        growth_coef 0.2 / scale 3000 · wellness.gain 0.008
 문맥        context_limit 8192 · warn_ratio 0.7 · max_tokens 2048

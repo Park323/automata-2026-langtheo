@@ -35,7 +35,7 @@ def _with(**overrides) -> Config:
 
 def test_valid_config_loads():
     cfg = config.load(BASE)
-    assert cfg.thresholds.interceptor == 16500     # 실효소득 창의 0.95 지점 (8/22)
+    assert cfg.thresholds.interceptor == 13029     # 실효소득 창의 0.95 지점 (8/22)
     assert cfg.k == pytest.approx(0.3)          # eff 1.0 × success_prob 0.3
 
 
