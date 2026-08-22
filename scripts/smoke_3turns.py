@@ -245,10 +245,9 @@ def main() -> None:
                           knob_ai=knob, render_obs=prompts.render_turn_open,
                           render_events=prompts.render_events,
                           render_arrivals=prompts.render_arrivals,
-                          # 순차면 메시지가 **같은 해**에 도착한다 — 문구가 그것을
-                          # 말해야 한다 (「翌年に届く」 를 믿고 계획하던 것을 고침)
-                          system_prompt=functools.partial(
-                              prompts.system_for, same_year=args.sequential), sequential=args.sequential,
+                          # `same_year` 는 **루프가 정한다** (`core.loop._system`) — 러너가
+                          # 기억해야 하는 진실은 다른 경로에서 조용히 거짓이 된다
+                          system_prompt=prompts.system_for, sequential=args.sequential,
                           on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)),
                           sim_turns=args.turns,
                           resume_from=ckpt if resuming else None,

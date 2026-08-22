@@ -161,14 +161,17 @@ def test_repeat_guard_stops_loop(cfg, world):
 def test_free_actions_keep_can_act_true(cfg, world):
     """**종료 조건 ② 는 자유 행동이 생기면서 사실상 죽었다** (8/17).
 
-    `memory_write` 와 `procreate` 가 돈도 AP 도 안 쓰므로, 자원이 완전히 바닥나도
-    고를 것이 남아 있다. 여기서 거짓으로 False 를 돌려주면 **합법적인 행동을 잘라내게**
-    된다 — 빈털터리가 유언을 남기고 죽는 것이 이 세계에서 가장 흔한 결말이다.
-    정상 종료는 `end_turn` 이고, 폭주는 `RUNAWAY_CAP`(64) 이 막는다.
+    `memory_write` 가 돈도 AP 도 안 쓰므로, 자원이 바닥나도 고를 것이 남아 있다. 여기서
+    거짓으로 False 를 돌려주면 **합법적인 행동을 잘라내게** 된다. 정상 종료는 `end_turn`
+    이고, 폭주는 `RUNAWAY_CAP`(64) 이 막는다.
+
+    **`procreate` 는 없어졌다** (8/21). 그것도 AP 0 이었는데 `bear_child` 는 1.0 을 문다 —
+    그래서 「공짜 행동」 은 이제 `memory_write` 하나이고, 그것도 압박선 위에서만 열린다.
     """
     a = world.agents["Asla1"]
     a.budget, a.ap = 0.0, 0.0
-    assert cfg.ap.memory_write == 0.0 and cfg.ap.procreate == 0.0
+    a.memory_open = True                       # 압박선 위 — 기억이 열려 있다
+    assert cfg.ap.memory_write == 0.0
     assert can_act(a, cfg, 48.0) is True
 
 

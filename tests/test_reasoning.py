@@ -227,7 +227,8 @@ def test_exhausted_still_means_exhausted(cfg, world):
     from dataclasses import replace
     a = world.agents["Asla1"]
     a.ap, a.budget = 0.0, 0.0
-    broke = replace(cfg, ap=replace(cfg.ap, memory_write=0.1, procreate=1.0))
+    # `procreate` 는 없어졌고 `bear_child` 가 이미 1.0 이다 (8/21)
+    broke = replace(cfg, ap=replace(cfg.ap, memory_write=0.1))
     lg = run_agent_turn(world, a, broke, StubClient([]), Sink(), 48.0,
                         prompts.system_for(a, None, cfg),
                         prompts.render_observation(world, a, broke, 48.0))

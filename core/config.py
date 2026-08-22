@@ -25,7 +25,6 @@ class Knob:
 class Costs:
     comm_domestic: float
     comm_intl_learner: float
-    ask_clarification: float
     learn_base: float
     propose_vote: float
     observe_risk: float = 20.0
@@ -69,10 +68,8 @@ class TurnCfg:
 @dataclass(frozen=True)
 class AP:
     speak: float
-    ask: float
     propose_vote: float
     memory_write: float
-    procreate: float
     bear_child: float = 1.0
     give: float = 0.2
     observe_risk: float = 0.3
@@ -154,7 +151,9 @@ class Inheritance:
     남는 것은 **부모 할인 자격**뿐이다.
     """
 
-    parent_discount: bool = True
+    # **필드가 없다.** 남는 것은 부모 할인 자격(`parent_langs`)뿐이고 그것은
+    # `_bear_child` 가 직접 넘긴다 — 켜고 끄는 설정이 아니다. `parent_discount: true` 를
+    # 두었다가 지웠다: **코드가 읽지 않는 설정은 있으면 거짓말을 한다.**
 
 
 @dataclass(frozen=True)
@@ -265,7 +264,8 @@ def from_dict(d: dict) -> Config:
         facility=Facility(**{**d["facility"], "throughput_spread":
                              tuple(d["facility"].get("throughput_spread", (1.0,)))}),
         world=_world_from(d["world"]),
-        inheritance=Inheritance(**d["inheritance"]),
+        # `inheritance` 절은 없앴다 — 남은 것이 코드에 있고 설정할 것이 없다
+        inheritance=Inheritance(),
         length=Length(**d["length"]),
         llm=LLM(**d["llm"]),
         run=Run(**d["run"]),

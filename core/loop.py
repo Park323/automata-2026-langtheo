@@ -690,6 +690,25 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     return procreated
 
 
+def _system(system_prompt, agent, world, cfg, knob_ai, *, same_year: bool):
+    """SYSTEM 을 만든다. **`same_year` 는 루프가 정한다.**
+
+    전에는 러너가 `functools.partial(system_for, same_year=args.sequential)` 로 기억해야
+    했다. 그러면 다른 경로로 돌릴 때 **문구가 조용히 거짓이 된다** — 순차 라운드로빈은
+    메시지가 같은 해에 도착하는데 「翌年に届きます」 라고 적히고, 그것을 믿고 계획한다.
+    이미 한 번 고친 거짓말이고, 그 진실이 호출자의 기억에 걸려 있었다.
+
+    루프는 자기가 순차인지 안다. 그러니 루프가 말한다.
+    """
+    if not callable(system_prompt):
+        return system_prompt
+    try:
+        return system_prompt(agent, world, cfg, knob_ai, same_year=same_year)
+    except TypeError:
+        # same_year 를 안 받는 렌더러도 있다 (테스트의 더미)
+        return system_prompt(agent, world, cfg, knob_ai)
+
+
 def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
                      counter: "itertools.count", client_for, translator, knob_ai: float,
                      render_obs, system_prompt, msg_ids, is_last: bool = False,
@@ -732,8 +751,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         agent = world.agents[aid]
         # **system 은 매 콜 새로 만든다** — 규칙 + 지금 그러한 것. 상태가 대화에 쌓이면
         # 낡은 사본이 남아 모순이 되고(예산이 여러 개), 그 부피가 대화를 방출시킨다.
-        sp = (system_prompt(agent, world, cfg, knob_ai) if callable(system_prompt)
-              else system_prompt)
+        sp = _system(system_prompt, agent, world, cfg, knob_ai, same_year=False)
         try:
             return aid, run_agent_turn(world, agent, cfg, client_for(aid), sinks[aid],
                                        knob_ai, sp, user_prompts[aid])
@@ -1171,8 +1189,8 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
                                         opening=True))
             _push_events(agent, inbox, render_events)
             obs = render_arrivals(agent, inbox) if render_arrivals else None
-            sp = (system_prompt(agent, world, cfg, knob_ai) if callable(system_prompt)
-                  else system_prompt)
+            # **순차는 같은 해에 도착한다** — 문구가 그것을 말해야 한다
+            sp = _system(system_prompt, agent, world, cfg, knob_ai, same_year=True)
             sink = Sink()
             try:
                 done = agent_loop.run_agent_step(world, agent, cfg, client_for(aid), sink,
