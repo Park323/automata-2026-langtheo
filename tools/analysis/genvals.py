@@ -50,8 +50,7 @@ def main() -> None:
           f"(프롬프트는 후자를 반올림해 「{weib:.0f}」 로 적는다)")
     print(f"세계        total_turns {c.world.total_turns} · epoch {c.world.epoch_turns} · "
           f"success_prob {c.world.success_prob}")
-    print(f"            adult_age {c.world.adult_age} · 첫 해 나이 {c.world.adult_age}~"
-          f"{c.world.adult_age + c.world.init_age_spread}")
+    print(f"            adult_age {c.world.adult_age} · 첫 해 나이 1~{c.world.init_age_max}")
     print(f"            agents_per_country {c.world.agents_per_country}")
     print(f"임계        interceptor {c.thresholds.interceptor} · "
           f"bunker_scale {c.thresholds.bunker_scale}")
