@@ -152,6 +152,7 @@ def test_bearing_a_child_does_not_end_the_turn(cfg, world):
     행동력이 0 이 된 것뿐이고, 그 판정은 각 도구가 스스로 한다.
     """
     world.countries["Asla"].land = "interceptor"
+    world.agents["Asla1"].age = cfg.world.adult_age    # 첫 해 나이는 1~10 에서 뽑힌다
     script = [assistant_msg(
         tool_call("bear_child", "1"),
         tool_call("invest", "2", target="facility"),      # AP 0 이라 실패해야 한다

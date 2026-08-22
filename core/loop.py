@@ -104,15 +104,18 @@ def init_world(cfg, counter: "itertools.count", rng: random.Random | None = None
                 aid, cdef.id, cdef.lang, cfg.income.initial_budget, set(),
                 turn=0, born_by="natural", cfg=cfg, counter=counter, rng=rng,
             )
-            # **처음 사람들은 성인으로 시작한다** (8/21).
+            # **1 ~ init_age_max 로 되돌렸다** (8/22).
             #
-            # 소득을 성인 나이부터로 바꾼 순간, 1~10 에서 뽑으면 **처음 사람 대부분이
-            # 빈손인데 줄 부모도 없다** — 아이의 무소득은 「부모가 준다」 가 있어서
-            # 성립하는 규칙이고, 세계 첫 해에는 그 부모가 없다.
+            # 8/21 에 성인 범위(10~13)로 좁혔다 — 소득을 「성인부터」 로 바꾼 순간 첫 해
+            # 사람들이 빈손인데 줄 부모가 없었기 때문이다. 그런데 그 다음 날 소득 조건을
+            # **「부모가 살아 있는가」** 로 바꿨고(`_earns`), 첫 해 사람들은 `parent_id` 가
+            # 없으므로 나이와 무관하게 벌기 시작한다. **좁힐 이유가 사라졌는데 그대로
+            # 남아 있었다.**
             #
-            # 나이를 흩는 이유(한꺼번에 죽지 않게)는 그대로다. 성인 나이 위로 흩는다.
-            a.age = rng.randint(cfg.world.adult_age,
-                                cfg.world.adult_age + cfg.world.init_age_spread)
+            # 그리고 좁은 구간은 나이를 흩는 목적 자체를 무력화한다 — 전원이 같은 시기에
+            # 몰려 죽고, 그 뒤 성인 공백기가 온다. 넓게 흩으면 **첫 해부터 세대 사다리가**
+            # 생긴다: 성인 5~6명이 바로 낳을 수 있고, 미성년 3~4명이 차례로 성인이 된다.
+            a.age = rng.randint(1, cfg.world.init_age_max)
             if i == 1:
                 a.known_langs.add(seeded)
             agents[aid] = a

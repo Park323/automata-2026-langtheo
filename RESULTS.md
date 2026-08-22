@@ -620,18 +620,6 @@ income      per_turn 100 · initial_budget 0
 수명        k 8 · λ 16.52
             살아낸 해 16.06 · Weibull 평균 15.56 (프롬프트는 후자를 반올림해 「16」 로 적는다)
 세계        total_turns 60 · epoch 20 · success_prob 0.3
-            adult_age 5 · 첫 해 나이 5~8
-            agents_per_country 3
-임계        interceptor 16500 · bunker_scale 6215
-            창 A 9,322 · B 9,322 · E 11,186 < 임계 < C×0.6 16,780
-            실효소득 배수 1.726 (정상 연령분포 — `mean_age_multiplier`)
-처리량      throughput_spread [0.6, 0.8, 1.0, 1.2, 1.4] · facility.eff 1.0
-성장        growth_coef 0.2 / scale 3000 · wellness.gain 0.008
-문맥        context_limit 8192 · warn_ratio 0.7 · max_tokens 2048
-길이        fr 400 / ja 130 / zh 90
-```
-
-자가검증 ★A·B·C·E: 통과
 
 ## 한계
 

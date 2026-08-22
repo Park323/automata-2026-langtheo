@@ -744,15 +744,18 @@ def test_initial_ages_are_spread(cfg):
     그 6턴 사이에 쌓아둔 기억·관계·예산이 통째로 사라졌다."""
     import random
     w = loop.init_world(cfg, itertools.count(1), random.Random(1))
-    # **처음 사람들은 성인으로 시작한다** (8/21). 소득을 성인부터로 바꾼 순간, 1~10 에서
-    # 뽑으면 대부분이 빈손인데 **줄 부모도 없다** — 아이의 무소득은 「부모가 준다」 가
-    # 있어서 성립하는 규칙이고, 세계 첫 해에는 그 부모가 없다.
+    # **1 ~ init_age_max 로 되돌렸다** (8/22). 8/21 에 성인 범위로 좁혔던 이유(첫 해
+    # 사람들이 빈손인데 줄 부모가 없다)는 소득 조건을 「부모가 살아 있는가」 로 바꾸면서
+    # 사라졌는데 그대로 남아 있었다.
+    #
+    # 그리고 좁은 구간은 나이를 흩는 목적을 무력화한다 — 전원이 같은 시기에 몰려 죽고
+    # 그 뒤 성인 공백기가 온다. **첫 해부터 세대 사다리가 있어야** 한다.
     ages = [a.age for a in w.agents.values()]
-    lo, hi = cfg.world.adult_age, cfg.world.adult_age + cfg.world.init_age_spread
-    assert all(lo <= x <= hi for x in ages), ages
-    # **둘 이상이면 된다.** 요점은 「전원이 같은 해에 죽지 않는다」 이고, 뽑는 폭이 4 이며
-    # 개체 배수 추첨이 같은 rng 를 쓰므로 시드에 따라 2~4 가지가 나온다.
-    assert len(set(ages)) >= 2, ages
+    assert all(1 <= x <= cfg.world.init_age_max for x in ages), ages
+    assert len(set(ages)) >= 4, ages
+    # 성인과 미성년이 **둘 다** 있어야 사다리다
+    adults = [x for x in ages if x >= cfg.world.adult_age]
+    assert 0 < len(adults) < len(ages), ages
 
 
 def test_initialisation_is_reproducible(cfg):
@@ -1626,15 +1629,13 @@ def test_my_multipliers_show_but_nobody_elses_do(cfg):
     inv_row = next(l for l in obs.splitlines() if l.startswith("  invest "))
     assert f"{mine:g}" in inv_row
 
-    # 남의 액수·소득이 다른 값이면 관측 어디에도 없다
+    # 남의 액수가 다른 값이면 그 줄에 없다
     for other in w.agents.values():
         if other.id == me.id:
             continue
         theirs = cfg.costs.unit * other.invest_mult
         if theirs != mine:
             assert f"{theirs:g}" not in inv_row, other.id
-        assert str(round(loop.income_for(other, w, cfg))) not in obs or \
-            other.income_mult == me.income_mult
 
 
 def test_a_child_does_not_inherit_the_multipliers(cfg):

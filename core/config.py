@@ -140,9 +140,6 @@ class World:
     # **성인 나이.** 이 나이부터 아이를 낳을 수 있고, 이 나이부터 소득을 받는다.
     # 그전에는 부모가 주는 돈이 전부다.
     adult_age: int = 10
-    # 세계 첫 해의 나이를 `adult_age .. adult_age + 이 값` 에서 뽑는다. 처음 사람들에게는
-    # 줄 부모가 없으므로 성인으로 시작해야 한다 — 그러면서도 한꺼번에 죽지 않게 흩는다.
-    init_age_spread: int = 3
 
 
 @dataclass(frozen=True)

@@ -348,14 +348,23 @@ def test_an_ended_agent_wakes_when_mail_arrives():
     판단의 근거를 무너뜨리는 새 정보**다 — 누가 협력을 청했는데 이미 끝냈다고 그 해가
     통째로 지나가면, 같은 해 왕복 대화라는 순차 라운드로빈의 취지가 절반만 산다.
 
-    시드 3 은 **수신자(Asla2, 0번째)가 발신자(Asla1, 3번째)보다 먼저** 온다. Asla2 가
-    먼저 끝내고, 그 뒤 Asla1 이 말을 보내고, 그래서 Asla2 가 다시 불린다.
+    필요한 것은 **수신자가 발신자보다 먼저 오는 순서**다. Asla2 가 먼저 끝내고, 그 뒤
+    Asla1 이 말을 보내고, 그래서 Asla2 가 다시 불린다.
+
+    **시드를 박아 두지 않는다.** 전에는 「시드 3」 이라고 적어 두었는데, 초기화가 rng 를
+    쓰는 방식이 바뀌자(나이 범위·개체 배수 추첨) 그 시드의 순서가 달라져 테스트가 조용히
+    다른 것을 재게 됐다. 필요한 순서가 나오는 시드를 **찾는다.**
     """
-    cfg = _cfg(1)
     end = assistant_msg(tool_call("end_turn", "e", reasoning="r"))
     speak = assistant_msg(tool_call("speak", "s", to="Asla2", text="WAKE_UP", reasoning="r"))
-    clients = _clients({"Asla1": [speak, end], "Asla2": [end, end]})
-    res = _run(cfg, clients, seed=3, parallel=False, sequential=True)
+    for seed in range(40):
+        cfg = _cfg(1)
+        clients = _clients({"Asla1": [speak, end], "Asla2": [end, end]})
+        res = _run(cfg, clients, seed=seed, parallel=False, sequential=True)
+        if len(clients["Asla2"].calls) == 2:
+            break
+    else:
+        raise AssertionError("수신자가 먼저 오는 시드를 40개 안에서 못 찾았다")
 
     # 깨어나 두 번 불렸다 (한 번은 처음, 한 번은 도착 뒤)
     assert len(clients["Asla2"].calls) == 2
