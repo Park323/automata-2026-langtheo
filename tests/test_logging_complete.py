@@ -39,6 +39,11 @@ def cfg():
 def world(cfg):
     w = loop.init_world(cfg, itertools.count(1), random.Random(1))
     w.turn = 1
+    # **개체 차이를 1.0 으로 눕힌다** (8/22). 소득 배수·처리량 배수는 태어날 때 뽑히므로,
+    # 그것을 그대로 두면 **다른 기제를 재는 테스트가 사람마다 다른 액수에 흔들린다.**
+    # 차이 자체는 `test_world_rules_v2.py` 의 전용 테스트가 본다.
+    for _a in w.agents.values():
+        _a.income_mult = _a.invest_mult = 1.0
     return w
 
 

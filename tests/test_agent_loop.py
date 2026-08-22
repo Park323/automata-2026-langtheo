@@ -23,7 +23,12 @@ def cfg():
 
 @pytest.fixture()
 def world(cfg):
-    return init_world(cfg, itertools.count(1))
+    w = init_world(cfg, itertools.count(1))
+    # **개체 차이를 1.0 으로 눕힌다** (8/22) — 다른 기제를 재는 테스트가 사람마다 다른
+    # 액수에 흔들리지 않게. 차이 자체는 test_world_rules_v2 의 전용 테스트가 본다.
+    for a in w.agents.values():
+        a.income_mult = a.invest_mult = 1.0
+    return w
 
 
 def _run(world, cfg, agent_id, script, knob_ai=48, budget=None):

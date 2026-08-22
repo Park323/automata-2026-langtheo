@@ -276,7 +276,14 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         #
         # 금액이 자유였을 때는 요청·절삭·과금이 서로 달라서, 응답이 그 차이를 알려야
         # 했고(`_clamped`) 표에는 「額÷300」 이라는 비율이 필요했다. 고정하면 셋이 하나다.
-        amount, ap_used = cfg.costs.unit, cfg.ap.unit
+        # **한 번에 옮기는 액수는 사람마다 다르다** (8/22). `invest_mult` 는 태어날 때
+        # 뽑히고 평생 안 바뀐다 — 소득 배수와 **독립**이라 「고소득·저처리」 와
+        # 「저소득·고처리」 가 같이 생긴다. 그 둘이 서로를 필요로 하는 것이 `give` 와
+        # `speak` 가 필수가 되는 지점이다.
+        #
+        # **학습에는 안 걸린다.** 학습 눈금은 `x̂` 를 재는 자이므로 사람마다 달라지면
+        # 그 자가 흔들린다 (spec 7).
+        amount, ap_used = cfg.costs.unit * agent.invest_mult, cfg.ap.unit
         if not _afford(agent.ap, ap_used):
             return {"ok": False,
                     "error": f"not enough action; one investment needs {ap_used}, have {agent.ap:.2f}"}, None

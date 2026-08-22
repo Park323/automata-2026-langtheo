@@ -241,6 +241,9 @@ class RunWriter:
                 "has_borne": a.has_borne,
                 # 부모 — 살아 있는지가 무소득 판정이다 (8/22)
                 "parent_id": a.parent_id,
+                # **개체 차이** — 소득·처리량 배수 (8/22). 남에게는 안 보이지만
+                # 로그에는 남는다: 비교우위가 실제로 교환으로 이어졌는지 재려면 필요하다
+                "income_mult": a.income_mult, "invest_mult": a.invest_mult,
             })
         for m in result.messages_log:
             if m.get("turn") == turn and not m.get("_written"):

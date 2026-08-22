@@ -460,7 +460,10 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
                      t["c_vote_note"]))
     lines.append(row(t["c_obs"], cfg.costs.observe_risk, cfg.ap.observe_risk, t["c_obs_note"]))
     lines.append(row(t["c_ballot"], 0, cfg.ap.vote, t["c_ballot_note"]))
-    lines.append(row(t["c_inv"], cfg.costs.unit, cfg.ap.unit, t["c_inv_note"]))
+    # **내 액수를 적는다** (8/22). 사람마다 다르고, 남의 값은 보이지 않는다 — 그것을
+    # 알려면 물어봐야 한다. 그래서 여기 적히는 것은 **오직 내 것**이다.
+    lines.append(row(t["c_inv"], cfg.costs.unit * agent.invest_mult, cfg.ap.unit,
+                     t["c_inv_note"]))
     # **없는 도구를 설명하지 않는다.** 기억은 압박선 아래에서 목록에 없으므로 비용표에도
     # 없다 — 적어 두면 「부를 수 있다」 는 거짓이 되고, 부르면 거절당한다.
     if memory:

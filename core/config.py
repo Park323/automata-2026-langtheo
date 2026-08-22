@@ -50,6 +50,14 @@ class Income:
     # 묶으므로(invest 40원·0.2AP → 상한 200), 나이 16 을 넘기면 잉여가 강제로 쌓인다.
     # 그 잉여의 용처가 `give` 이고, 줄 사람을 만드는 것이 `bear_child` 다.
     age_growth: float = 0.0
+    # **사람마다 다르게 번다** (8/22). 태어날 때 이 단계들에서 하나를 뽑는다.
+    #
+    # **평균이 1.0 이어야 한다** — 임계값 창이 `per_turn × n × total` 에서 나오므로,
+    # 평균이 1 이 아니면 창이 어긋난다 (`tests/test_config.py` 가 본다).
+    #
+    # 이산인 이유는 **말로 전할 수 있기 때문**이다. 「나는 한 번에 56 옮긴다」 가 메시지가
+    # 되고 그걸 실제로 말하는지 채점할 수 있다 — 연속 분포로는 안 된다.
+    spread: tuple = (1.0,)
 
 
 @dataclass(frozen=True)
@@ -105,6 +113,12 @@ class Facility:
     cap_per_turn: float
     transition_requires_vote: bool
     transition_forfeits_progress: bool
+    # 개체별 「한 번에 옮기는 액수」 배수를 뽑는 단계들. 소득 배수와 **독립**이다.
+    # 평균이 1.0 이어야 한다 — 국가의 돈→진척 전환 능력이 여기 걸린다.
+    #
+    # **기본값 있는 필드는 맨 뒤로.** 이 프로젝트에서 네 번째로 밟은 자리다 —
+    # dataclass 는 기본값 뒤에 기본값 없는 필드를 두면 거절한다.
+    throughput_spread: tuple = (1.0,)
 
 
 @dataclass(frozen=True)
@@ -221,14 +235,16 @@ def from_dict(d: dict) -> Config:
         knob=Knob(comm_intl_ai=tuple(d["knob"]["comm_intl_ai"])),
         costs=Costs(**d["costs"]),
         thresholds=Thresholds(**d["thresholds"]),
-        income=Income(**d["income"]),
+        income=Income(**{**d["income"],
+                        "spread": tuple(d["income"].get("spread", (1.0,)))}),
         turn=TurnCfg(**d["turn"]),
         ap=AP(**d["ap"]),
         growth=Growth(**d["growth"]),
         survival=SurvivalCfg(**d["survival"]),
         wellness=Wellness(**d["wellness"]),
         risk=Risk(**(d.get("risk") or {})),
-        facility=Facility(**d["facility"]),
+        facility=Facility(**{**d["facility"], "throughput_spread":
+                             tuple(d["facility"].get("throughput_spread", (1.0,)))}),
         world=World(
             countries=tuple(CountryDef(**c) for c in d["world"]["countries"]),
             agents_per_country=d["world"]["agents_per_country"],

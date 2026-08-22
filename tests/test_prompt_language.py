@@ -320,28 +320,38 @@ def test_the_observation_says_money_carries_over():
 
 
 def test_learn_and_invest_share_one_unit():
-    """learn 도 invest 도 **한 번에 같은 돈·같은 AP** 다. 규칙이 여럿이면 문구가 갈리고,
-    실제로 「wellness は無料」 라는 거짓이 그렇게 남았다."""
+    """learn 도 invest 도 **한 번에 같은 AP** 다. 규칙이 여럿이면 문구가 갈리고, 실제로
+    「wellness は無料」 라는 거짓이 그렇게 남았다.
+
+    **돈은 8/22 부터 갈린다.** invest 액수가 사람마다 다르고(`invest_mult`), 학습은 그
+    배수를 안 탄다 — 학습 눈금은 `x̂` 를 재는 자이므로 사람마다 달라지면 그 자가 흔들린다.
+    그래서 「같은 AP · 같은 규칙」 은 그대로고, 액수만 개체에 따라 다르다.
+    """
     import itertools
     import random
 
     from core import config, loop
     from domains.meteor import prompts
     c = config.load("configs/base.yaml")
-    # 금액별 AP 를 계산하던 값들은 없어졌다
     for gone in ("learn_full", "invest_wellness", "unit_ap"):
         assert not hasattr(c.ap, gone) or gone == "unit_ap"
     assert not hasattr(c.facility, "invest_per_ap")
 
     world = loop.init_world(c, itertools.count(1), random.Random(1))
     world.turn = 1
-    obs = prompts.system_for(world.agents["Asla2"], world, c, 48.0)
+    a = world.agents["Asla2"]
+    obs = prompts.system_for(a, world, c, 48.0)
     rows = [l for l in obs.splitlines()
             if "の言語を学ぶ" in l or l.startswith("  invest ")]   # 헤더는 들여쓰기가 없다
     assert len(rows) == 3                       # 학습 둘 + invest 하나
-    for l in rows:                              # 셋이 같은 값을 적는다
-        assert f"{c.costs.unit:g}" in l and f"{c.ap.unit:g}" in l
-
+    for l in rows:                              # 셋이 같은 AP 를 쓴다
+        assert f"{c.ap.unit:g}" in l, l
+    # 학습은 정가, invest 는 내 배수
+    learn_rows = [l for l in rows if "の言語を学ぶ" in l]
+    inv_row = next(l for l in rows if l.startswith("  invest "))
+    for l in learn_rows:
+        assert f"{c.costs.unit:g}" in l, l
+    assert f"{c.costs.unit * a.invest_mult:g}" in inv_row, inv_row
 
 def test_the_observation_states_no_message_cap():
     """**「메시지는 1년에 3건까지」 는 규칙이 아니었고, 참도 아니었다.**

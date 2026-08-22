@@ -29,6 +29,11 @@ def cfg():
 def world(cfg):
     w = loop.init_world(cfg, itertools.count(1))
     w.turn = 5
+    # **개체 차이를 1.0 으로 눕힌다** (8/22). 소득 배수·처리량 배수는 태어날 때 뽑히므로,
+    # 그것을 그대로 두면 **다른 기제를 재는 테스트가 사람마다 다른 액수에 흔들린다.**
+    # 차이 자체는 `test_world_rules_v2.py` 의 전용 테스트가 본다.
+    for _a in w.agents.values():
+        _a.income_mult = _a.invest_mult = 1.0
     return w
 
 
@@ -745,7 +750,9 @@ def test_initial_ages_are_spread(cfg):
     ages = [a.age for a in w.agents.values()]
     lo, hi = cfg.world.adult_age, cfg.world.adult_age + cfg.world.init_age_spread
     assert all(lo <= x <= hi for x in ages), ages
-    assert len(set(ages)) >= 3, ages
+    # **둘 이상이면 된다.** 요점은 「전원이 같은 해에 죽지 않는다」 이고, 뽑는 폭이 4 이며
+    # 개체 배수 추첨이 같은 rng 를 쓰므로 시드에 따라 2~4 가지가 나온다.
+    assert len(set(ages)) >= 2, ages
 
 
 def test_initialisation_is_reproducible(cfg):
@@ -929,9 +936,13 @@ def test_every_target_costs_the_same_unit(cfg, world):
         w = loop.init_world(cfg, itertools.count(1)); w.turn = 5
         w.countries["Asla"].land = "interceptor"
         a = w.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
+        # **액수는 사람마다 다르다** (8/22) — 대상 셋이 같은 값이라는 것이 요점이므로
+        # 그 사람의 배수로 잰다.
+        unit = cfg.costs.unit * a.invest_mult
         r, _ = execute_tool("invest", {"target": target, "reasoning": "r"},
                             w, a, cfg, Sink(), 48.0)
-        assert r["ok"] and a.ap == 1.0 - cfg.ap.unit and a.budget == 10_000.0 - cfg.costs.unit
+        assert r["ok"] and a.ap == round(1.0 - cfg.ap.unit, 3)
+        assert a.budget == 10_000.0 - unit
 
 
 def test_the_action_rate_does_not_grow_with_wealth(cfg, world):
@@ -1564,3 +1575,83 @@ def test_the_rule_that_income_grows_is_stated(cfg, world):
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         ag = world.agents[aid]
         assert marks[ag.native_lang] in prompts.system_for(ag, world, cfg, 48.0), aid
+
+
+# ── 개체 차이 (8/22) ─────────────────────────────────────────────────────────
+
+def test_people_differ_in_what_they_earn_and_what_they_can_move(cfg):
+    """**전원이 동일해서 조율할 것이 없었다.**
+
+    지금까지는 「무엇을 지을까」 하나뿐이었다. 소득과 처리량이 사람마다 다르면 **비교우위**
+    가 생긴다 — 「고소득·저처리」 는 줘야 하고 「저소득·고처리」 는 받아야 한다. 그리고 그
+    조합을 알아내려면 **말을 해야 한다.**
+
+    두 축은 **독립**이다. 묶으면 두 부류만 나오는데, 독립이면 스물다섯 조합이 생기고 세계가
+    그만큼 덜 깔끔하다.
+    """
+    import random
+    w = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    inc = {a.id: a.income_mult for a in w.agents.values()}
+    thr = {a.id: a.invest_mult for a in w.agents.values()}
+    assert len(set(inc.values())) > 1, inc      # 실제로 갈린다
+    assert len(set(thr.values())) > 1, thr
+    assert set(inc.values()) <= set(cfg.income.spread)
+    assert set(thr.values()) <= set(cfg.facility.throughput_spread)
+    # **독립이다** — 같은 값끼리 붙어 다니지 않는다
+    assert any(inc[k] != thr[k] for k in inc)
+
+
+def test_the_spreads_average_to_one_or_the_window_breaks(cfg):
+    """**평균이 1 이어야 한다.** 임계값 창이 `per_turn × n × total` 에서 나오므로, 평균이
+    1 이 아니면 창이 어긋나고 방금 나이 배수로 한 재계산을 또 해야 한다."""
+    for sp in (cfg.income.spread, cfg.facility.throughput_spread):
+        assert sum(sp) / len(sp) == pytest.approx(1.0), sp
+        assert len(sp) >= 3                    # 눈금이 있어야 말로 전할 수 있다
+
+
+def test_my_multipliers_show_but_nobody_elses_do(cfg):
+    """**남의 값이 보이면 소통이 필요 없어진다.**
+
+    내 액수는 비용표에 적힌다 (내 자원이다). 남의 값은 어디에도 없다 — 같은 나라 사람의
+    것도 마찬가지다. 그래야 국내 조율도 대화를 요구한다.
+    """
+    import random
+
+    from domains.meteor import prompts
+    w = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    w.turn = 1
+    me = w.agents["Asla1"]
+    obs = prompts.system_for(me, w, cfg, 48.0)
+    mine = cfg.costs.unit * me.invest_mult
+    inv_row = next(l for l in obs.splitlines() if l.startswith("  invest "))
+    assert f"{mine:g}" in inv_row
+
+    # 남의 액수·소득이 다른 값이면 관측 어디에도 없다
+    for other in w.agents.values():
+        if other.id == me.id:
+            continue
+        theirs = cfg.costs.unit * other.invest_mult
+        if theirs != mine:
+            assert f"{theirs:g}" not in inv_row, other.id
+        assert str(round(loop.income_for(other, w, cfg))) not in obs or \
+            other.income_mult == me.income_mult
+
+
+def test_a_child_does_not_inherit_the_multipliers(cfg):
+    """부모와 아이의 배수는 **독립**이다. 물려받으면 한 계보가 누적 우위를 갖고, spec 3.3
+    의 「능력은 상속되지 않는다」 와도 어긋난다."""
+    import random
+    rng = random.Random(7)
+    w = loop.init_world(cfg, itertools.count(1), rng)
+    parent = w.agents["Asla1"]
+    parent.age = cfg.world.adult_age
+    parent.income_mult, parent.invest_mult = 1.4, 1.4
+
+    kids = []
+    for _ in range(12):
+        parent.has_borne = False
+        cid = loop._bear_child(w, "Asla1", cfg, itertools.count(900),
+                               loop.RunResult(world=w), rng)
+        kids.append(w.agents[cid])
+    # 열두 명이 전부 부모와 같을 확률은 사실상 0 이다
+    assert any(k.income_mult != 1.4 or k.invest_mult != 1.4 for k in kids)
