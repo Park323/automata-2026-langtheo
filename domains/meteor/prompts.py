@@ -91,7 +91,8 @@ T = {
         land="自国が建てるもの: {v}", undecided="未定",
         prog="自国の進捗: {v:.0f}", thresh="  interceptor の完成に要る進捗: {v:.0f}",
         year="今年: {y} 年",
-        open="{y} 年になりました。あなたは {age} 歳。今年の収入は +{inc:.0f}、手元の予算は {b:.0f} です。\nこの年を執り行ってください。",
+        open="{y} 年になりました。あなたは {age} 歳。今年の収入は +{inc:.0f}{last}、手元の予算は {b:.0f} です。\nこの年を執り行ってください。",
+        open_last="（昨年は +{v:.0f}）",
         prop="  採決が {vt} 年に開かれます（{by} が召集）。何を建てるかをそこで決めます",
         prop_today="  ★ 今年が採決の年です（{by} が召集）。vote で interceptor / bunker / abstain を選べます",
         prop_none="  採決は開かれていません。何を建てるかは投票でしか決まりません",
@@ -121,7 +122,7 @@ T = {
         c_vote_note="何を建てるかの採決を召集する",
         c_obs="  observe_risk",
         c_obs_note="   隕石までの残り年数と interceptor に要る進捗を測る。国家投資が精度を上げる",
-        c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ",
+        c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ。この額はあなたの額です — 一度にどれだけ動かせるかは人によって違い、出した額がどれだけ進捗になるかは国によって違います",
         c_give="  give", c_give_note="人にお金を渡す。いくらでも一度で。自国でも他国でもよい",
         inv_hdr="invest の効果",
         inv_well="  wellness   あなたの健康が良くなる",
@@ -149,7 +150,7 @@ T = {
         fac_moved="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
         fac_still="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
         prog_up="  自国の進捗が {gain:.0f} 進んで {now:.0f} になりました。",
-        cap_up="  自国の技術力が上がりました。",
+        cap_up="  自国の技術力が上がって {now:.3f} 倍になりました。",
         ballot_kept="  採決の結果、建てるものは {land} のままです。",
         ballot_new="  採決の結果、建てるものは {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
         ballot_none="  採決では何も決まりませんでした。建てるものは {land} のままです。",
@@ -170,7 +171,8 @@ T = {
         prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
         prop_today="  ★ 今年就是表决之年（由 {by} 召集）。可以用 vote 选 interceptor / bunker / abstain",
         prop_none="  没有正在进行的表决。要建什么只能由投票决定",
-        open="到了 {y} 年。你 {age} 岁。今年的收入是 +{inc:.0f}，手上的预算是 {b:.0f}。\n请执行这一年。",
+        open="到了 {y} 年。你 {age} 岁。今年的收入是 +{inc:.0f}{last}，手上的预算是 {b:.0f}。\n请执行这一年。",
+        open_last="（去年是 +{v:.0f}）",
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
         multi="只要预算和行动力允许，你可以采取多项行动。\n没用完的预算会留到明年。",
@@ -196,7 +198,7 @@ T = {
         c_vote_note="召集「建什么」的表决",
         c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 需要多少进度。国家投资会提高精度",
-        c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一",
+        c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一。这个数额是你的 — 一次能动用多少因人而异，投入的钱能变成多少进度因国而异",
         c_give="  give", c_give_note="把钱交给某人。一次给多少都行。本国或别国都可以",
         inv_hdr="invest 的效果",
         inv_well="  wellness   你的健康会变好",
@@ -223,7 +225,7 @@ T = {
         fac_moved="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
         fac_still="  你去年投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
         prog_up="  本国的进度前进了 {gain:.0f}，现在是 {now:.0f}。",
-        cap_up="  本国的技术水平提高了。",
+        cap_up="  本国的技术水平提高，现在是 {now:.3f} 倍。",
         ballot_kept="  表决的结果，要建的设施仍是 {land}。",
         ballot_new="  表决的结果，要建的设施定为 {land}。此前的进度 {lost:.0f} 已失去。",
         ballot_none="  表决没有决定任何事。要建的设施仍是 {land}。",
@@ -245,7 +247,8 @@ T = {
         prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
         prop_today="  ★ Le scrutin a lieu cette année (convoqué par {by}). Choisissez avec vote : interceptor / bunker / abstain",
         prop_none="  Aucun scrutin en cours. Ce qu'on bâtit ne se décide que par un vote",
-        open="L'an {y} est arrivé. Vous avez {age} ans. Le revenu de cette année est de +{inc:.0f} ; votre budget est de {b:.0f}.\nMenez cette année.",
+        open="L'an {y} est arrivé. Vous avez {age} ans. Le revenu de cette année est de +{inc:.0f}{last} ; votre budget est de {b:.0f}.\nMenez cette année.",
+        open_last=" (l'an dernier +{v:.0f})",
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
         multi="Vous pouvez agir plusieurs fois si le budget et l'action le permettent.\nLe budget non dépensé reste pour l'année suivante.",
@@ -273,7 +276,7 @@ T = {
         c_vote_note="convoquer un scrutin sur quoi bâtir",
         c_obs="  observe_risk",
         c_obs_note="   mesure les années restantes et la progression qu'exige un interceptor ; l'investissement national affine",
-        c_inv="  invest", c_inv_note="vers wellness · national · facility",
+        c_inv="  invest", c_inv_note="vers wellness · national · facility. Ce montant est le vôtre — ce qu'on déplace d'un coup varie selon les personnes, et ce qu'un versement donne en progression varie selon les nations",
         c_give="  give", c_give_note="remettre de l'argent à quelqu'un. N'importe quel montant, en une fois. De votre nation ou d'une autre",
         inv_hdr="effets d'invest",
         inv_well="  wellness   votre santé s'améliore",
@@ -304,7 +307,7 @@ T = {
         fac_moved="  Votre versement de {amt:.0f} l'an dernier a fait progresser {to}.",
         fac_still="  Votre versement de {amt:.0f} l'an dernier n'a fait progresser {to} en rien.",
         prog_up="  La progression de votre nation a avancé de {gain:.0f} ; elle est à {now:.0f}.",
-        cap_up="  Le niveau technique de votre nation s'est élevé.",
+        cap_up="  Le niveau technique de votre nation s'est élevé : il est à {now:.3f}×.",
         ballot_kept="  Au scrutin, ce qu'on bâtit reste {land}.",
         ballot_new="  Au scrutin, ce qu'on bâtit devient {land}. La progression acquise, {lost:.0f}, est perdue.",
         ballot_none="  Le scrutin n'a rien décidé. Ce qu'on bâtit reste {land}.",
@@ -583,7 +586,9 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
             _add(t["prog_up"].format(gain=m["prog_up"], now=m["now"]))
             continue
         if m.get("cap_up"):                    # 자국 기술력이 올랐다 (PUBLIC)
-            _add(t["cap_up"])
+            # **배수를 적는다** (8/23). 값이 있으니 같은 값이면 `_add` 가 접고,
+            # 달라지면 새 줄이 된다 — 진척과 같은 취급이다.
+            _add(t["cap_up"].format(now=m["cap_now"]))
             continue
         if m.get("ballot"):                    # 採決 결과 (PUBLIC)
             b = m["ballot"]
@@ -688,8 +693,14 @@ def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
     # **나이도 여기다.** 한 해에 한 번 바뀌는 그 해의 사실이고, 무엇보다 대화에 쌓이면
     # **나이 드는 것이 느껴진다** — 6살 · 7살 · 8살이 차례로 남는다. 관측에 두면 매 콜
     # 덮여서 그 감각이 생기지 않는다. 수명 곡선은 여전히 비공개다 (4.1).
+    # **작년 소득을 나란히 적는다** (8/23). SYS 는 「나이를 먹으면 수입이 는다」 를 말하고
+    # 여기는 올해 값을 주는데, 작년 값이 문맥에서 밀려나면 **자기가 늘고 있다는 것을 볼
+    # 방법이 없다.** 새 정보가 아니라 이미 준 정보를 잃지 않게 하는 것이다.
+    # 태어난 해에는 작년이 없다 (0) — 그때는 적지 않는다.
+    last = (t["open_last"].format(v=agent.income_last_year)
+            if agent.income_last_year > 0 else "")
     head = t["open"].format(y=FIRST_YEAR + world.turn - 1, age=agent.age,
-                            inc=inc, b=agent.budget)
+                            inc=inc, last=last, b=agent.budget)
     return head
 
 

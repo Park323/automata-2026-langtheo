@@ -4,6 +4,7 @@ from __future__ import annotations
 import itertools
 import json
 import random
+import re
 from pathlib import Path
 
 import pytest
@@ -478,12 +479,13 @@ def test_the_year_opens_before_anything_that_happened_in_it():
         assert f"+{agent.income_this_year:.0f}" in users[0], aid
 
 
-def test_a_valueless_fact_is_said_once_a_year():
-    """「기술력이 올랐다」 는 **값이 없는 사실**이다 (얼마나인지는 SECRET). 세 사람이
-    각각 national 에 넣으면 세 번 통지됐다 — 세 번 적어도 한 번보다 더 알려주는 것이 없고
-    대화만 부푼다.
+def test_capital_notice_carries_the_multiplier():
+    """「기술력이 올랐다」 에 **배수를 싣는다** (8/23).
 
-    진척은 값이 달라지므로(18 → 52) 차례마다 말한다.
+    전에는 값이 없는 사실이라 해마다 한 번으로 접었다. 이제 값이 있으므로 그 제한을
+    뗐고, 접는 일은 `render_inbox._add` 가 값으로 판단한다 — 진척과 같은 취급이다.
+
+    값이 없으면 「national 에 더 부을까 facility 에 부을까」 를 수치로 비교할 수 없다.
     """
     cfg = _cfg(1)
     inv = assistant_msg(tool_call("invest", "i", target="national", reasoning="r"))
@@ -492,7 +494,12 @@ def test_a_valueless_fact_is_said_once_a_year():
     res = _run(cfg, clients, seed=3, parallel=False, sequential=True)
     blob = "\n".join(m["content"] for m in res.world.agents["Asla2"].convo
                      if m["role"] == "user")
-    assert blob.count("技術力が上がりました") == 1
+    assert "倍になりました" in blob
+    # 배수는 1 보다 크고, 실제 국가자본에서 나온 값이어야 한다
+    got = {float(x) for x in re.findall(r"技術力が上がって ([\d.]+) 倍", blob)}
+    assert got and all(v > 1.0 for v in got), got
+    assert max(got) == pytest.approx(
+        res.world.countries["Asla"].multiplier(cfg), abs=1e-3)
 
 
 def test_identical_rows_inside_one_batch_collapse():
@@ -500,8 +507,12 @@ def test_identical_rows_inside_one_batch_collapse():
     cfg = _cfg(1)
     world = init_world(cfg, itertools.count(1))
     a = world.agents["Asla1"]
-    ev = prompts.render_events(a, [{"cap_up": True}] * 3)
-    assert ev.count("技術力が上がりました") == 1
+    ev = prompts.render_events(a, [{"cap_up": True, "cap_now": 1.234}] * 3)
+    assert ev.count("倍になりました") == 1
+    # **배수가 달라지면 접히지 않는다** — 값이 있는 사실이 된 뒤의 규칙이다
+    ev3 = prompts.render_events(a, [{"cap_up": True, "cap_now": 1.234},
+                                    {"cap_up": True, "cap_now": 1.241}])
+    assert ev3.count("倍になりました") == 2
     # 값이 다르면 접히지 않는다
     ev2 = prompts.render_events(a, [{"prog_up": 18, "now": 18},
                                     {"prog_up": 34, "now": 52}])

@@ -693,6 +693,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         # **받은 값을 적어 둔다.** 해 시작 문구가 렌더 때 다시 계산하면, 순차에서 나중에
         # 차례가 온 사람은 남들이 national 에 넣은 뒤의 값을 보게 된다 — 실제로 100 을
         # 받았는데 「+102」 라고 적혔다.
+        a.income_last_year = a.income_this_year
         a.income_this_year = inc
         a.ap = cfg.turn.action_points
         # ★ x̂ 의 분모. "그 눈금을 감당할 수 있었는데도 안 배웠다" 를 세려면 **결정
@@ -872,8 +873,7 @@ def _dequeue_inbox_pop(world: World, aid: str) -> list[dict]:
 
 def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
                  knob_ai: float, msg_ids: "itertools.count", result: RunResult,
-                 turn_facility: dict, ballots_acc: list,
-                 said_this_year: set | None = None) -> None:
+                 turn_facility: dict, ballots_acc: list) -> None:
     """한 차례(sink)를 세계에 **즉시** 반영. 개표·procreate·부고는 턴 끝에서 (누적만)."""
     # 학습 — 즉시 반영 + 완료 즉시 판정 (그 순간의 학습가로)
     for rec in sink.learns:
@@ -955,22 +955,27 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         _notify(world, "gift", {"gift_from": frm, "gift": round(amount, 1)},
                 world.turn, actor=to)
 
-    capped: set = set()
+    # **배수를 깐다** (8/23). 전에는 「올랐다」 만 알리고 값을 감췄다 — 배수 **함수**가
+    # SECRET 이라는 이유였는데, 함수를 감추는 것과 결과를 감추는 것은 다르다. 값이 없으니
+    # 「national 에 더 부을까 facility 에 부을까」 를 수치로 비교할 방법이 없었고,
+    # 진척(`prog_up`)은 값을 주는데 이것만 안 주는 비대칭이었다.
+    #
+    # 값이 생겼으므로 **해마다 한 번** 제한도 뗀다. 그 제한의 근거가 「값이 없는 사실이라
+    # 두 번 적어도 더 알려주는 것이 없다」 였는데 이제 성립하지 않는다. 같은 값이 두 번
+    # 오면 `render_inbox._add` 가 접는다 — 진척과 같은 취급이다.
+    caps: dict = {}
     for cid, amount, _ in sink.national:
-        world.countries[cid].national_capital += amount
-        capped.add(cid)
-    for cid in sorted(capped):
+        c = world.countries[cid]
+        caps.setdefault(cid, c.multiplier(cfg))     # 올리기 **전** 값
+        c.national_capital += amount
+    for cid, before in sorted(caps.items()):
         # 수입·시설 전환율·관측 정확도가 다 여기 걸려 있어 국민 전원의 일이다.
-        # **얼마나 올랐는지는 담지 않는다** — 배수 함수는 SECRET 이다.
-        #
-        # 그래서 **해마다 한 번만** 말한다. 값이 없는 사실이라 두 번 적어도 더 알려주는
-        # 것이 없다 — 실측에서 「자국의 기술력이 올랐습니다」 가 한 해에 세 번 붙었다.
-        # 진척은 값이 달라지므로 차례마다 말한다.
-        if said_this_year is not None:
-            if ("cap", cid) in said_this_year:
-                continue
-            said_this_year.add(("cap", cid))
-        _notify(world, "capital_change", {"cap_up": True}, world.turn, nation=cid)
+        now = world.countries[cid].multiplier(cfg)
+        # **차이가 아니라 현재값을 준다.** 한 차례의 상승분은 0.002 같은 값이라 소수점을
+        # 어디서 끊어도 「+0.00」 이 되거나 잡음이 된다. 현재 배수는 그 자체로 결정에
+        # 쓰이고, 해를 건너 바뀌므로 변화도 그 숫자로 보인다.
+        _notify(world, "capital_change", {"cap_up": True, "cap_now": now},
+                world.turn, nation=cid)
     # 메시지 — 번역 후 **같은 턴** 배달
     for sent in sink.messages:
         recipient = world.agents.get(sent["to"])
@@ -1083,6 +1088,7 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
         # **받은 값을 적어 둔다.** 해 시작 문구가 렌더 때 다시 계산하면, 순차에서 나중에
         # 차례가 온 사람은 남들이 national 에 넣은 뒤의 값을 보게 된다 — 실제로 100 을
         # 받았는데 「+102」 라고 적혔다.
+        a.income_last_year = a.income_this_year
         a.income_this_year = inc
         a.ap = cfg.turn.action_points
         a.budget_start = a.budget                       # x̂ 분모 (결정 시점 예산)
@@ -1092,7 +1098,6 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
     rng.shuffle(order)                                  # 임의 순서 (시드로 결정론)
 
     turn_facility: dict = {}
-    said_this_year: set = set()      # 값 없는 사실은 해마다 한 번만 (capital_change)
     ballots_acc: list = []
     accs = {aid: agent_loop._StepAcc() for aid in snapshot_ids}
     t_turns = {aid: time.time() for aid in snapshot_ids}
@@ -1166,7 +1171,7 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
                 e.add_note(f"[agent {aid} · turn {world.turn} · age {agent.age}]")
                 raise
             _settle_step(world, cfg, rng, sink, translator, knob_ai, msg_ids, result,
-                         turn_facility, ballots_acc, said_this_year)
+                         turn_facility, ballots_acc)
             if done is not None:
                 ended[aid] = done
 

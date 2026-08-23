@@ -70,12 +70,15 @@ class AP:
     speak: float
     propose_vote: float
     memory_write: float
-    give: float = 0.2
-    observe_risk: float = 0.3
-    vote: float = 0.05             # 採決과 제안은 무게가 다르다 (4.4)
+    # **기본값을 두지 않는다.** 넷 다 기본값이 있었고 셋이 yaml 과 달랐다
+    # (give 0.2/0.1 · observe_risk 0.3/0.5 · unit 0.1/0.2). 「숫자를 두 군데 적으면
+    # 하나가 낡는다」 — yaml 이 유일한 출처다.
+    give: float
+    observe_risk: float
+    vote: float                    # 採決과 제안은 무게가 다르다 (4.4)
     # **한 번의 invest·learn 이 먹는 AP.** 금액은 costs.unit 으로 고정이라 금액별 계산이
     # 없다 — learn_full·invest_wellness·invest_per_ap 를 그래서 없앴다 (4.4).
-    unit: float = 0.1
+    unit: float
 
 
 @dataclass(frozen=True)
