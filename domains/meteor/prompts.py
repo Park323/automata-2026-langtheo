@@ -122,13 +122,19 @@ T = {
         c_vote_note="何を建てるかの採決を召集する",
         c_obs="  observe_risk",
         c_obs_note="   隕石までの残り年数と interceptor に要る進捗を測る。国家投資が精度を上げる",
-        c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ。この額はあなたの額です — 一度にどれだけ動かせるかは人によって違い、出した額がどれだけ進捗になるかは国によって違います",
+        c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ。この額はあなたの額です — 人によって違います",
         c_give="  give", c_give_note="人にお金を渡す。いくらでも一度で。自国でも他国でもよい",
         inv_hdr="invest の効果",
+        inv_rule="  払う額は手数料ではありません。出した額がそのまま出資になり、進捗はその額に比例します。\n"
+                 "  同じ額なら進捗も同じです。ただ一度に動かせる額が人によって違うので、額の大きい人は\n"
+                 "  同じ行動力でより多くを積みます。",
         inv_well="  wellness   あなたの健康が良くなる",
-        inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n                          observe_risk の精度も良くなる。国民全員に及ぶ",
-        inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n                          （省くと自国）",
-        inv_build="  自国の interceptor に 100 を出すと、平均 {v:.0f} の進捗になります。この量は国ごとに\n                          違い、他国の値は見えません — 聞くほかありません。",
+        inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n"
+                 "             observe_risk の精度も良くなる。国民全員に及ぶ",
+        inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n"
+                "             （省くと自国）",
+        inv_build="  自国の interceptor に 100 を出すと、平均 {v:.0f} の進捗になります。\n"
+                  "  この量は国ごとに違い、他国の値は見えません — 聞くほかありません。",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
         rtt="送ったメッセージは翌年に届きます。返事が来るのはさらにその翌年です。",
         rtt_same="送ったメッセージは、相手が次に動くときに届きます。同じ年のうちに返事が来ることもあります。",
@@ -199,13 +205,18 @@ T = {
         c_vote_note="召集「建什么」的表决",
         c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 需要多少进度。国家投资会提高精度",
-        c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一。这个数额是你的 — 一次能动用多少因人而异，投入的钱能变成多少进度因国而异",
+        c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一。这个数额是你的 — 因人而异",
         c_give="  give", c_give_note="把钱交给某人。一次给多少都行。本国或别国都可以",
         inv_hdr="invest 的效果",
+        inv_rule="  付出的钱不是手续费。你付出的数额就是投入额，进度与这个数额成正比。\n"
+                 "  同样的钱，进度也一样。只是一次能动用的数额因人而异 —\n"
+                 "  数额大的人，用同样的行动力能积累更多。",
         inv_well="  wellness   你的健康会变好",
-        inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n                          observe_risk 的精度都会变好，惠及全体国民",
+        inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n"
+                 "             observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
-        inv_build="  给本国的 interceptor 投 100，平均会变成 {v:.0f} 的进度。这个量因国而异，\n                          别国的数值你看不到 — 只能问。",
+        inv_build="  给本国的 interceptor 投 100，平均会变成 {v:.0f} 的进度。\n"
+                  "  这个量因国而异，别国的数值你看不到 — 只能问。",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
         rtt="你发出的消息在第二年送达。对方的回信要再过一年才会到。",
         rtt_same="你发出的消息，会在对方下次行动时送达。回信也可能在同一年内到来。",
@@ -278,16 +289,22 @@ T = {
         c_vote_note="convoquer un scrutin sur quoi bâtir",
         c_obs="  observe_risk",
         c_obs_note="   mesure les années restantes et la progression qu'exige un interceptor ; l'investissement national affine",
-        c_inv="  invest", c_inv_note="vers wellness · national · facility. Ce montant est le vôtre — ce qu'on déplace d'un coup varie selon les personnes, et ce qu'un versement donne en progression varie selon les nations",
+        c_inv="  invest", c_inv_note="vers wellness · national · facility. Ce montant est le vôtre — il varie selon les personnes",
         c_give="  give", c_give_note="remettre de l'argent à quelqu'un. N'importe quel montant, en une fois. De votre nation ou d'une autre",
         inv_hdr="effets d'invest",
+        inv_rule="  Ce que vous versez n'est pas des frais : le montant versé est l'investissement,\n"
+                 "  et la progression est proportionnelle à ce montant.\n"
+                 "  À montant égal, progression égale. Seul le montant qu'on déplace d'un coup varie\n"
+                 "  d'une personne à l'autre : qui en déplace plus accumule plus à action égale.",
         inv_well="  wellness   votre santé s'améliore",
         inv_natl="  national   élève le niveau technique de votre nation : le revenu, le rendement\n"
                           "             de ce qu'on verse à une installation et la précision d'observe_risk\n"
                           "             s'améliorent, pour tous ses habitants",
         inv_fac="  facility   contribue à la progression d'une installation ; `to` nomme la nation —\n"
                           "             la vôtre ou une autre (sans `to`, la vôtre)",
-        inv_build="  Verser 100 à l'interceptor de votre nation donne en moyenne {v:.0f} de progression.\n                          Cette quantité varie selon les nations ; les valeurs des autres ne vous\n                          sont pas visibles — il faut demander.",
+        inv_build="  Verser 100 à l'interceptor de votre nation donne en moyenne {v:.0f} de progression.\n"
+                  "  Cette quantité varie selon les nations ; les valeurs des autres ne vous sont\n"
+                  "  pas visibles — il faut demander.",
         cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
         rtt="Un message part et arrive l'année suivante ; une réponse n'arrive que l'année d'après.",
         rtt_same="Votre message arrive quand le destinataire agit la fois suivante ; une réponse peut venir dans la même année.",
@@ -773,7 +790,15 @@ def render_observation(world, agent, cfg, knob_ai: float,
         "",
         render_costs(world, agent, cfg, knob_ai, memory=mem_open),
         "",
-        t["inv_hdr"], t["inv_well"], t["inv_natl"], t["inv_fac"],
+        t["inv_hdr"],
+        # **금액 칸이 두 가지를 같은 모양으로 찍는다** (8/23). `speak 3` 은 수수료고
+        # `invest 52` 는 옮기는 액수 자체인데 표에서는 구별이 안 된다 — 「52원짜리 표와
+        # 30원짜리 표를 얼핏 보면 같은 투자에 전자가 비싸 보인다」. 실제로는 52를 옮기니
+        # 진척도 그만큼 크고, **같은 행동력으로는 더 효율이 좋다.**
+        #
+        # 두 축을 갈라 적는다: 원당 효율은 같고, **AP당** 효율이 사람마다 다르다.
+        t["inv_rule"],
+        t["inv_well"], t["inv_natl"], t["inv_fac"],
         # **자국의 요격기 속도.** 나라마다 다르고 남의 것은 안 보인다 — 물어봐야 안다.
         # 이것이 「어디에 몰아줄 것인가」 를 대화로만 풀 수 있게 만든다.
         # **100원당 기대 진척으로 적는다.** 「기준보다 +30%」 로 적어 봤더니 평균인 나라가
