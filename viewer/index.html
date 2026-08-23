@@ -350,8 +350,22 @@ function describe(e){
       e.by === "procreate" ? "계승" : "자연사"})`;
     case "birth": return `${e.id} 출생${e.replaces ? ` (${e.replaces} 의 자리)` : ""}`
       + ` · ${e.born_by === "procreate" ? "계승" : "자연발생"} · ${Math.round(e.budget)}원`;
-    case "learn": return `${e.agent} 가 ${e.target} 말을 배움 · ${Math.round(e.charged)}원 (L×${e.rung})` +
-      (e.discount_domestic ? " · 국내 구사자" : "") + (e.discount_parent ? " · 부모" : "");
+    case "learn": {
+      // **취득과 납부는 다른 사건이다.** 취득 줄은 `charged` 에 **누적 진척 전액**(200)이
+      // 들어 있는데 `kind` 를 안 보고 같은 틀로 찍어서 「200원 냈다」 로 읽혔다.
+      const why = (e.discount_domestic ? " · 국내 구사자" : "") + (e.discount_parent ? " · 부모" : "");
+      if (e.kind === "acquired")
+        return `${e.agent} 가 ${e.target} 말을 익혔다 — ${Math.round(e.required)} 완주${why}`;
+      // 낸 돈이 아니라 **쌓인 진척**이 배속을 탄다. 둘 다 보여야 배속이 읽힌다.
+      //
+      // `speed` 가 없는 런(8/23 이전)은 진척을 **적지 않는다.** 배속을 모르면 진척은
+      // 계산할 수 없고, 낸 돈을 진척으로 적으면 틀린 숫자가 된다 — 없는 것보다 나쁘다.
+      const head = `${e.agent} 가 ${e.target} 말 학습 · ${Math.round(e.charged)}원`;
+      if (!e.speed) return head + ` (배속 미기록)` + why;
+      const gain = e.charged * e.speed, done = (e.progress_before || 0) + gain;
+      return head + ` → 진척 +${Math.round(gain)} (${Math.round(done)}/${Math.round(e.required)})`
+        + (e.speed !== 1 ? ` · ×${e.speed} 배속` : "") + why;
+    }
     case "facility_gain": return `${e.agent} 의 ${Math.round(e.amount)}원 → ${e.to} 진척 +${e.gain}`;
     case "risk_observe": {
       const dt = e.observed - e.truth, dh = e.threshold_observed - e.threshold_truth;

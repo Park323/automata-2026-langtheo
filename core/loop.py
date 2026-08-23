@@ -480,7 +480,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                     "turn": world.turn, "kind": "acquired", "agent": aid,
                     "country": a.country, "target": cid, "lang": c.lang,
                     "charged": round(done, 2), "required": need,
-                    "rung": round(need / cfg.costs.learn_base, 4),
+                    "speed": agent_loop.learn_speed(a, cid, world, cfg)[0],
                     "age": a.age, "budget_after": round(a.budget, 2),
                     "discount_domestic": agent_loop.learn_discounts(a, cid, world)[0],
                     "discount_parent": agent_loop.learn_discounts(a, cid, world)[1],
@@ -897,8 +897,16 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
                  turn_facility: dict, ballots_acc: list) -> None:
     """한 차례(sink)를 세계에 **즉시** 반영. 개표·procreate·부고는 턴 끝에서 (누적만)."""
     # 학습 — 즉시 반영 + 완료 즉시 판정 (그 순간의 학습가로)
+    # **납부를 먼저 다 적고, 취득은 두 번째 패스에서** (8/23). 한 스텝에 `learn` 을 두 번
+    # 부르면 `execute_tool` 이 진척을 **즉시** 쌓으므로, 첫 기록을 처리하는 시점에 이미
+    # 완주 상태다 — 취득 줄이 그 완주를 만든 납부보다 **앞에** 찍혔다. 실측 로그:
+    #
+    #   turn 3  progress_before 120  charged 40      ← 여기서 진척 180
+    #   turn 3  acquired      charged 200            ← 아직 200 이 아닌데 취득이 찍힌다
+    #   turn 3  progress_before 180  charged 13.3    ← 이것이 완주시킨 납부다
     for rec in sink.learns:
         result.learns_log.append({"turn": world.turn, **rec})
+    for rec in sink.learns:
         a = world.agents.get(rec["agent"])
         if a is None:
             continue
@@ -914,7 +922,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
                     "turn": world.turn, "kind": "acquired", "agent": rec["agent"],
                     "country": a.country, "target": cid, "lang": c.lang,
                     "charged": round(a.lang_progress[c.lang], 2), "required": need,
-                    "rung": round(need / cfg.costs.learn_base, 4),
+                    "speed": agent_loop.learn_speed(a, cid, world, cfg)[0],
                     "age": a.age, "budget_after": round(a.budget, 2),
                     "discount_domestic": agent_loop.learn_discounts(a, cid, world)[0],
                     "discount_parent": agent_loop.learn_discounts(a, cid, world)[1]})

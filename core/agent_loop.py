@@ -363,7 +363,12 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "agent": agent.id, "country": agent.country,
             "target": country_id, "lang": lang,
             "charged": amount, "progress_before": round(done_before, 2),
-            "required": need, "rung": round(need / cfg.costs.learn_base, 4),
+            # **`rung` 을 `speed` 로 갈았다** (8/23). `rung` 은 `need / learn_base` 였고
+            # 할인 모델에서는 1.0 / 0.5 / 0.25 로 뜻이 있었다. 그런데 8/22 에 할인을
+            # **가속**으로 바꾸면서 `need` 가 늘 `learn_base` 가 됐다 — 그날부터 `rung`
+            # 은 **항상 1.0** 인 상수였고, 뷰어는 모든 학습에 「L×1」 을 찍고 있었다.
+            # 지금 변하는 값은 배속이다.
+            "required": need, "speed": mult,
             "discount_domestic": domestic, "discount_parent": parent,
             "age": agent.age, "budget_after": round(agent.budget, 2),
             "lam": round(agent.lam, 4),
