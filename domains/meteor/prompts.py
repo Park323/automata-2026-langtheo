@@ -151,7 +151,7 @@ T = {
         fac_moved="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
         fac_still="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
         prog_up="  自国の進捗が {gain:.0f} 進んで {now:.0f} になりました。",
-        cap_up="  自国の技術力が当初より {pct:.0f}% 向上しました。",
+        cap_up="  自国の技術力が {pct:.2f}% 上がりました。",
         ballot_kept="  採決の結果、建てるものは {land} のままです。",
         ballot_new="  採決の結果、建てるものは {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
         ballot_none="  採決では何も決まりませんでした。建てるものは {land} のままです。",
@@ -227,7 +227,7 @@ T = {
         fac_moved="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
         fac_still="  你去年投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
         prog_up="  本国的进度前进了 {gain:.0f}，现在是 {now:.0f}。",
-        cap_up="  本国的技术水平比当初提高了 {pct:.0f}%。",
+        cap_up="  本国的技术水平提高了 {pct:.2f}%。",
         ballot_kept="  表决的结果，要建的设施仍是 {land}。",
         ballot_new="  表决的结果，要建的设施定为 {land}。此前的进度 {lost:.0f} 已失去。",
         ballot_none="  表决没有决定任何事。要建的设施仍是 {land}。",
@@ -310,7 +310,7 @@ T = {
         fac_moved="  Votre versement de {amt:.0f} l'an dernier a fait progresser {to}.",
         fac_still="  Votre versement de {amt:.0f} l'an dernier n'a fait progresser {to} en rien.",
         prog_up="  La progression de votre nation a avancé de {gain:.0f} ; elle est à {now:.0f}.",
-        cap_up="  Le niveau technique de votre nation est {pct:.0f}% au-dessus du départ.",
+        cap_up="  Le niveau technique de votre nation a progressé de {pct:.2f}%.",
         ballot_kept="  Au scrutin, ce qu'on bâtit reste {land}.",
         ballot_new="  Au scrutin, ce qu'on bâtit devient {land}. La progression acquise, {lost:.0f}, est perdue.",
         ballot_none="  Le scrutin n'a rien décidé. Ce qu'on bâtit reste {land}.",
@@ -589,18 +589,13 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
             _add(t["prog_up"].format(gain=m["prog_up"], now=m["now"]))
             continue
         if m.get("cap_up"):                    # 자국 기술력이 올랐다 (PUBLIC)
-            # **배수가 아니라 %로 적는다** (8/23). 「1.174 배」 는 들어도 얼마나 좋아진
-            # 것인지 안 잡힌다.
+            # **배수도 누적도 아니고 이번 상승분이다** (8/23). 「1.174 배」 는 들어도 얼마나
+            # 좋아진 것인지 안 잡히고, 「당초보다 17%」 는 사건 줄에 누적을 싣는 것이라
+            # 「방금 무슨 일이 있었나」 와 어긋난다.
             #
-            # **한 줄로 끝낸다.** 무엇이 좋아지는지(수입·진척 전환·관측 정확도)를 여기
-            # 다시 쓰지 않는다 — 비용표의 `inv_natl` 이 이미 말하고, 이 줄은 기술력이
-            # 오를 때마다 **대화에 쌓인다.** 「당초보다」 만으로 이번 상승분이 아니라
-            # 누적 수준이라는 것이 갈린다.
-            #
-            # 정수 %로 끊는 것이 노이즈 억제도 겸한다. 한 차례 상승분은 0.002 배라
-            # 소수점을 살리면 매번 다른 줄이 되는데, %로 끊으면 같은 값은 `_add` 가
-            # 접고 실제로 눈에 띄게 오른 때만 새 줄이 된다.
-            _add(t["cap_up"].format(pct=(m["cap_now"] - 1.0) * 100))
+            # **한 줄로 끝낸다.** 무엇이 좋아지는지(수입·진척 전환·관측 정확도)는 비용표의
+            # `inv_natl` 이 이미 말한다 — 이 줄은 오를 때마다 대화에 쌓인다.
+            _add(t["cap_up"].format(pct=m["cap_gain"]))
             continue
         if m.get("ballot"):                    # 採決 결과 (PUBLIC)
             b = m["ballot"]

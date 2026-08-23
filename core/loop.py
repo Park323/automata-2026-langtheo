@@ -992,10 +992,15 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
     for cid, before in sorted(caps.items()):
         # 수입·시설 전환율·관측 정확도가 다 여기 걸려 있어 국민 전원의 일이다.
         now = world.countries[cid].multiplier(cfg)
-        # **차이가 아니라 현재값을 준다.** 한 차례의 상승분은 0.002 같은 값이라 소수점을
-        # 어디서 끊어도 「+0.00」 이 되거나 잡음이 된다. 현재 배수는 그 자체로 결정에
-        # 쓰이고, 해를 건너 바뀌므로 변화도 그 숫자로 보인다.
-        _notify(world, "capital_change", {"cap_up": True, "cap_now": now},
+        # **이번 차례의 상승분을 준다** (8/23). 사건 줄은 「방금 무슨 일이 있었나」 이고,
+        # 누적 수준(「당초보다 17%」)은 그 자리에 맞지 않는다.
+        #
+        # 한 차례 상승분은 0.05~0.6% 라 소수 **두 자리**여야 값이 남는다 (`inh30` 실측:
+        # 해 단위 0.15~1.9%, 초기 2~4해만 1.6~1.9% — √ 라 처음이 크다). 그래서 차례마다
+        # 값이 달라지고, 진척(`prog_up`)처럼 줄이 접히지 않는다. 그게 맞다 — 낸 액수가
+        # 다르면 오른 폭도 다르다.
+        _notify(world, "capital_change",
+                {"cap_up": True, "cap_gain": (now / before - 1) * 100},
                 world.turn, nation=cid)
     # 메시지 — 번역 후 **같은 턴** 배달
     for sent in sink.messages:
