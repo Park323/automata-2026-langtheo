@@ -495,9 +495,9 @@ def test_capital_notice_carries_the_gain_as_a_percentage():
     res = _run(cfg, clients, seed=3, parallel=False, sequential=True)
     blob = "\n".join(m["content"] for m in res.world.agents["Asla2"].convo
                      if m["role"] == "user")
-    assert "技術力が上がりました" in blob
+    assert "技術力が当初より" in blob
     # % 는 0 보다 크고, 실제 국가자본에서 나온 배수와 맞아야 한다
-    got = {int(x) for x in re.findall(r"進捗になる量も (\d+)% 多く", blob)}
+    got = {int(x) for x in re.findall(r"技術力が当初より (\d+)% 向上", blob)}
     assert got and all(v > 0 for v in got), got
     assert max(got) == round((res.world.countries["Asla"].multiplier(cfg) - 1) * 100)
 
@@ -508,16 +508,16 @@ def test_identical_rows_inside_one_batch_collapse():
     world = init_world(cfg, itertools.count(1))
     a = world.agents["Asla1"]
     ev = prompts.render_events(a, [{"cap_up": True, "cap_now": 1.234}] * 3)
-    assert ev.count("多く出ます") == 1
+    assert ev.count("% 向上") == 1
     # **같은 %로 떨어지면 접힌다.** 한 차례 상승분은 0.2%p 정도라 대개 같은 정수에
     # 떨어진다 — 경계를 걸치면(23.4 → 23.6) 갈리지만, 그건 실제로 눈금이 바뀐 것이다.
     ev2b = prompts.render_events(a, [{"cap_up": True, "cap_now": 1.231},
                                      {"cap_up": True, "cap_now": 1.234}])
-    assert ev2b.count("多く出ます") == 1
+    assert ev2b.count("% 向上") == 1
     # **눈에 띄게 오르면 새 줄이 된다**
     ev3 = prompts.render_events(a, [{"cap_up": True, "cap_now": 1.234},
                                     {"cap_up": True, "cap_now": 1.291}])
-    assert ev3.count("多く出ます") == 2
+    assert ev3.count("% 向上") == 2
     # 값이 다르면 접히지 않는다
     ev2 = prompts.render_events(a, [{"prog_up": 18, "now": 18},
                                     {"prog_up": 34, "now": 52}])
