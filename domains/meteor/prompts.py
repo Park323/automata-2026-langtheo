@@ -125,9 +125,9 @@ T = {
         c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ。この額はあなたの額です — 人によって違います",
         c_give="  give", c_give_note="人にお金を渡す。いくらでも一度で。自国でも他国でもよい",
         inv_hdr="invest の効果",
-        inv_rule="  払う額は手数料ではありません。出した額がそのまま出資になり、進捗はその額に比例します。\n"
-                 "  同じ額なら進捗も同じです。ただ一度に動かせる額が人によって違うので、額の大きい人は\n"
-                 "  同じ行動力でより多くを積みます。",
+        inv_rule="  払う額は手数料ではなく、出資そのものです。\n"
+                 "  一度に動かせる額は人によって違います。出した額がどれだけ進捗になるかは国によって\n"
+                 "  違います。この二つは別々に決まります。",
         inv_well="  wellness   あなたの健康が良くなる",
         inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n"
                  "             observe_risk の精度も良くなる。国民全員に及ぶ",
@@ -208,9 +208,9 @@ T = {
         c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一。这个数额是你的 — 因人而异",
         c_give="  give", c_give_note="把钱交给某人。一次给多少都行。本国或别国都可以",
         inv_hdr="invest 的效果",
-        inv_rule="  付出的钱不是手续费。你付出的数额就是投入额，进度与这个数额成正比。\n"
-                 "  同样的钱，进度也一样。只是一次能动用的数额因人而异 —\n"
-                 "  数额大的人，用同样的行动力能积累更多。",
+        inv_rule="  付出的钱不是手续费，就是投入本身。\n"
+                 "  一次能动用的数额因人而异。投入的钱能变成多少进度，因国而异。\n"
+                 "  这两件事各自决定，互不相干。",
         inv_well="  wellness   你的健康会变好",
         inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n"
                  "             observe_risk 的精度都会变好，惠及全体国民",
@@ -292,10 +292,10 @@ T = {
         c_inv="  invest", c_inv_note="vers wellness · national · facility. Ce montant est le vôtre — il varie selon les personnes",
         c_give="  give", c_give_note="remettre de l'argent à quelqu'un. N'importe quel montant, en une fois. De votre nation ou d'une autre",
         inv_hdr="effets d'invest",
-        inv_rule="  Ce que vous versez n'est pas des frais : le montant versé est l'investissement,\n"
-                 "  et la progression est proportionnelle à ce montant.\n"
-                 "  À montant égal, progression égale. Seul le montant qu'on déplace d'un coup varie\n"
-                 "  d'une personne à l'autre : qui en déplace plus accumule plus à action égale.",
+        inv_rule="  Ce que vous versez n'est pas des frais : c'est l'investissement lui-même.\n"
+                 "  Le montant qu'on déplace d'un coup varie selon les personnes. Ce qu'un versement\n"
+                 "  donne en progression varie selon les nations. Ces deux choses se décident\n"
+                 "  séparément.",
         inv_well="  wellness   votre santé s'améliore",
         inv_natl="  national   élève le niveau technique de votre nation : le revenu, le rendement\n"
                           "             de ce qu'on verse à une installation et la précision d'observe_risk\n"
@@ -796,7 +796,10 @@ def render_observation(world, agent, cfg, knob_ai: float,
         # 30원짜리 표를 얼핏 보면 같은 투자에 전자가 비싸 보인다」. 실제로는 52를 옮기니
         # 진척도 그만큼 크고, **같은 행동력으로는 더 효율이 좋다.**
         #
-        # 두 축을 갈라 적는다: 원당 효율은 같고, **AP당** 효율이 사람마다 다르다.
+        # 두 축을 **갈라만** 적는다: 한 번에 옮기는 액수는 사람마다, 낸 액수가 진척이 되는
+        # 비율은 나라마다. 어느 쪽이 유리한지는 **적지 않는다** — 「액수가 큰 사람은 같은
+        # 행동력으로 더 많이 쌓는다」 라고 썼다가 뺐다. 사실이지만 결론이고, 결론을 주면
+        # 그것을 스스로 알아내는지 관측할 수 없다.
         t["inv_rule"],
         t["inv_well"], t["inv_natl"], t["inv_fac"],
         # **자국의 요격기 속도.** 나라마다 다르고 남의 것은 안 보인다 — 물어봐야 안다.

@@ -259,6 +259,14 @@ class RunWriter:
                 "reasoning_missing": lg.get("reasoning_missing"),
                 "steps": lg.get("steps"), "prompt_tokens": lg.get("prompt_tokens"),
                 "pressured": lg.get("pressured"), "evicted_blocks": lg.get("evicted_blocks"),
+                # **거래가 일어났는지.** `evicted_blocks` 는 한계에 밀려 잃은 것이고
+                # `compacted_blocks` 는 기억을 적어서 산 자리다 (spec 4.5). 둘을 가려야
+                # 「압박을 받고 memory_write 를 했더니 자리가 생겼는가」 를 볼 수 있다.
+                # 이 둘이 `_turn_log` 에는 있는데 **여기 열거에서 빠져** 있었다 —
+                # inh30 의 127건이 그래서 사후 확인 불가였다.
+                "compacted_blocks": lg.get("compacted_blocks"),
+                # 응답이 max_tokens 에 걸려 잘린 횟수. 행동 없음과 구분해야 한다.
+                "truncated_calls": lg.get("truncated_calls"),
                 "memory_len": lg.get("memory_len"),
                 # 한 사람이 한 턴을 사는 데 걸린 시간. llm_ms 가 elapsed 의 거의 전부여야
                 # 정상이고, 갈리면 우리 코드가 병목이라는 뜻이다.

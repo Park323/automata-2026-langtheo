@@ -630,6 +630,27 @@ def _tool_tokens(tool_list) -> int:
     return _TOOL_TOKENS_BY_ID.get(id(tool_list), _TOOL_TOKENS)
 
 
+def fixed_tokens(tool_tokens: int, system_prompt: str) -> int:
+    """축출 예산에서 **뺄 수 없는** 몫. 도구 스키마 + system 프롬프트.
+
+    **system 을 안 세고 있었다** (8/23). 「system 은 convo 밖이라 안전하다」 는 주석이
+    있었는데, 축출 대상이 아닌 것과 **예산에 안 세는 것**은 다르다. `evict` 가
+    convo+도구만 8192 아래로 눌러도 그 위에 system 이 얹히므로 실질 한계가 9,000~10,000
+    이 됐다. `inh30` 실측:
+
+        추정 토큰   system 중앙 881 (최대 1,802) · convo+도구 중앙 5,804 (최대 8,283)
+        system 이 전체에서 차지하는 비중 중앙 **17%**
+        실제 prompt_tokens 이 8192 를 넘은 콜 **220/1080 = 20%** · 최대 11,600
+
+    문맥 한계는 이 세계의 제약이고 그 압박에서 잃는 것이 관측 대상이다 (spec 4.5).
+    20% 가 새면 그 관측이 느슨해진다.
+
+    system 은 매 스텝 새로 만들어지고 길이가 변한다 (기억·학습표·도착분). 그래서
+    상수로 둘 수 없고 매번 잰다 — 문자열 길이 연산이라 값이 싸다.
+    """
+    return tool_tokens + estimate_tokens([{"role": "system", "content": system_prompt}])
+
+
 def _turn_blocks(convo: list[dict]) -> list[tuple[int, int]]:
     """대화를 턴 블록으로 나눈다. 블록 = user(관측) 하나 + 뒤따르는 assistant/tool."""
     idx = [i for i, m in enumerate(convo) if m.get("role") == "user"]
@@ -660,7 +681,7 @@ def under_pressure(agent, cfg) -> bool:
     return agent.last_prompt_tokens >= cfg.llm.context_limit * cfg.llm.warn_ratio
 
 
-def compact_after_memory(agent, cfg, tool_tokens: int) -> int:
+def compact_after_memory(agent, cfg, fixed: int) -> int:
     """**기억을 쓰면 앞쪽 대화를 버린다.** 버린 블록 수를 돌려준다.
 
     압박 경고는 「한계에 다가가고 있다」 는 사실 통지였는데, 경고를 받고 memory_write 를
@@ -682,9 +703,9 @@ def compact_after_memory(agent, cfg, tool_tokens: int) -> int:
     """
     target = cfg.llm.context_limit * cfg.llm.warn_ratio
     before = len(agent.convo)
-    agent.convo, dropped = evict(agent.convo, target, tool_tokens, min_blocks=2)
+    agent.convo, dropped = evict(agent.convo, target, fixed, min_blocks=2)
     if dropped:
-        agent.last_prompt_tokens = estimate_tokens(agent.convo, tool_tokens)
+        agent.last_prompt_tokens = estimate_tokens(agent.convo, fixed)
     del before
     return dropped
 
@@ -789,8 +810,10 @@ def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
     "error"), 계속하면 None. steps·actions·reasonings·calls 는 st 에 누적된다.
     """
     st.steps += 1
-    # 한계를 넘으면 오래된 턴 블록부터 버린다. system 은 convo 밖이라 안전하다.
-    agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, tool_tokens)
+    # 한계를 넘으면 오래된 턴 블록부터 버린다. system 은 축출 대상이 아니지만
+    # **예산에는 든다** (`fixed_tokens`).
+    fixed = fixed_tokens(tool_tokens, system_prompt)
+    agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, fixed)
     st.evicted += dropped
     messages = [{"role": "system", "content": system_prompt}, *agent.convo]
     t_call = time.time()
@@ -891,7 +914,7 @@ def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
         # 이득 없이 대화만 잃는다. 결과를 append 한 **뒤**에 도는 이유는, 방금 부른
         # 도구의 결과가 남은 블록 안에 들어가야 하기 때문이다.
         if name == "memory_write" and result.get("ok") and under_pressure(agent, cfg):
-            st.compacted += compact_after_memory(agent, cfg, tool_tokens)
+            st.compacted += compact_after_memory(agent, cfg, fixed)
         # 실패한 호출만 센다 (성공은 자원을 쓰므로 can_act 가 이미 막는다).
         if not result.get("ok"):
             key = f"{name}|{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
@@ -1003,8 +1026,10 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             ended_by = "exhausted"
             break
         steps += 1
-        # 한계를 넘으면 오래된 턴 블록부터 버린다. system 은 convo 밖이라 안전하다.
-        agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, tool_tokens)
+        # 한계를 넘으면 오래된 턴 블록부터 버린다. system 은 축출 대상이 아니지만
+        # **예산에는 든다** (`fixed_tokens`).
+        fixed = fixed_tokens(tool_tokens, system_prompt)
+        agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, fixed)
         evicted += dropped
         messages = [{"role": "system", "content": system_prompt}, *agent.convo]
         t_call = time.time()
@@ -1126,7 +1151,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             # 경로에서는 기억을 적어도 자리가 생기지 않고, 그 차이는 테스트가 한쪽만
             # 보면 안 보인다 (이 프로젝트에서 이미 겪은 부류다).
             if name == "memory_write" and result.get("ok") and under_pressure(agent, cfg):
-                compacted += compact_after_memory(agent, cfg, tool_tokens)
+                compacted += compact_after_memory(agent, cfg, fixed)
             # ③ 실패한 호출만 센다. 성공은 자원을 쓰므로 ②가 이미 막는다 —
             #    성공까지 세면 정상 행동(같은 상대에게 3번 말하기)이 끊긴다.
             if not result.get("ok"):
