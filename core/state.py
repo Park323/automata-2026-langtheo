@@ -80,6 +80,9 @@ class Country:
     land: str | None = None       # None | "bunker" | "interceptor". **투표로만 정해진다**
     progress: float = 0.0
     national_capital: float = 0.0
+    # **요격기를 짓는 효율.** 세계 생성 때 순열로 배정되고 변하지 않는다.
+    # 자국민에게는 보이고 타국민에게는 안 보인다 — 물어봐야 안다.
+    build_mult: float = 1.0
     # 열린 제안 하나. {target, by, opened_turn, vote_turn}
     # 제안 → 3턴 유예(상의할 시간) → 네 번째 턴에 찬반 투표.
     proposal: dict | None = None

@@ -93,8 +93,16 @@ def init_world(cfg, counter: "itertools.count", rng: random.Random | None = None
     agents: dict[str, Agent] = {}
     testaments: dict[str, list[str]] = {}
     defs = list(cfg.world.countries)
+    # **요격기 효율을 순열로 배정한다** (8/23). 독립 추출이면 평균이 1.0 에서 흔들리고
+    # 임계 창이 어긋난다. 시드마다 어느 나라가 최선인지 달라져야 나라 정체성·언어와
+    # 교락되지 않는다.
+    builds = list(cfg.facility.build_spread)
+    if len(builds) != len(defs):
+        raise ValueError(f"facility.build_spread 는 나라 수({len(defs)})와 같아야 한다 "
+                         f"— 지금 {len(builds)}개")
+    rng.shuffle(builds)
     for n, cdef in enumerate(defs):
-        countries[cdef.id] = Country(id=cdef.id, lang=cdef.lang)
+        countries[cdef.id] = Country(id=cdef.id, lang=cdef.lang, build_mult=builds[n])
         # 순환으로 이웃 나라 말을 하나 심는다. 어느 나라도 고립되지 않고,
         # 어느 나라도 두 개를 갖지 않는다.
         seeded = defs[(n + 1) % len(defs)].lang
@@ -121,6 +129,19 @@ def init_world(cfg, counter: "itertools.count", rng: random.Random | None = None
             testaments[aid] = []
     return World(turn=0, countries=countries, agents=agents, testaments=testaments,
                  next_idx={c.id: cfg.world.agents_per_country + 1 for c in countries.values()})
+
+
+def facility_eff(c, cfg) -> float:
+    """돈 1원이 시설 진척 시행 몇 번이 되는가. **세 곳에서 쓰던 식을 한 군데로 모았다.**
+
+    셋으로 갈라져 있었고 국가 효율을 넣으려면 세 곳을 다 고쳐야 했다 — 「숫자를 두 군데
+    적으면 하나가 낡는다」 가 식에도 적용된다.
+
+    `build_mult` 는 **요격기에만** 걸린다. 벙커까지 걸면 최고 효율 나라가 벙커를 골라도
+    손해가 없어져 함정이 무뎌진다.
+    """
+    eff = cfg.facility.eff * c.multiplier(cfg)
+    return eff * c.build_mult if c.land == "interceptor" else eff
 
 
 def _next_id(world: World, country: str) -> str:
@@ -353,7 +374,7 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
     #   과제 2 에서 LLM 이 크게 투자하면 실제 편향이 된다. 비례 배분 또는 라운드로빈으로 교체.
     for cid, invested in facility_invest.items():
         c = world.countries[cid]
-        eff = cfg.facility.eff * c.multiplier(cfg)   # 국가 투자로 갱신 (더미는 mult=1)
+        eff = facility_eff(c, cfg)                   # 국가 투자로 갱신 (더미는 mult=1)
         n = int(invested * eff)
         gained = sum(1 for _ in range(n) if rng.random() < cfg.world.success_prob)
         c.progress += gained
@@ -481,7 +502,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                 if agent_id in world.agents:
                     world.agents[agent_id].budget += (amount / total) * (total - cap)
         c = world.countries[cid]
-        eff = cfg.facility.eff * c.multiplier(cfg)
+        eff = facility_eff(c, cfg)
         # 출자자별로 따로 굴린다 — 각자 자기 출자가 얼마나 진척으로 바뀌었는지 알아야
         # 하기 때문이다(아래 통지). 합쳐서 한 번 굴리는 것과 분포는 같다.
         for amount, agent_id in sorted(entries, key=lambda x: x[1]):   # id 순 → 결정론
@@ -917,7 +938,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
             world.agents[agent_id].budget += excess       # 선착순 초과분 즉시 환급
         turn_facility[to_country] = used + share
         c = world.countries[to_country]
-        eff = cfg.facility.eff * c.multiplier(cfg)
+        eff = facility_eff(c, cfg)
         if c.land is None:
             gain = 0
         else:

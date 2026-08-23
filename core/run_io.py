@@ -310,6 +310,9 @@ class RunWriter:
             "land": {c.id: c.land for c in world.countries.values()},
             "national_capital": {c.id: round(c.national_capital, 3)
                                  for c in world.countries.values()},
+            # **요격기 효율.** 시드마다 배정이 달라지므로 로그에 없으면 어느 나라가
+            # 최선이었는지 사후에 복원할 수 없다 — 결과 해석의 전제다.
+            "build_mult": {c.id: c.build_mult for c in world.countries.values()},
             # **열린 제안.** vote 이벤트로만 남아 있어서, 제안이 열려 있던 구간을
             # 사후에 복원하려면 이벤트를 되짚어야 했다 — 採決 전에 무슨 말이 오갔는지를
             # 보려면 매 턴의 상태가 있어야 한다.

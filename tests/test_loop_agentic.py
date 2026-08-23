@@ -479,8 +479,9 @@ def test_the_year_opens_before_anything_that_happened_in_it():
         assert f"+{agent.income_this_year:.0f}" in users[0], aid
 
 
-def test_capital_notice_carries_the_multiplier():
-    """「기술력이 올랐다」 에 **배수를 싣는다** (8/23).
+def test_capital_notice_carries_the_gain_as_a_percentage():
+    """「기술력이 올랐다」 에 **얼마나인지를 싣는다** (8/23). 배수가 아니라 % 차이다 —
+    「1.174 배」 는 들어도 무엇이 얼마나 좋아졌는지 안 잡힌다.
 
     전에는 값이 없는 사실이라 해마다 한 번으로 접었다. 이제 값이 있으므로 그 제한을
     뗐고, 접는 일은 `render_inbox._add` 가 값으로 판단한다 — 진척과 같은 취급이다.
@@ -494,12 +495,11 @@ def test_capital_notice_carries_the_multiplier():
     res = _run(cfg, clients, seed=3, parallel=False, sequential=True)
     blob = "\n".join(m["content"] for m in res.world.agents["Asla2"].convo
                      if m["role"] == "user")
-    assert "倍になりました" in blob
-    # 배수는 1 보다 크고, 실제 국가자본에서 나온 값이어야 한다
-    got = {float(x) for x in re.findall(r"技術力が上がって ([\d.]+) 倍", blob)}
-    assert got and all(v > 1.0 for v in got), got
-    assert max(got) == pytest.approx(
-        res.world.countries["Asla"].multiplier(cfg), abs=1e-3)
+    assert "技術力が上がりました" in blob
+    # % 는 0 보다 크고, 실제 국가자본에서 나온 배수와 맞아야 한다
+    got = {int(x) for x in re.findall(r"進捗になる量も (\d+)% 多く", blob)}
+    assert got and all(v > 0 for v in got), got
+    assert max(got) == round((res.world.countries["Asla"].multiplier(cfg) - 1) * 100)
 
 
 def test_identical_rows_inside_one_batch_collapse():
@@ -508,11 +508,16 @@ def test_identical_rows_inside_one_batch_collapse():
     world = init_world(cfg, itertools.count(1))
     a = world.agents["Asla1"]
     ev = prompts.render_events(a, [{"cap_up": True, "cap_now": 1.234}] * 3)
-    assert ev.count("倍になりました") == 1
-    # **배수가 달라지면 접히지 않는다** — 값이 있는 사실이 된 뒤의 규칙이다
+    assert ev.count("多く出ます") == 1
+    # **같은 %로 떨어지면 접힌다.** 한 차례 상승분은 0.2%p 정도라 대개 같은 정수에
+    # 떨어진다 — 경계를 걸치면(23.4 → 23.6) 갈리지만, 그건 실제로 눈금이 바뀐 것이다.
+    ev2b = prompts.render_events(a, [{"cap_up": True, "cap_now": 1.231},
+                                     {"cap_up": True, "cap_now": 1.234}])
+    assert ev2b.count("多く出ます") == 1
+    # **눈에 띄게 오르면 새 줄이 된다**
     ev3 = prompts.render_events(a, [{"cap_up": True, "cap_now": 1.234},
-                                    {"cap_up": True, "cap_now": 1.241}])
-    assert ev3.count("倍になりました") == 2
+                                    {"cap_up": True, "cap_now": 1.291}])
+    assert ev3.count("多く出ます") == 2
     # 값이 다르면 접히지 않는다
     ev2 = prompts.render_events(a, [{"prog_up": 18, "now": 18},
                                     {"prog_up": 34, "now": 52}])

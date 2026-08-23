@@ -128,6 +128,7 @@ T = {
         inv_well="  wellness   あなたの健康が良くなる",
         inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n                          observe_risk の精度も良くなる。国民全員に及ぶ",
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n                          （省くと自国）",
+        inv_build="  自国の interceptor に 100 を出すと、平均 {v:.0f} の進捗になります。この量は国ごとに\n                          違い、他国の値は見えません — 聞くほかありません。",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
         rtt="送ったメッセージは翌年に届きます。返事が来るのはさらにその翌年です。",
         rtt_same="送ったメッセージは、相手が次に動くときに届きます。同じ年のうちに返事が来ることもあります。",
@@ -150,7 +151,7 @@ T = {
         fac_moved="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
         fac_still="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
         prog_up="  自国の進捗が {gain:.0f} 進んで {now:.0f} になりました。",
-        cap_up="  自国の技術力が上がって {now:.3f} 倍になりました。",
+        cap_up="  自国の技術力が上がりました。何もなかった頃より、収入も、出した額が進捗になる量も {pct:.0f}% 多く出ます。",
         ballot_kept="  採決の結果、建てるものは {land} のままです。",
         ballot_new="  採決の結果、建てるものは {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
         ballot_none="  採決では何も決まりませんでした。建てるものは {land} のままです。",
@@ -204,6 +205,7 @@ T = {
         inv_well="  wellness   你的健康会变好",
         inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n                          observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
+        inv_build="  给本国的 interceptor 投 100，平均会变成 {v:.0f} 的进度。这个量因国而异，\n                          别国的数值你看不到 — 只能问。",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
         rtt="你发出的消息在第二年送达。对方的回信要再过一年才会到。",
         rtt_same="你发出的消息，会在对方下次行动时送达。回信也可能在同一年内到来。",
@@ -225,7 +227,7 @@ T = {
         fac_moved="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
         fac_still="  你去年投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
         prog_up="  本国的进度前进了 {gain:.0f}，现在是 {now:.0f}。",
-        cap_up="  本国的技术水平提高，现在是 {now:.3f} 倍。",
+        cap_up="  本国的技术水平提高了。比起一无所有时，收入和投入变成进度的量都多出 {pct:.0f}%。",
         ballot_kept="  表决的结果，要建的设施仍是 {land}。",
         ballot_new="  表决的结果，要建的设施定为 {land}。此前的进度 {lost:.0f} 已失去。",
         ballot_none="  表决没有决定任何事。要建的设施仍是 {land}。",
@@ -285,6 +287,7 @@ T = {
                           "             s'améliorent, pour tous ses habitants",
         inv_fac="  facility   contribue à la progression d'une installation ; `to` nomme la nation —\n"
                           "             la vôtre ou une autre (sans `to`, la vôtre)",
+        inv_build="  Verser 100 à l'interceptor de votre nation donne en moyenne {v:.0f} de progression.\n                          Cette quantité varie selon les nations ; les valeurs des autres ne vous\n                          sont pas visibles — il faut demander.",
         cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
         rtt="Un message part et arrive l'année suivante ; une réponse n'arrive que l'année d'après.",
         rtt_same="Votre message arrive quand le destinataire agit la fois suivante ; une réponse peut venir dans la même année.",
@@ -307,7 +310,7 @@ T = {
         fac_moved="  Votre versement de {amt:.0f} l'an dernier a fait progresser {to}.",
         fac_still="  Votre versement de {amt:.0f} l'an dernier n'a fait progresser {to} en rien.",
         prog_up="  La progression de votre nation a avancé de {gain:.0f} ; elle est à {now:.0f}.",
-        cap_up="  Le niveau technique de votre nation s'est élevé : il est à {now:.3f}×.",
+        cap_up="  Le niveau technique de votre nation s'est élevé : le revenu et la progression tirée d'un versement sont {pct:.0f}% au-dessus du point de départ.",
         ballot_kept="  Au scrutin, ce qu'on bâtit reste {land}.",
         ballot_new="  Au scrutin, ce qu'on bâtit devient {land}. La progression acquise, {lost:.0f}, est perdue.",
         ballot_none="  Le scrutin n'a rien décidé. Ce qu'on bâtit reste {land}.",
@@ -586,9 +589,13 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
             _add(t["prog_up"].format(gain=m["prog_up"], now=m["now"]))
             continue
         if m.get("cap_up"):                    # 자국 기술력이 올랐다 (PUBLIC)
-            # **배수를 적는다** (8/23). 값이 있으니 같은 값이면 `_add` 가 접고,
-            # 달라지면 새 줄이 된다 — 진척과 같은 취급이다.
-            _add(t["cap_up"].format(now=m["cap_now"]))
+            # **배수가 아니라 % 차이로 적는다** (8/23). 「1.174 배」 는 들어도 무엇이
+            # 얼마나 좋아졌는지 안 잡힌다 — 「17% 더 나온다」 는 바로 결정에 쓰인다.
+            #
+            # 정수 %로 끊는 것이 노이즈 억제도 겸한다. 한 차례 상승분은 0.002 배라
+            # 소수점을 살리면 매번 다른 줄이 되는데, %로 끊으면 같은 값은 `_add` 가
+            # 접고 실제로 눈에 띄게 오른 때만 새 줄이 된다.
+            _add(t["cap_up"].format(pct=(m["cap_now"] - 1.0) * 100))
             continue
         if m.get("ballot"):                    # 採決 결과 (PUBLIC)
             b = m["ballot"]
@@ -767,6 +774,16 @@ def render_observation(world, agent, cfg, knob_ai: float,
         render_costs(world, agent, cfg, knob_ai, memory=mem_open),
         "",
         t["inv_hdr"], t["inv_well"], t["inv_natl"], t["inv_fac"],
+        # **자국의 요격기 속도.** 나라마다 다르고 남의 것은 안 보인다 — 물어봐야 안다.
+        # 이것이 「어디에 몰아줄 것인가」 를 대화로만 풀 수 있게 만든다.
+        # **100원당 기대 진척으로 적는다.** 「기준보다 +30%」 로 적어 봤더니 평균인 나라가
+        # 「+0%」 를 받았고, 무엇보다 보이지 않는 「기준」 을 알아야 읽히는 문장이었다.
+        # 100 당 몇인지는 그 자체로 뜻이 있고, 말로 옮기면 그대로 비교된다.
+        #
+        # 국가 기술력도 함께 담긴다 — 이 수는 자국의 **지금** 속도다.
+        t["inv_build"].format(
+            v=100 * cfg.facility.eff * world.countries[agent.country].multiplier(cfg)
+            * world.countries[agent.country].build_mult * cfg.world.success_prob),
         # **내가 어느 나라 시설에 얼마를 냈는지.** 내 행동의 합이라 상대 국가 정보를
         # 흘리지 않는다. 그 나라의 총 진척은 여전히 안 알려준다 (자국은 위에 있고,
         # 타국은 4.1).
