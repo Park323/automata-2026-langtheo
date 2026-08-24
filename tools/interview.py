@@ -73,7 +73,7 @@ def _rows(run: pathlib.Path, name: str) -> list[dict]:
     p = run / name
     if not p.exists():
         raise SystemExit(f"{p} 가 없습니다")
-    return [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+    return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
 
 
 def _running(run: pathlib.Path) -> bool:
@@ -218,7 +218,7 @@ def show_history(run: pathlib.Path, agent: str | None) -> None:
     p = run / "interviews.jsonl"
     if not p.exists():
         raise SystemExit(f"{p} 가 없습니다 — 아직 물어본 적이 없습니다")
-    rows = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+    rows = [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
     if agent:
         rows = [r for r in rows if r["agent"] == agent]
     by = defaultdict(list)

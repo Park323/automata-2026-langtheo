@@ -66,8 +66,13 @@ def report(c: Cfg, seeds: int) -> int:
     A, B, C, E = bounds(c)
     lo, hi = max(A, B, E), C * POLICY_COEF
     k = c.facility_eff * c.success_prob
-    epoch_progress = c.income * mean_age_multiplier(c) * c.agents * c.epoch_turns * k
-    whole_progress = c.income * c.agents * c.total_turns * k
+    # **두 줄이 같은 자를 써야 한다** (#48). 아래 줄에만 나이 배수가 빠져 있어서 전 기간
+    # 진척을 5,400 으로 찍었다 — 실제 7,361 보다 27% 낮다. 그 수로 보면 벙커 4,900 이
+    # 전 기간의 91% 라 「상한에 거의 붙었다」 로 읽히는데, 실제로는 67% 다.
+    # `core.asserts.check_all` 은 배수를 넣어 재고 있었으므로 **두 구현이 갈려 있었다.**
+    eff = c.income * mean_age_multiplier(c)
+    epoch_progress = eff * c.agents * c.epoch_turns * k
+    whole_progress = eff * c.agents * c.total_turns * k
 
     print(f"세계   {c.total_turns}턴 · 주기 {c.epoch_turns} · 국가당 {c.agents}명 · "
           f"소득 {c.income:.0f}/턴 · 기대수명 {expected_life(c.surv_lambda, c.surv_k):.2f}턴")
@@ -86,9 +91,11 @@ def report(c: Cfg, seeds: int) -> int:
     print("벙커")
     print(f"   깊이척도 {c.bunker:.0f} · 한 주기 진척 {epoch_progress:.0f} · "
           f"전 기간 {whole_progress:.0f} · {c.bunker / epoch_progress:.2f} 주기분")
-    b1 = c.bunker / (c.agents * c.epoch_turns)
+    # **같은 기간으로 나눈다** (#51). 벙커만 한 주기로 나누면 비가 3.34배로 찍히는데,
+    # 맞추면 1.11배다 — 함정의 크기를 세 배로 읽고 있었다.
+    b1 = c.bunker / (c.agents * c.total_turns)
     i1 = c.interceptor / (3 * c.agents * c.total_turns)
-    print(f"   1인부담  벙커 {b1:.1f} > 요격기 {i1:.1f}   "
+    print(f"   1인부담  벙커 {b1:.1f} > 요격기 {i1:.1f}  ({c.total_turns}해·사람당, 비 {b1 / i1:.2f})  "
           f"{'OK' if b1 > i1 else '위반 — 벙커가 더 싸면 함정이 아니다'}")
     print(f"   성장     growth_coef {c.growth_coef} · growth_scale {c.growth_scale:.0f} "
           f"(한 주기 국가소득의 {c.growth_scale / (c.income * c.agents * c.epoch_turns):.2f}배)")

@@ -129,7 +129,9 @@ def passes_asserts(c: Cfg):
         return False, "벙커가 한 주기로 너무 깊어진다"
     if not c.bunker <= whole_progress:
         return False, "벙커가 전 기간을 부어도 의미 있는 깊이에 못 간다"
-    b1 = c.bunker / (c.agents * c.epoch_turns)
+    # **같은 기간으로 나눈다** (#51). 벙커만 한 주기로 나누고 있었다 — `core.asserts` 와
+    # 같은 자를 써야 두 도구가 같은 말을 한다.
+    b1 = c.bunker / (c.agents * c.total_turns)
     i1 = c.interceptor / (3 * c.agents * c.total_turns)
     if not b1 > i1:
         return False, "벙커 1인부담 <= 요격기 1인부담"
@@ -310,12 +312,15 @@ def evaluate(c: Cfg, seeds: int, coords=(0.2, 0.9)):
 # ── 스윕 ───────────────────────────────────────────────────────────
 GRID = {
     "income":         [100],          # 확정 (7장 기준 단위)
-    "total_turns":    [50],           # 확정 (12.4)
-    "epoch_turns":    [10],           # 확정. 기대수명 반올림
+    # **config 를 따라간다** (#52). 50 · 10 · 8.26 이 남아 있었다 — 세계는 8/21 에 60해로,
+    # 수명은 8/19 에 두 배(16.52)로 갔다. 낡은 격자로 훑으면 **지금 없는 세계**에서 후보를
+    # 고르게 된다. 확정 뒤의 재검증은 `verify_config.py` 가 맡는다.
+    "total_turns":    [60],           # 확정 (configs/base.yaml · world.total_turns)
+    "epoch_turns":    [20],           # 확정. total_turns / 3 (기대수명 반올림이 아니다)
     "success_prob":   [0.3, 0.5, 0.7],
     "growth_coef":    [0.2],   # 0.3 은 유치국 혼자 91% 에 닿아 ★B 여유가 8.7% 뿐
     "surv_k":         [8],
-    "surv_lambda":    [8.26],
+    "surv_lambda":    [16.52],        # 왕복 하나에 두 턴이 든다 (8/19 에 8.26 에서 두 배)
     "wellness_gain":  [0.008],
     "facility_eff":   [1.0],
 }

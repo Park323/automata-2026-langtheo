@@ -92,7 +92,12 @@ def main():
                      (1, "사유 1 (국내 구사자 또는 부모)"),
                      (2, "사유 2 (국내 구사자 + 부모)")):
         m = 1.0 + cfg.costs.learn_speedup * r
-        marks.append((label, m, L / m, AP and (L / (cfg.costs.unit * m)) * cfg.ap.unit))
+        # **총지출과 총 AP 는 다른 자로 나온다** (#49). 지출은 `L / 배수` 로 연속이지만,
+        # AP 는 **호출 수**에 걸리고 호출 수는 올림이다 — 마지막 한 번은 남은 만큼만 내도
+        # AP 는 그대로 한 번을 먹는다. 전에는 둘 다 `1/배수` 로 적어 AP 를 0.67·0.50 으로
+        # 찍었는데 실제로는 0.8·0.6 이다.
+        calls = math.ceil(L / (cfg.costs.unit * m) - 1e-9)
+        marks.append((label, m, L / m, calls * cfg.ap.unit))
 
     print("=" * 84)
     print("학습 암묵효용 x 의 자 맞추기 — 산수. ③만 몬테카를로")
@@ -125,9 +130,11 @@ def main():
     edges = " ".join(f"[{lo:.0f}, {hi:.0f})" for lo, hi in
                      zip([0] + costs, costs)) + f" [{costs[-1]:.0f}, ∞)"
     print(f"\n  → x 를 네 구간으로 나눕니다: {edges}")
-    print("  ⚠ 지출과 AP 가 **같은 비율로** 줄어듭니다 (둘 다 1/배수). 그래서 이 자는")
-    print("    「돈이 없어서」 와 「AP 가 없어서」 를 구분하지 못합니다 — 로그의 거부 사유로만")
-    print("    갈립니다 (`insufficient_budget` / `insufficient_ap`).")
+    print("  ⚠ 지출과 AP 는 **같은 비율로 줄지 않습니다** (#49). 지출은 L/배수 로 연속이고")
+    print("    (1 : 0.667 : 0.500), AP 는 호출 수에 걸려 올림입니다 (1 : 0.8 : 0.6). 그래서")
+    print("    이 자는 「돈이 없어서」 와 「AP 가 없어서」 를 **조금은** 가릅니다 — 다만 그 차이가")
+    print("    작으므로 판정은 여전히 로그의 거부 사유에 기댑니다")
+    print("    (`insufficient_budget` / `insufficient_ap`).")
 
     print("\n" + "=" * 84)
     print("② 나이가 자를 흔듭니다")

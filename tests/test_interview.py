@@ -29,10 +29,10 @@ def run(tmp_path):
                        "alive": True, "known_langs": [lang], "born_by": "natural",
                        "native_lang": lang})
     (d / "state.jsonl").write_text(
-        "\n".join(json.dumps(r, ensure_ascii=False) for r in st) + "\n")
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in st) + "\n", encoding="utf-8")
     (d / "events.jsonl").write_text(json.dumps(
         {"turn": 3, "type": "death", "who": "Asla1", "born": "Asla2", "age": 12,
-         "country": "Asla"}, ensure_ascii=False) + "\n")
+         "country": "Asla"}, ensure_ascii=False) + "\n", encoding="utf-8")
     raw = [{"kind": "agent", "turn": t, "agent": "Ranoa1", "step": 2, "age": 5 + t,
             "country": "Ranoa", "call_id": f"c{t:05d}",
             "request": {"model": "m/x", "messages": [
@@ -40,7 +40,7 @@ def run(tmp_path):
                 {"role": "user", "content": f"{t}년"}]},
             "response": {"usage": {}}} for t in (1, 2, 3)]
     (d / "raw_calls.jsonl").write_text(
-        "\n".join(json.dumps(r, ensure_ascii=False) for r in raw) + "\n")
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in raw) + "\n", encoding="utf-8")
     return d
 
 
@@ -92,7 +92,7 @@ def test_nothing_reaches_the_experiment_logs(run):
     assert "agent.convo" not in src               # 세계의 대화를 건드리지 않는다
     assert "raw(" not in src
 
-    whole = pathlib.Path(interview.__file__).read_text()
+    whole = pathlib.Path(interview.__file__).read_text(encoding="utf-8")
     assert "raw_calls" in whole                   # 읽기는 한다
     assert '"raw_calls.jsonl"' in whole
     # 쓰기는 interviews.jsonl 하나뿐이다

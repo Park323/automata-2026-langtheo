@@ -227,7 +227,7 @@ def main() -> None:
                               overwrite=resuming, append=resuming)
     if resuming:
         import json as _j
-        print(f"  이어하기 — {_j.loads(ckpt.read_text())['turn']}턴까지 완료된 상태에서 재개")
+        print(f"  이어하기 — {_j.loads(ckpt.read_text(encoding='utf-8'))['turn']}턴까지 완료된 상태에서 재개")
     agent_client.inner.recorder = writer.recorder(kind="agent")
     translator.inner.recorder = writer.recorder(kind="translate")
 
