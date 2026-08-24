@@ -47,6 +47,11 @@ class Cfg:
     # 나이 배수를 안 넣으면 창이 실제보다 좁아지고 임계가 「도달 가능」 쪽에 붙는다.
     age_growth: float = 0.0
     adult_age: int = 10
+    # **가장 잘 짓는 나라의 효율** (8/23). 나라마다 요격기 진척 속도가 다르므로
+    # (`facility.build_spread`) 네 조건이 「최선의 나라에 몰아줬을 때」 로 걸려야 한다.
+    # ★B 가 결정적이다 — 혼자 해내면 안 되는 것은 **가장 잘 짓는 나라**다.
+    # 벙커에는 안 걸린다 (요격기 전용).
+    build_best: float = 1.0
 
 
 # ── 수명 ───────────────────────────────────────────────────────────
@@ -91,7 +96,7 @@ def bounds(c: Cfg):
     성장은 유도에서 뺀다. 성장은 국가 투자의 결과이고 그 돈은 요격기와 경쟁하므로,
     성장을 전제로 임계를 잡으면 "국가 투자를 안 하면 구조적으로 도달 불가" 가 된다.
     """
-    k = c.facility_eff * c.success_prob
+    k = c.facility_eff * c.success_prob * c.build_best
     # 실효 소득 — 나이 배수의 평균을 곱한다 (`core.asserts.mean_age_multiplier` 와 같은 식)
     per_turn_country = c.income * mean_age_multiplier(c) * c.agents
     whole = per_turn_country * c.total_turns
@@ -105,6 +110,7 @@ def bounds(c: Cfg):
 
 def passes_asserts(c: Cfg):
     A, B, C, E = bounds(c)
+    # **벙커에는 `build_best` 를 안 곱한다** — 국가 효율은 요격기 전용이다 (8/23).
     k = c.facility_eff * c.success_prob
     # **실효 소득으로 잰다** (8/22) — `bounds()` 와 같은 식이다. 여기만 안 곱하면 벙커 창이
     # 창보다 좁아져서 「전 기간을 부어도 의미 없다」 가 거짓으로 걸린다.
@@ -197,7 +203,10 @@ def simulate(c: Cfg, policy, coord: float, rng: random.Random):
                 for tgt, amt in ((i, own), (host, to_host)):
                     if amt <= 0:
                         continue
-                    n = int(amt * eff)
+                    # **받는 나라의 요격기 효율** (8/23). 조율이 완벽하다는 것은 부지를
+                    # 하나로 모은다는 뜻이고, 합리적인 조율자는 **가장 잘 짓는 나라**를
+                    # 고른다 — 그래서 host 는 `build_best` 다. 자국 투자는 나라 평균(1.0).
+                    n = int(amt * eff * (c.build_best if tgt == host else 1.0))
                     prog[tgt] += sum(1 for _ in range(n)
                                      if rng.random() < c.success_prob)
         # 턴 끝 — 개인별 생존 판정. 죽으면 그 자리에 0 상태 신규

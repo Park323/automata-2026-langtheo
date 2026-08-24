@@ -70,12 +70,15 @@ class AP:
     speak: float
     propose_vote: float
     memory_write: float
-    give: float = 0.2
-    observe_risk: float = 0.3
-    vote: float = 0.05             # 採決과 제안은 무게가 다르다 (4.4)
+    # **기본값을 두지 않는다.** 넷 다 기본값이 있었고 셋이 yaml 과 달랐다
+    # (give 0.2/0.1 · observe_risk 0.3/0.5 · unit 0.1/0.2). 「숫자를 두 군데 적으면
+    # 하나가 낡는다」 — yaml 이 유일한 출처다.
+    give: float
+    observe_risk: float
+    vote: float                    # 採決과 제안은 무게가 다르다 (4.4)
     # **한 번의 invest·learn 이 먹는 AP.** 금액은 costs.unit 으로 고정이라 금액별 계산이
     # 없다 — learn_full·invest_wellness·invest_per_ap 를 그래서 없앴다 (4.4).
-    unit: float = 0.1
+    unit: float
 
 
 @dataclass(frozen=True)
@@ -116,6 +119,16 @@ class Facility:
     # **기본값 있는 필드는 맨 뒤로.** 이 프로젝트에서 네 번째로 밟은 자리다 —
     # dataclass 는 기본값 뒤에 기본값 없는 필드를 두면 거절한다.
     throughput_spread: tuple = (1.0,)
+    # **나라마다 요격기를 짓는 속도가 다르다** (8/23). 같은 돈이 나라에 따라 다른
+    # 진척이 된다 — 개체별 `throughput_spread` 의 국가판이다. 국가 단위 비교우위를
+    # 만들어 「어디에 몰아줄 것인가」 를 진짜 문제로 만든다.
+    #
+    # 나라 수만큼의 **순열**로 배정한다 — 독립 추출이면 평균이 1.0 에서 흔들리고,
+    # 그러면 임계 창이 어긋난다.
+    #
+    # **벙커에는 안 걸린다.** 요격기에만 걸어야 「최고 효율 나라가 벙커를 골랐다」 가
+    # 진짜 손실이 되고, 함정이 더 날카로워진다.
+    build_spread: tuple = (1.0,)
 
 
 @dataclass(frozen=True)

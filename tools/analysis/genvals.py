@@ -57,6 +57,7 @@ def main() -> None:
     print(f"            실효소득 배수 {m:.3f} (정상 연령분포 — `mean_age_multiplier`)")
     print(f"처리량      throughput_spread {list(c.facility.throughput_spread)} · "
           f"facility.eff {c.facility.eff}")
+    print(f"국가효율    build_spread {list(c.facility.build_spread)} (요격기 전용 · 순열 배정)")
     print(f"성장        growth_coef {c.growth.growth_coef} / scale {c.growth.growth_scale:.0f} · "
           f"wellness.gain {c.wellness.gain}")
     print(f"문맥        context_limit {c.llm.context_limit} · warn_ratio {c.llm.warn_ratio} · "

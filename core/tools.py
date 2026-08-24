@@ -77,7 +77,10 @@ def _build(reasoning_arg: bool) -> list[dict]:
 
     fn("invest",
         "Put one fixed amount into a resource; the observation shows how much money and "
-        "how much action it takes. "
+        "how much action it takes. **The money is not a fee — it is the investment "
+        "itself.** How much one call moves differs from person to person; how much "
+        "progress a given sum buys differs from nation to nation. The two are set "
+        "separately. That amount is yours; you cannot see anyone else's, so ask them. "
         "`national` raises your nation's technical level, which "
         "lifts income, how much progress a facility gets out of what is put into it, and "
         "the precision of observe_risk — for everyone in that nation. "
