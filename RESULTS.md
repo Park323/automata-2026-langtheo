@@ -748,10 +748,10 @@ agent 지연   중앙 3.6s · 95% 10.6s · 최대 2,930s
 에이전트    qwen/qwen3.6-35b-a3b      「모델 선택」 절
 
 income      per_turn 100 · initial_budget 0
-            age_growth 0.1 · spread [0.6, 0.8, 1.0, 1.2, 1.4]
+            age_growth 0.1 · spread [0.4, 0.7, 1.0, 1.3, 1.6]
 비용        국내 3 / 국제원문 5 · 노브 [6, 12, 24, 48]
             unit 40원 · observe_risk 20 · propose_vote 0
-행동력      speak 0.2 · unit 0.2 · give 0.2 · vote 0.05
+행동력      speak 0.2 · unit 0.2 · give 0.1 · vote 0.05
             observe_risk 0.5 · propose_vote 0.6
 학습        learn_base 200 (고정) · speedup +0.5 / 사유
 수명        k 8 · λ 16.52
@@ -759,10 +759,11 @@ income      per_turn 100 · initial_budget 0
 세계        total_turns 60 · epoch 20 · success_prob 0.3
             adult_age 5 · 첫 해 나이 1~10
             agents_per_country 3
-임계        interceptor 13029 · bunker_scale 4900
-            창 A 7,361 · B 7,361 · E 8,833 < 임계 < C×0.6 13,250
+임계        interceptor 13206 · bunker_scale 4900
+            창 A 9,569 · B 9,569 · E 11,483 < 임계 < C×0.6 17,225
             실효소득 배수 1.363 (정상 연령분포 — `mean_age_multiplier`)
-처리량      throughput_spread [0.6, 0.8, 1.0, 1.2, 1.4] · facility.eff 1.0
+처리량      throughput_spread [0.4, 0.7, 1.0, 1.3, 1.6] · facility.eff 1.0
+국가효율    build_spread [0.7, 1.0, 1.3] (요격기 전용 · 순열 배정)
 성장        growth_coef 0.2 / scale 3000 · wellness.gain 0.008
 문맥        context_limit 8192 · warn_ratio 0.7 · max_tokens 2048
 길이        fr 400 / ja 130 / zh 90

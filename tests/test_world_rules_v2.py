@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import copy
 import itertools
 import json
 import random
@@ -37,9 +38,9 @@ def world(cfg):
     return w
 
 
-def _settle(world, cfg, sink, result=None):
+def _settle(world, cfg, sink, result=None, rng=None):
     result = result or loop.RunResult(world=world)
-    loop._settle_agentic(world, cfg, random.Random(0), sink, None, 48.0,
+    loop._settle_agentic(world, cfg, rng or random.Random(0), sink, None, 48.0,
                          itertools.count(500), result, itertools.count(900))
     return result
 
@@ -290,6 +291,44 @@ def test_foreign_money_digs_whatever_they_are_building(cfg, world):
     (e,) = [x for x in world.inbox_queue if "fac_moved" in x["msg"]]
     assert e["msg"]["fac_moved"] is True and "fac_gain" not in e["msg"]
     assert "bunker" not in json.dumps(e["msg"]) and "interceptor" not in json.dumps(e["msg"])
+
+
+def test_a_nation_builds_interceptors_at_its_own_speed(cfg, world):
+    """**나라마다 요격기 진척 속도가 다르다** (8/23). 국가 단위 비교우위 —
+    「어디에 몰아줄 것인가」 가 진짜 문제가 된다.
+
+    같은 돈, 같은 사람, 같은 시드인데 받는 나라만 다르면 진척이 달라져야 한다.
+    """
+    world.countries["Ranoa"].land = "interceptor"
+    world.countries["Miris"].land = "interceptor"
+    world.countries["Ranoa"].build_mult = 1.3
+    world.countries["Miris"].build_mult = 0.7
+    got = {}
+    for cid in ("Ranoa", "Miris"):
+        w = copy.deepcopy(world)
+        sink = Sink()
+        sink.facility = [(cid, 3000.0, "Asla1")]      # 표본을 키워 분산을 누른다
+        _settle(w, cfg, sink, rng=random.Random(7))
+        got[cid] = w.countries[cid].progress
+    assert got["Ranoa"] > got["Miris"], got
+    # 배수 비(1.3/0.7 = 1.86)에 대략 맞아야 한다 — 확률이라 넉넉하게 본다
+    assert 1.5 < got["Ranoa"] / got["Miris"] < 2.3, got
+
+
+def test_the_nation_speed_does_not_touch_bunkers(cfg, world):
+    """**벙커에는 안 걸린다.** 걸면 최고 효율 나라가 벙커를 골라도 손해가 없어져
+    함정이 무뎌진다 — 요격기 전용이라야 「잘 짓는 나라가 벙커를 골랐다」 가 진짜 손실이다.
+    """
+    got = {}
+    for mult in (0.7, 1.3):
+        w = copy.deepcopy(world)
+        w.countries["Ranoa"].land = "bunker"
+        w.countries["Ranoa"].build_mult = mult
+        sink = Sink()
+        sink.facility = [("Ranoa", 3000.0, "Asla1")]
+        _settle(w, cfg, sink, rng=random.Random(7))
+        got[mult] = w.countries["Ranoa"].progress
+    assert got[0.7] == got[1.3], got        # 같은 시드 · 같은 돈 → 완전히 같다
 
 
 def test_invest_tool_states_the_rule(cfg):

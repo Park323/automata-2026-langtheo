@@ -35,7 +35,7 @@ def _with(**overrides) -> Config:
 
 def test_valid_config_loads():
     cfg = config.load(BASE)
-    assert cfg.thresholds.interceptor == 13029     # 실효소득 창의 0.95 지점 (8/22)
+    assert cfg.thresholds.interceptor == 13206     # 창의 0.30 지점 (8/23)
     assert cfg.k == pytest.approx(0.3)          # eff 1.0 × success_prob 0.3
 
 
@@ -56,7 +56,9 @@ def test_window_values():
     # `per_turn × n × total` 보다 크다. 그 값을 그대로 쓰면 창이 좁아지고 임계가
     # 「도달 가능」 쪽에 붙는다.
     per = cfg.income.per_turn * asserts.mean_age_multiplier(cfg)
-    k = cfg.k
+    # **가장 잘 짓는 나라 기준** (8/23). 나라마다 요격기 진척 속도가 다르므로 네 조건이
+    # 모두 최선의 나라에 몰아줬을 때로 걸린다 — ★B 가 그 기준을 강제한다.
+    k = cfg.k * max(cfg.facility.build_spread)
     assert a == pytest.approx(3 * per * n * epoch * k)
     assert b == pytest.approx(per * n * total * k)
     assert e == pytest.approx(3 * per * n * (total - epoch) * k * 0.6)

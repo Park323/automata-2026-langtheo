@@ -59,8 +59,34 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from tools.score import judge  # noqa: E402
 
-RUNGS = (0.25, 0.5, 1.0)          # L/4 · L/2 · L
-RUNG_NAME = {0.25: "L/4", 0.5: "L/2", 1.0: "L"}
+# **눈금은 `learn_speedup` 에서 유도한다** (8/23). 8/22 에 학습 할인이 **가속**으로
+# 바뀌면서 이 상수가 조용히 거짓이 됐다:
+#
+#   할인 모델   필요액이 L · L/2 · L/4 로 달라졌다 → rung = required / L 이 눈금이었다
+#   가속 모델   필요액은 **늘 L** 이고 회당 수확이 배속을 탄다
+#               → 총 지출은 L / 배속 이고, rung 은 **1/배속** 이다
+#
+# 그날부터 `required` 가 상수라 `_snap_rung` 이 **언제나 1.0** 을 냈다. 눈금이 하나로
+# 붕괴해 x̂ 가 네 구간이 아니라 「x ≥ L」/「x < L」 두 갈래만 낼 수 있었다 (spec 7 파괴).
+# 뷰어의 「L×1」 이 그 증상이었다.
+def rungs_for(speedup: float, max_reasons: int = 2) -> tuple[float, ...]:
+    """사유 수(0..max_reasons)별 **총 지출 / L**. 사유가 많을수록 작다."""
+    return tuple(sorted({round(1.0 / (1.0 + speedup * r), 4)
+                         for r in range(max_reasons + 1)}))
+
+
+def rung_name(r: float) -> str:
+    """1.0 → "L", 0.6667 → "L/1.5", 0.5 → "L/2".
+
+    **역수를 두 자리로 끊는다** — `rungs_for` 가 눈금을 4자리로 반올림하므로 그대로
+    나누면 1/0.6667 = 1.49993 이 되어 「L/1.49993」 이 찍힌다.
+    """
+    if abs(r - 1.0) < 1e-9:
+        return "L"
+    return f"L/{round(1.0 / r, 2):g}"
+
+
+DEFAULT_SPEEDUP = 0.5             # config 를 못 읽을 때만. 정상 경로는 스냅샷에서 읽는다
 AGE_BANDS = ((0, 2), (3, 5), (6, 99))
 BAND_NAME = {(0, 2): "0-2", (3, 5): "3-5", (6, 99): "6+"}
 
@@ -70,12 +96,6 @@ def band_of(age: int) -> tuple[int, int]:
         if lo <= age <= hi:
             return (lo, hi)
     return AGE_BANDS[-1]
-
-
-def _snap_rung(charged: float, base: float) -> float:
-    """지불액을 가장 가까운 눈금으로 붙인다. 부동소수 오차만 흡수한다."""
-    r = charged / base if base else 0.0
-    return min(RUNGS, key=lambda x: abs(x - r))
 
 
 # ── 관측 만들기 ─────────────────────────────────────────────────────────────────
@@ -98,12 +118,15 @@ def observations(run_dir: Path) -> tuple[list[dict], dict, list[dict]]:
     diag: dict = {"no_budget_start": 0, "learns": 0, "opportunities": 0}
 
     base = None
+    speedup = DEFAULT_SPEEDUP
     langs: dict[str, str] = {}          # 국가 → 언어
     cs = rd / "config_snapshot.yaml"
     if cs.exists():
         import yaml
         snap = yaml.safe_load(cs.read_text(encoding="utf-8")) or {}
-        base = ((snap.get("config") or {}).get("costs") or {}).get("learn_base")
+        costs = (snap.get("config") or {}).get("costs") or {}
+        base = costs.get("learn_base")
+        speedup = costs.get("learn_speedup", DEFAULT_SPEEDUP)
         for c in ((snap.get("config") or {}).get("countries") or []):
             if isinstance(c, dict) and c.get("id"):
                 langs[c["id"]] = c.get("lang")
@@ -164,8 +187,9 @@ def observations(run_dir: Path) -> tuple[list[dict], dict, list[dict]]:
                     out.append({
                         "turn": turn, "agent": r["agent"], "country": r["country"],
                         "age": ev.get("age", r.get("age", 0)),
-                        "rung": _snap_rung(ev.get("required", base), base),
-                        "cost": ev.get("required", base), "paid": ev["charged"],
+                        # **`speed` 에서 낸다.** `required` 는 늘 L 이라 눈금이 안 된다.
+                        "rung": round(1.0 / (ev.get("speed") or 1.0), 4),
+                        "cost": base / (ev.get("speed") or 1.0), "paid": ev["charged"],
                         "budget_start": bs, "put_in": True})
                 continue
             # 안 냈다 — 그가 고를 수 있었던 **가장 싼** 눈금을 다시 계산한다
@@ -174,7 +198,11 @@ def observations(run_dir: Path) -> tuple[list[dict], dict, list[dict]]:
                 if not lg or lg in known:
                     continue
                 dom = bool(speakers[(r["country"], lg)] - {r["agent"]})
-                mult = (0.5 if dom else 1.0) * (0.5 if lg in parent else 1.0)
+                # **할인의 곱이 아니라 가속의 합이다** (8/23). `(0.5 if dom)*(0.5 if parent)`
+                # 는 8/22 에 없어진 규칙이었다 — 사유는 배속에 **더해지고**, 총 지출은
+                # 그 역수다: 사유 0·1·2 → 1.0 · 1/1.5 · 1/2.
+                reasons = int(dom) + int(lg in parent)
+                mult = round(1.0 / (1.0 + speedup * reasons), 4)
                 if best is None or mult < best:
                     best = mult
             if best is None:                          # 배울 게 없다 (이미 3개국어)
@@ -184,6 +212,7 @@ def observations(run_dir: Path) -> tuple[list[dict], dict, list[dict]]:
                         "paid": 0.0, "budget_start": bs, "put_in": False})
     diag["opportunities"] = len(out)
     diag["learn_base"] = base
+    diag["learn_speedup"] = speedup
     return out, diag, acquired
 
 
@@ -223,25 +252,26 @@ def acquisitions(acq: list[dict], base: float, by_age: bool = False) -> dict:
     """
     cells: dict = defaultdict(int)
     for a in acq:
-        rung = _snap_rung(a.get("required", base), base)
+        rung = round(1.0 / (a.get("speed") or 1.0), 4)
         cells[(rung, "all")] += 1
         if by_age:
             cells[(rung, BAND_NAME[band_of(a.get("age", 0))])] += 1
     return dict(cells)
 
 
-def bracket(rates: dict, band: str = "all", threshold: float = 0.5) -> dict:
+def bracket(rates: dict, band: str = "all", threshold: float = 0.5,
+            speedup: float = DEFAULT_SPEEDUP) -> dict:
     """`x` 를 구간으로 좁힌다. spec 7장의 네 구간.
 
     **가장 비싼 "켜진" 눈금이 하한**입니다 — 그걸 실제로 지불했으니 `x` 는 최소 그만큼.
     그 위 눈금이 꺼져 있으면 그게 상한이 됩니다.
 
-    ⚠ 표본이 없는 눈금은 **꺼진 것이 아닙니다.** `L/4` 는 `procreate` 로 태어나고 부모가
-      그 언어를 알았을 때만 나오므로(3.4) 런 초반에는 존재하지 않습니다. 그 경우 구간
-      한쪽이 열린 채로 보고합니다 — 닫힌 것처럼 적으면 없는 정밀도를 지어내는 것입니다.
+    ⚠ 표본이 없는 눈금은 **꺼진 것이 아닙니다.** 가장 싼 눈금(사유 둘)은 부모가 그 언어를
+      알고 국내에도 구사자가 있을 때만 나오므로 런 초반에는 존재하지 않습니다. 그 경우
+      구간 한쪽이 열린 채로 보고합니다 — 닫힌 것처럼 적으면 없는 정밀도를 지어냅니다.
     """
     on, off, seen = [], [], []
-    for r in RUNGS:
+    for r in rungs_for(speedup):
         c = rates.get((r, band))
         if not c or not c["n"]:
             continue
@@ -254,7 +284,7 @@ def bracket(rates: dict, band: str = "all", threshold: float = 0.5) -> dict:
         hi = min(off)
     return {
         "band": band, "lower": lo, "upper": hi,
-        "rungs_seen": [RUNG_NAME[r] for r in sorted(seen)],
+        "rungs_seen": [rung_name(r) for r in sorted(seen)],
         "label": _label(lo, hi),
         "n": sum(rates[(r, band)]["n"] for r in seen),
     }
@@ -264,10 +294,10 @@ def _label(lo: float | None, hi: float | None) -> str:
     if lo is None and hi is None:
         return "표본 없음"
     if lo is None:
-        return f"x < {RUNG_NAME[hi]}"
+        return f"x < {rung_name(hi)}"
     if hi is None:
-        return f"x ≥ {RUNG_NAME[lo]}"
-    return f"{RUNG_NAME[lo]} ≤ x < {RUNG_NAME[hi]}"
+        return f"x ≥ {rung_name(lo)}"
+    return f"{rung_name(lo)} ≤ x < {rung_name(hi)}"
 
 
 def estimate(run_dirs: list[Path], by_age: bool = True) -> dict:
@@ -276,18 +306,20 @@ def estimate(run_dirs: list[Path], by_age: bool = True) -> dict:
     acq: list[dict] = []
     diags = []
     base = None
+    speedup = DEFAULT_SPEEDUP
     for d in run_dirs:
         o, diag, a = observations(d)
         obs += o
         acq += a
         base = diag.get("learn_base") or base
+        speedup = diag.get("learn_speedup", speedup)
         diags.append({"run": Path(d).name, **diag})
     rates = take_rates(obs, by_age=by_age)
     ac = acquisitions(acq, base or 1.0, by_age=by_age)
     bands = ["all"] + ([BAND_NAME[b] for b in AGE_BANDS] if by_age else [])
-    return {"rates": {f"{RUNG_NAME[r]}|{b}": v for (r, b), v in sorted(rates.items())},
-            "acq": {f"{RUNG_NAME[r]}|{b}": v for (r, b), v in sorted(ac.items())},
-            "brackets": {b: bracket(rates, b) for b in bands},
+    return {"rates": {f"{rung_name(r)}|{b}": v for (r, b), v in sorted(rates.items())},
+            "acq": {f"{rung_name(r)}|{b}": v for (r, b), v in sorted(ac.items())},
+            "brackets": {b: bracket(rates, b, speedup=speedup) for b in bands},
             "n_obs": len(obs), "n_acq": len(acq), "diag": diags}
 
 

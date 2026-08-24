@@ -93,8 +93,16 @@ def init_world(cfg, counter: "itertools.count", rng: random.Random | None = None
     agents: dict[str, Agent] = {}
     testaments: dict[str, list[str]] = {}
     defs = list(cfg.world.countries)
+    # **요격기 효율을 순열로 배정한다** (8/23). 독립 추출이면 평균이 1.0 에서 흔들리고
+    # 임계 창이 어긋난다. 시드마다 어느 나라가 최선인지 달라져야 나라 정체성·언어와
+    # 교락되지 않는다.
+    builds = list(cfg.facility.build_spread)
+    if len(builds) != len(defs):
+        raise ValueError(f"facility.build_spread 는 나라 수({len(defs)})와 같아야 한다 "
+                         f"— 지금 {len(builds)}개")
+    rng.shuffle(builds)
     for n, cdef in enumerate(defs):
-        countries[cdef.id] = Country(id=cdef.id, lang=cdef.lang)
+        countries[cdef.id] = Country(id=cdef.id, lang=cdef.lang, build_mult=builds[n])
         # 순환으로 이웃 나라 말을 하나 심는다. 어느 나라도 고립되지 않고,
         # 어느 나라도 두 개를 갖지 않는다.
         seeded = defs[(n + 1) % len(defs)].lang
@@ -121,6 +129,19 @@ def init_world(cfg, counter: "itertools.count", rng: random.Random | None = None
             testaments[aid] = []
     return World(turn=0, countries=countries, agents=agents, testaments=testaments,
                  next_idx={c.id: cfg.world.agents_per_country + 1 for c in countries.values()})
+
+
+def facility_eff(c, cfg) -> float:
+    """돈 1원이 시설 진척 시행 몇 번이 되는가. **세 곳에서 쓰던 식을 한 군데로 모았다.**
+
+    셋으로 갈라져 있었고 국가 효율을 넣으려면 세 곳을 다 고쳐야 했다 — 「숫자를 두 군데
+    적으면 하나가 낡는다」 가 식에도 적용된다.
+
+    `build_mult` 는 **요격기에만** 걸린다. 벙커까지 걸면 최고 효율 나라가 벙커를 골라도
+    손해가 없어져 함정이 무뎌진다.
+    """
+    eff = cfg.facility.eff * c.multiplier(cfg)
+    return eff * c.build_mult if c.land == "interceptor" else eff
 
 
 def _next_id(world: World, country: str) -> str:
@@ -353,7 +374,7 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
     #   과제 2 에서 LLM 이 크게 투자하면 실제 편향이 된다. 비례 배분 또는 라운드로빈으로 교체.
     for cid, invested in facility_invest.items():
         c = world.countries[cid]
-        eff = cfg.facility.eff * c.multiplier(cfg)   # 국가 투자로 갱신 (더미는 mult=1)
+        eff = facility_eff(c, cfg)                   # 국가 투자로 갱신 (더미는 mult=1)
         n = int(invested * eff)
         gained = sum(1 for _ in range(n) if rng.random() < cfg.world.success_prob)
         c.progress += gained
@@ -459,7 +480,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                     "turn": world.turn, "kind": "acquired", "agent": aid,
                     "country": a.country, "target": cid, "lang": c.lang,
                     "charged": round(done, 2), "required": need,
-                    "rung": round(need / cfg.costs.learn_base, 4),
+                    "speed": agent_loop.learn_speed(a, cid, world, cfg)[0],
                     "age": a.age, "budget_after": round(a.budget, 2),
                     "discount_domestic": agent_loop.learn_discounts(a, cid, world)[0],
                     "discount_parent": agent_loop.learn_discounts(a, cid, world)[1],
@@ -481,7 +502,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                 if agent_id in world.agents:
                     world.agents[agent_id].budget += (amount / total) * (total - cap)
         c = world.countries[cid]
-        eff = cfg.facility.eff * c.multiplier(cfg)
+        eff = facility_eff(c, cfg)
         # 출자자별로 따로 굴린다 — 각자 자기 출자가 얼마나 진척으로 바뀌었는지 알아야
         # 하기 때문이다(아래 통지). 합쳐서 한 번 굴리는 것과 분포는 같다.
         for amount, agent_id in sorted(entries, key=lambda x: x[1]):   # id 순 → 결정론
@@ -693,6 +714,7 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         # **받은 값을 적어 둔다.** 해 시작 문구가 렌더 때 다시 계산하면, 순차에서 나중에
         # 차례가 온 사람은 남들이 national 에 넣은 뒤의 값을 보게 된다 — 실제로 100 을
         # 받았는데 「+102」 라고 적혔다.
+        a.income_last_year = a.income_this_year
         a.income_this_year = inc
         a.ap = cfg.turn.action_points
         # ★ x̂ 의 분모. "그 눈금을 감당할 수 있었는데도 안 배웠다" 를 세려면 **결정
@@ -872,12 +894,19 @@ def _dequeue_inbox_pop(world: World, aid: str) -> list[dict]:
 
 def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
                  knob_ai: float, msg_ids: "itertools.count", result: RunResult,
-                 turn_facility: dict, ballots_acc: list,
-                 said_this_year: set | None = None) -> None:
+                 turn_facility: dict, ballots_acc: list) -> None:
     """한 차례(sink)를 세계에 **즉시** 반영. 개표·procreate·부고는 턴 끝에서 (누적만)."""
     # 학습 — 즉시 반영 + 완료 즉시 판정 (그 순간의 학습가로)
+    # **납부를 먼저 다 적고, 취득은 두 번째 패스에서** (8/23). 한 스텝에 `learn` 을 두 번
+    # 부르면 `execute_tool` 이 진척을 **즉시** 쌓으므로, 첫 기록을 처리하는 시점에 이미
+    # 완주 상태다 — 취득 줄이 그 완주를 만든 납부보다 **앞에** 찍혔다. 실측 로그:
+    #
+    #   turn 3  progress_before 120  charged 40      ← 여기서 진척 180
+    #   turn 3  acquired      charged 200            ← 아직 200 이 아닌데 취득이 찍힌다
+    #   turn 3  progress_before 180  charged 13.3    ← 이것이 완주시킨 납부다
     for rec in sink.learns:
         result.learns_log.append({"turn": world.turn, **rec})
+    for rec in sink.learns:
         a = world.agents.get(rec["agent"])
         if a is None:
             continue
@@ -893,7 +922,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
                     "turn": world.turn, "kind": "acquired", "agent": rec["agent"],
                     "country": a.country, "target": cid, "lang": c.lang,
                     "charged": round(a.lang_progress[c.lang], 2), "required": need,
-                    "rung": round(need / cfg.costs.learn_base, 4),
+                    "speed": agent_loop.learn_speed(a, cid, world, cfg)[0],
                     "age": a.age, "budget_after": round(a.budget, 2),
                     "discount_domestic": agent_loop.learn_discounts(a, cid, world)[0],
                     "discount_parent": agent_loop.learn_discounts(a, cid, world)[1]})
@@ -917,7 +946,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
             world.agents[agent_id].budget += excess       # 선착순 초과분 즉시 환급
         turn_facility[to_country] = used + share
         c = world.countries[to_country]
-        eff = cfg.facility.eff * c.multiplier(cfg)
+        eff = facility_eff(c, cfg)
         if c.land is None:
             gain = 0
         else:
@@ -955,22 +984,32 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         _notify(world, "gift", {"gift_from": frm, "gift": round(amount, 1)},
                 world.turn, actor=to)
 
-    capped: set = set()
+    # **배수를 깐다** (8/23). 전에는 「올랐다」 만 알리고 값을 감췄다 — 배수 **함수**가
+    # SECRET 이라는 이유였는데, 함수를 감추는 것과 결과를 감추는 것은 다르다. 값이 없으니
+    # 「national 에 더 부을까 facility 에 부을까」 를 수치로 비교할 방법이 없었고,
+    # 진척(`prog_up`)은 값을 주는데 이것만 안 주는 비대칭이었다.
+    #
+    # 값이 생겼으므로 **해마다 한 번** 제한도 뗀다. 그 제한의 근거가 「값이 없는 사실이라
+    # 두 번 적어도 더 알려주는 것이 없다」 였는데 이제 성립하지 않는다. 같은 값이 두 번
+    # 오면 `render_inbox._add` 가 접는다 — 진척과 같은 취급이다.
+    caps: dict = {}
     for cid, amount, _ in sink.national:
-        world.countries[cid].national_capital += amount
-        capped.add(cid)
-    for cid in sorted(capped):
+        c = world.countries[cid]
+        caps.setdefault(cid, c.multiplier(cfg))     # 올리기 **전** 값
+        c.national_capital += amount
+    for cid, before in sorted(caps.items()):
         # 수입·시설 전환율·관측 정확도가 다 여기 걸려 있어 국민 전원의 일이다.
-        # **얼마나 올랐는지는 담지 않는다** — 배수 함수는 SECRET 이다.
+        now = world.countries[cid].multiplier(cfg)
+        # **이번 차례의 상승분을 준다** (8/23). 사건 줄은 「방금 무슨 일이 있었나」 이고,
+        # 누적 수준(「당초보다 17%」)은 그 자리에 맞지 않는다.
         #
-        # 그래서 **해마다 한 번만** 말한다. 값이 없는 사실이라 두 번 적어도 더 알려주는
-        # 것이 없다 — 실측에서 「자국의 기술력이 올랐습니다」 가 한 해에 세 번 붙었다.
-        # 진척은 값이 달라지므로 차례마다 말한다.
-        if said_this_year is not None:
-            if ("cap", cid) in said_this_year:
-                continue
-            said_this_year.add(("cap", cid))
-        _notify(world, "capital_change", {"cap_up": True}, world.turn, nation=cid)
+        # 한 차례 상승분은 0.05~0.6% 라 소수 **두 자리**여야 값이 남는다 (`inh30` 실측:
+        # 해 단위 0.15~1.9%, 초기 2~4해만 1.6~1.9% — √ 라 처음이 크다). 그래서 차례마다
+        # 값이 달라지고, 진척(`prog_up`)처럼 줄이 접히지 않는다. 그게 맞다 — 낸 액수가
+        # 다르면 오른 폭도 다르다.
+        _notify(world, "capital_change",
+                {"cap_up": True, "cap_gain": (now / before - 1) * 100},
+                world.turn, nation=cid)
     # 메시지 — 번역 후 **같은 턴** 배달
     for sent in sink.messages:
         recipient = world.agents.get(sent["to"])
@@ -1083,6 +1122,7 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
         # **받은 값을 적어 둔다.** 해 시작 문구가 렌더 때 다시 계산하면, 순차에서 나중에
         # 차례가 온 사람은 남들이 national 에 넣은 뒤의 값을 보게 된다 — 실제로 100 을
         # 받았는데 「+102」 라고 적혔다.
+        a.income_last_year = a.income_this_year
         a.income_this_year = inc
         a.ap = cfg.turn.action_points
         a.budget_start = a.budget                       # x̂ 분모 (결정 시점 예산)
@@ -1092,7 +1132,6 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
     rng.shuffle(order)                                  # 임의 순서 (시드로 결정론)
 
     turn_facility: dict = {}
-    said_this_year: set = set()      # 값 없는 사실은 해마다 한 번만 (capital_change)
     ballots_acc: list = []
     accs = {aid: agent_loop._StepAcc() for aid in snapshot_ids}
     t_turns = {aid: time.time() for aid in snapshot_ids}
@@ -1166,7 +1205,7 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
                 e.add_note(f"[agent {aid} · turn {world.turn} · age {agent.age}]")
                 raise
             _settle_step(world, cfg, rng, sink, translator, knob_ai, msg_ids, result,
-                         turn_facility, ballots_acc, said_this_year)
+                         turn_facility, ballots_acc)
             if done is not None:
                 ended[aid] = done
 

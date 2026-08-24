@@ -4,6 +4,7 @@ from __future__ import annotations
 import itertools
 import json
 import random
+import re
 from pathlib import Path
 
 import pytest
@@ -478,12 +479,16 @@ def test_the_year_opens_before_anything_that_happened_in_it():
         assert f"+{agent.income_this_year:.0f}" in users[0], aid
 
 
-def test_a_valueless_fact_is_said_once_a_year():
-    """「기술력이 올랐다」 는 **값이 없는 사실**이다 (얼마나인지는 SECRET). 세 사람이
-    각각 national 에 넣으면 세 번 통지됐다 — 세 번 적어도 한 번보다 더 알려주는 것이 없고
-    대화만 부푼다.
+def test_capital_notice_carries_the_gain_as_a_percentage():
+    """「기술력이 올랐다」 에 **이번 상승분**을 싣는다 (8/23).
 
-    진척은 값이 달라지므로(18 → 52) 차례마다 말한다.
+    배수(「1.174 배」)도 누적(「당초보다 17%」)도 아니다 — 사건 줄은 「방금 무슨 일이
+    있었나」 이고, 한 차례 상승분은 0.05~0.6% 라 소수 두 자리여야 값이 남는다.
+
+    전에는 값이 없는 사실이라 해마다 한 번으로 접었다. 이제 값이 있으므로 그 제한을
+    뗐고, 접는 일은 `render_inbox._add` 가 값으로 판단한다 — 진척과 같은 취급이다.
+
+    값이 없으면 「national 에 더 부을까 facility 에 부을까」 를 수치로 비교할 수 없다.
     """
     cfg = _cfg(1)
     inv = assistant_msg(tool_call("invest", "i", target="national", reasoning="r"))
@@ -492,7 +497,14 @@ def test_a_valueless_fact_is_said_once_a_year():
     res = _run(cfg, clients, seed=3, parallel=False, sequential=True)
     blob = "\n".join(m["content"] for m in res.world.agents["Asla2"].convo
                      if m["role"] == "user")
-    assert blob.count("技術力が上がりました") == 1
+    assert "技術力が" in blob
+    # 상승분은 0 보다 크고, 합치면 누적 배수와 맞아야 한다 (곱으로 쌓인다)
+    got = [float(x) for x in re.findall(r"技術力が ([\d.]+)% 上がりました", blob)]
+    assert got and all(v > 0 for v in got), got
+    prod = 1.0
+    for v in got:
+        prod *= 1 + v / 100
+    assert prod == pytest.approx(res.world.countries["Asla"].multiplier(cfg), rel=1e-3)
 
 
 def test_identical_rows_inside_one_batch_collapse():
@@ -500,8 +512,13 @@ def test_identical_rows_inside_one_batch_collapse():
     cfg = _cfg(1)
     world = init_world(cfg, itertools.count(1))
     a = world.agents["Asla1"]
-    ev = prompts.render_events(a, [{"cap_up": True}] * 3)
-    assert ev.count("技術力が上がりました") == 1
+    ev = prompts.render_events(a, [{"cap_up": True, "cap_gain": 0.23}] * 3)
+    assert ev.count("上がりました") == 1
+    # **소수 두 자리에서 갈리면 다른 줄이다** — 낸 액수가 다르면 오른 폭도 다르고,
+    # 그건 접어서 없앨 정보가 아니다 (진척 `prog_up` 과 같은 취급).
+    ev3 = prompts.render_events(a, [{"cap_up": True, "cap_gain": 0.23},
+                                    {"cap_up": True, "cap_gain": 0.07}])
+    assert ev3.count("上がりました") == 2
     # 값이 다르면 접히지 않는다
     ev2 = prompts.render_events(a, [{"prog_up": 18, "now": 18},
                                     {"prog_up": 34, "now": 52}])

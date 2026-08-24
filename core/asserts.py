@@ -36,9 +36,21 @@ def window(cfg) -> tuple[float, float, float, float]:
     nation_all = per_turn * n * total          # 한 나라의 전 기간 총소득
     nation_epoch = per_turn * n * epoch        # 한 나라의 한 주기 소득
 
+    # **가장 효율 좋은 나라를 기준으로 잡는다** (8/23). 나라마다 요격기 진척 속도가
+    # 다르므로(`facility.build_spread`), 네 조건이 모두 「최선의 나라에 몰아줬을 때」 로
+    # 걸려야 한다.
+    #
+    #   ★B 가 결정적이다 — 「한 나라가 혼자서는 못 한다」 는 **가장 잘 짓는 나라**가
+    #   혼자서도 못 해야 성립한다. 평균으로 잡으면 운 좋은 나라가 단독으로 해내고
+    #   조율 강제가 무너진다.
+    #
+    #   ★C 도 같은 기준이어야 한다 — 「세 나라가 모으면 가능」 은 그들이 최선의 나라를
+    #   고를 때의 얘기다. 네 조건이 같은 배수로 곱해지므로 창은 통째로 평행이동한다.
+    best = max(cfg.facility.build_spread)
+
     def to_progress(income_amount: float) -> float:
-        # 진척 단위 = 소득 × facility.eff × success_prob = 소득 × cfg.k
-        return income_amount * cfg.k
+        # 진척 단위 = 소득 × facility.eff × success_prob × 최선 국가 효율
+        return income_amount * cfg.k * best
 
     a = to_progress(3 * nation_epoch)                      # 마지막 한 주기 3국 전력
     b = to_progress(nation_all)                            # 한 나라의 전 기간 총력
@@ -107,7 +119,21 @@ def check_all(cfg) -> list[str]:
             f"thresholds.interceptor 를 올려라."
         )
 
-    # 벙커 깊이 창
+    # 국가 효율 — 평균이 1.0 이 아니면 창이 어긋난다 (순열 배정이라 정확히 1.0 이어야)
+    bs = list(cfg.facility.build_spread)
+    if abs(sum(bs) / len(bs) - 1.0) > 1e-9:
+        fails.append(
+            f"국가 효율: facility.build_spread({bs}) 의 평균이 {sum(bs)/len(bs):.4f} 다. "
+            f"정확히 1.0 이어야 한다 — 창이 `per_turn × n × total` 에서 나오므로 "
+            f"평균이 1 이 아니면 임계 전체를 재계산해야 한다."
+        )
+    if len(bs) != len(cfg.world.countries):
+        fails.append(
+            f"국가 효율: facility.build_spread 가 {len(bs)}개인데 나라는 "
+            f"{len(cfg.world.countries)}개다. 순열 배정이므로 같아야 한다."
+        )
+
+    # 벙커 깊이 창 — **국가 효율이 안 걸린다** (요격기 전용). 여기는 cfg.k 그대로다.
     eff = cfg.income.per_turn * mean_age_multiplier(cfg)
     nation_all = eff * cfg.world.agents_per_country * cfg.world.total_turns
     nation_epoch = eff * cfg.world.agents_per_country * cfg.world.epoch_turns
