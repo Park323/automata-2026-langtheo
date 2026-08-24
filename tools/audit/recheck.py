@@ -517,12 +517,17 @@ def sec_I(d: dict, trials: int) -> None:
             real.append("memory_write")
         print(f"  {ap:>6}{budget:>7}{str(mem):>13}{str(can_act(a, cfg, knob)):>9}   "
               f"{real or '— 없음 —'}")
-    print(f"\n  → 마지막 줄 `return _afford(ap, min(ap.memory_write, ap.vote))` 에서")
-    print(f"    min({cfg.ap.memory_write}, {cfg.ap.vote}) = {min(cfg.ap.memory_write, cfg.ap.vote)} "
-          f"이므로 **AP 가 0 이어도 참**이다.")
-    print(f"    memory_write 는 압박선 아래에서 목록에 없는데, 그 값을 「공짜 행동」 으로 세고 있다.")
-    print(f"    종료 조건 ②(자원 소진)는 사실상 죽었고, 라운드로빈은 그 사람을 한 번 더 깨워")
-    print(f"    end_turn 만 시킨다 — 에이전트-해마다 API 호출 한 번이 그렇게 나간다.")
+    broke = Agent(id="X", country="Asla", native_lang="ja", known_langs={"ja"},
+                  parent_langs=set(), budget=0.0, ap=0.0)
+    broke.memory_open = False
+    if can_act(broke, cfg, knob):
+        print(f"\n  → **결함** — AP 0 · 예산 0 · 기억 닫힘인데 참이다. 종료 조건 ②가 죽어 있다.")
+        print(f"    `min(ap.memory_write, ap.vote)` = {min(cfg.ap.memory_write, cfg.ap.vote)} 이 원인이고,")
+        print(f"    라운드로빈은 그 사람을 한 번 더 깨워 end_turn 만 시킨다.")
+    else:
+        print(f"\n  → 아니다 — 고쳐짐 (#47). 자원이 바닥나면 거짓이고, 라운드로빈이 그 사람을")
+        print(f"    한 번 더 깨우지 않는다. 기억이 열려 있으면(마지막 줄) 여전히 참이다 —")
+        print(f"    그때는 `memory_write` 가 실제로 목록에 있다.")
 
 
 # ── J. 프롬프트가 말하는 것과 코드가 하는 것 (기계로 볼 수 있는 것만) ────────
@@ -648,9 +653,19 @@ def sec_K(d: dict, trials: int) -> None:
         print(f"     {name}")
         print(f"       전달 {p['delivered']} · 실제 언어 {p['meta']['delivered_lang']} · "
               f"수신자가 읽을 수 있나 {readable} · 라벨 {lbl}")
-    print("     → 셋째 줄: **읽을 수 없는 글이 전달되고**, 라벨은 「당신은 이 말을 못 읽지만")
-    print("       상대가 당신 말을 다루므로 통했다」 라고 적는다. 상대는 fr 를 다루지 않는다.")
-    print("       판정은 `from_lang`(모국어)으로 하는데 본문은 `_TEXT` 가 아무 말이나 허용한다.")
+    third = messaging.process_message(
+        {"from": "Asla1", "from_country": "Asla", "from_lang": "ja", "to": "Miris1",
+         "to_country": "Miris", "to_lang": "fr", "route": "original",
+         "text": "你好，我们一起建造", "translate_instruction": None},
+        {"ja", "fr"}, cfg, None, 48.0, sender_known_langs={"ja", "zh"})
+    if third["delivered"]:
+        print("     → **결함** — 읽을 수 없는 글이 전달되고, 라벨은 「당신은 이 말을 못 읽지만")
+        print("       상대가 당신 말을 다루므로 통했다」 라고 적는다. 상대는 zh 를 못 읽는다.")
+        print("       판정은 `from_lang`(모국어)으로 하는데 본문은 `_TEXT` 가 아무 말이나 허용한다.")
+    else:
+        print("     → 아니다 — 고쳐짐 (#44). 판정이 **도착한 글의 언어**를 본다. 제3의 언어는")
+        print("       미전달이고, 발신자에게 `unreadable` 통지가 간다. 8/17 의 허구(내 말로 썼고")
+        print("       상대가 내 말을 다룬다 → [direct:write])는 그대로 살아 있다.")
 
     # ② 프롬프트가 적는 수명 vs 실제로 죽는 나이
     print("\n  ② SYSTEM 의 「{life:.0f} 歳ごろ」 와 실제 사망 나이")

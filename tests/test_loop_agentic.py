@@ -523,3 +523,42 @@ def test_identical_rows_inside_one_batch_collapse():
     ev2 = prompts.render_events(a, [{"prog_up": 18, "now": 18},
                                     {"prog_up": 34, "now": 52}])
     assert ev2.count("進捗が") == 2
+
+
+def test_a_notice_left_at_the_end_of_a_year_is_not_lost_in_the_parallel_path():
+    """**병렬 경로가 유언·선물·採決 결과를 통째로 버리고 있었다** (#46).
+
+    셋 다 그 해가 끝날 무렵 `deliver_turn = world.turn` 으로 큐에 들어간다. 그런데 병렬
+    경로의 수거는 **턴을 여는 자리**에서 이미 끝났고, `== world.turn` 으로만 가져간 뒤
+    `> world.turn` 이 아닌 것을 전부 버렸다 — 다음 해에는 아무도 받지 못했다.
+
+    순차 라운드로빈은 처음부터 `<=` 였다. **두 경로가 같은 부등호를 써야 한다.**
+    `sequential=False` 가 `run_agentic` 의 기본값이므로, 인자 없이 돌린 런은 전부 이
+    경로였다.
+    """
+    import itertools as _it
+    import random as _r
+
+    from core import loop as _loop
+    cfg = _cfg()
+    aid = "Asla1"
+
+    def _world_with_a_notice():
+        w = _loop.init_world(cfg, _it.count(1), _r.Random(1))
+        w.turn = 5
+        _loop._notify(w, "testament", {"testament": ["残す言葉"]}, w.turn, actor=aid)
+        _loop._notify(w, "gift", {"gift_from": "Ranoa1", "gift": 50.0}, w.turn, actor=aid)
+        w.turn = 6                                  # 해가 바뀐다
+        return w
+
+    # 병렬 — run_turn_agentic 2단계와 같은 순서로 (수거 → 버리기)
+    w = _world_with_a_notice()
+    par = _loop._dequeue_inbox(w, aid)
+    w.inbox_queue = [e for e in w.inbox_queue if e["deliver_turn"] > w.turn]
+
+    # 순차 — 라운드로빈의 수거
+    seq = _loop._dequeue_inbox_pop(_world_with_a_notice(), aid)
+
+    assert [m.get("testament") for m in par if "testament" in m] == [["残す言葉"]]
+    assert [m.get("gift") for m in par if "gift" in m] == [50.0]
+    assert par == seq, "두 경로가 같은 것을 받아야 한다"

@@ -371,6 +371,62 @@ def test_the_label_follows_the_language_not_the_reason(cfg):
     assert m2["inbox"]["label"] == messaging.DIRECT_WRITE_LABEL
 
 
+def test_a_third_language_body_does_not_get_through(cfg):
+    """**전달 판정이 본문을 보게 했다** (#44).
+
+    `original` 은 8/22 부터 「다룰 수 있는 아무 말」 을 허용하는데, 전달 여부는 계속
+    `from_lang`(발신자 모국어)으로만 보고 있었다. 그래서 제3의 언어로 쓰면 **아무도 못
+    읽는 글이 전달되고** 라벨이 「상대가 당신 말을 다루므로 통했다」 는 거짓 사유를 댔다 —
+    8/21 에 고친 그 거짓말이 방향만 바꿔 남아 있었다.
+
+    셋을 한자리에서 본다. 앞의 둘은 그대로 통해야 하고, 셋째만 막혀야 한다.
+    """
+    # 발신자 Asla1 은 ja(모국어)와 zh 를 다룬다 · 수신자 Miris2 는 fr(모국어)과 ja 를 읽는다
+    common = dict(from_lang="ja", from_country="Asla", to="Miris2", to_country="Miris",
+                  to_lang="fr", route="original")
+    send = lambda text: messaging.process_message(
+        _sent(**common, text=text), recipient_known_langs={"fr", "ja"},
+        cfg=cfg, translator=None, knob_ai=48, sender_known_langs={"ja", "zh"})
+
+    # ① 내 말(ja)로 썼다 — 상대가 ja 를 읽는다
+    m = send("こんにちは")
+    assert m["delivered"] is True
+    assert m["meta"]["delivered_lang"] == "ja" and m["meta"]["direct_by"] == "reader"
+    assert m["inbox"]["label"] == messaging.DIRECT_READ_LABEL
+
+    # ② 상대 말(fr)로 썼다 — 내가 배워서 그 말로 쓴 것이다
+    m = send("Bonjour")
+    assert m["delivered"] is True
+    assert m["meta"]["delivered_lang"] == "fr" and m["meta"]["direct_by"] == "writer"
+    assert m["inbox"]["label"] == messaging.DIRECT_READ_LABEL
+
+    # ③ 제3의 말(zh)로 썼다 — 상대는 zh 를 못 읽는다. **통하지 않는다**
+    m = send("你好，请回答")
+    assert m["meta"]["delivered_lang"] == "zh"
+    assert m["delivered"] is False, "아무도 못 읽는 글이 전달됐다"
+    assert m["inbox"]["unreadable"] is True and m["inbox"]["text"] is None
+    assert m["sender_notice"]["reason"] == "unreadable"
+
+
+def test_the_writer_fiction_survives_for_ones_own_language(cfg):
+    """**8/17 의 허구는 그대로 둔다** (#44).
+
+    내 말로 썼고 상대가 내 말을 다루면, 구현은 원문을 그대로 보내고 라벨이 「못 읽지만
+    그래도 통했다」 를 적는다 — 발신자에게 수신 언어로 다시 쓰게 만들면 프롬프트 언어
+    위생이 깨지고 지표 7 의 발신 언어 사전도 못 쓰게 되기 때문이다.
+
+    #44 가 막는 것은 **제3의 언어**뿐이다. 이 길은 살아 있어야 한다.
+    """
+    m = messaging.process_message(
+        _sent(from_lang="ja", from_country="Asla", to="Miris2", to_country="Miris",
+              to_lang="fr", route="original", text="こんにちは"),
+        recipient_known_langs={"fr"},              # ja 를 못 읽는다
+        cfg=cfg, translator=None, knob_ai=48,
+        sender_known_langs={"ja", "fr"})           # 발신자가 fr 을 안다
+    assert m["delivered"] is True and m["meta"]["direct_by"] == "writer"
+    assert m["inbox"]["label"] == messaging.DIRECT_WRITE_LABEL
+
+
 def test_tool_tokens_do_not_decide_the_language(cfg):
     """도구 토큰은 어느 말에서도 영어 그대로다. 언어 판정에서 빼야 fr 로 오판하지 않는다."""
     assert messaging.detect_lang("interceptor bunker wellness", "zh") == "zh"

@@ -92,13 +92,17 @@ def can_read(recipient_known_langs, from_lang: str) -> bool:
 
 
 def direct_works(sender_known_langs, recipient_known_langs,
-                 from_lang: str, to_lang: str) -> tuple[bool, str]:
+                 from_lang: str, to_lang: str, body_lang: str | None = None) -> tuple[bool, str]:
     """원문 직통이 통하는가, 그리고 **누구의 학습 덕인가**.
 
     학습은 **읽기와 쓰기 둘 다**다 (8/17 개정). 그래서 길이 둘이다.
 
-        수신자가 발신 언어를 안다  →  받는 쪽이 원문을 읽는다      "reader"
-        발신자가 수신 언어를 안다  →  보내는 쪽이 그 말로 쓴다     "writer"
+        수신자가 도착한 글을 읽는다   →  받는 쪽이 원문을 읽는다      "reader"
+        발신자가 수신 언어를 안다     →  보내는 쪽이 그 말로 쓴다     "writer"
+
+    **판정 기준은 `body_lang`(실제로 쓰인 말)이다** (#44). `from_lang`(발신자 모국어)으로
+    보면 제3의 언어로 쓴 글이 「상대가 내 말을 읽으니까」 로 전달된다 — 정작 도착한 글은
+    아무도 못 읽는 말이다. 그 경우는 이제 **미전달**이다.
 
     구현은 어느 쪽이든 **원문을 그대로 전달**한다. 모델이 multilingual 이라 그대로
     이해한다 — 발신자에게 수신 언어로 다시 쓰게 만들면 프롬프트 언어 위생(모국어 강제)이
@@ -107,9 +111,15 @@ def direct_works(sender_known_langs, recipient_known_langs,
     전에는 "reader" 만 통했다. 그래서 **초기화로 심은 이중언어자가 받는 데만 쓸모가
     있었고**, 자기가 아는 말의 나라에 보낼 때도 24원짜리 AI 를 타야 했다.
     """
-    if from_lang in recipient_known_langs:
-        return True, "reader"
-    if to_lang in sender_known_langs:
+    body = body_lang or from_lang
+    if body in recipient_known_langs:
+        # 상대가 **도착한 글 그 자체**를 읽는다. 누구 덕인지는 그 글이 무슨 말인지가 정한다 —
+        # 상대의 모국어면 발신자가 배워서 그 말로 쓴 것이고(writer), 아니면 상대가
+        # 그 말을 배운 것이다(reader).
+        return True, ("writer" if body == to_lang and body != from_lang else "reader")
+    if body == from_lang and to_lang in sender_known_langs:
+        # **8/17 의 허구를 여기만 남긴다.** 내 말로 썼고, 상대가 내 말을 다룬다 —
+        # 구현은 원문을 그대로 보내고 라벨이 「못 읽지만 그래도 통했다」 를 적는다.
         return True, "writer"
     return False, ""
 
@@ -134,8 +144,13 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     text_sent, chars_cut = truncate(sent["text"], from_lang, cfg)
     kind = classify(sent["from_country"], sent["to_country"], sent.get("route"))
     reader = can_read(recipient_known_langs, from_lang)
+    # **판정보다 먼저 「이 글이 무슨 말인가」 를 정한다** (#44). 전에는 전달 여부를
+    # `from_lang`(발신자 모국어)으로만 보고 본문이 실제 무슨 말인지 안 봤다 — `original`
+    # 이 「다룰 수 있는 아무 말」 을 허용하므로, 제3의 언어로 쓰면 아무도 못 읽는 글이
+    # 전달되고 라벨이 「상대가 당신 말을 다뤄서 통했다」 는 거짓 사유를 댔다.
+    body_lang = detect_lang(text_sent, from_lang)
     direct, direct_by = direct_works(sender_known_langs, recipient_known_langs,
-                                     from_lang, to_lang)
+                                     from_lang, to_lang, body_lang)
 
     # spec 6.1 스키마 전체. text_delivered 가 없으면 소실률·생성률을 아예 못 낸다.
     meta = {
@@ -154,7 +169,7 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         # 통째로 "소실" 로 잡힌다 (지표 7).
         # **실제로 쓰인 말**이다 (8/22). `original` 은 발신자가 수신국 말로 쓸 수 있으므로
         # `from_lang` 으로 적으면 거짓이 된다 — 지표 7 이 다른 언어 사전으로 센다.
-        "delivered_lang": detect_lang(text_sent, from_lang),
+        "delivered_lang": body_lang,
         "translate_prompt": None, "logprob_mean": None,
     }
 
