@@ -33,6 +33,11 @@ def cfg():
 def world(cfg):
     w = loop.init_world(cfg, itertools.count(1), random.Random(1))
     w.turn = 5
+    # **개체 차이를 1.0 으로 눕힌다** (8/22). 소득 배수·처리량 배수는 태어날 때 뽑히므로,
+    # 그것을 그대로 두면 **다른 기제를 재는 테스트가 사람마다 다른 액수에 흔들린다.**
+    # 차이 자체는 `test_world_rules_v2.py` 의 전용 테스트가 본다.
+    for _a in w.agents.values():
+        _a.income_mult = _a.invest_mult = 1.0
     return w
 
 
@@ -129,6 +134,11 @@ def test_the_obituary_is_the_only_way_age_gets_out(cfg, world):
     """부고에 나이가 실리는 것이 **의도**다. 그 밖에 남의 나이를 아는 길은 없다 —
     관측은 자기 나이도 안 적고(해 시작 문구가 적는다), 명단은 이름만이다."""
     from domains.meteor import prompts
+    # **나이를 흩어 놓고 본다.** 초기 나이가 성인 나이(10) 근처에서 뽑히므로, 비용표의
+    # 「生涯に一度、10 歳から」 (규칙 상수)와 남의 나이가 우연히 겹친다 — 그 겹침은
+    # 누출이 아니라 검사의 착시다. 겹치지 않는 값으로 옮겨 두고 본다.
+    for i, a in enumerate(world.agents.values()):
+        a.age = 40 + i
     obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
     for aid, a in world.agents.items():
         if aid == "Asla1":
@@ -169,7 +179,7 @@ def test_a_message_reaches_only_its_recipient(cfg, world):
         "text": "OVERHEARD?", "translate_instruction": None})
     loop._settle_step(world, cfg, random.Random(0), sink,
                       StubClient([{"role": "assistant", "content": "x", "tool_calls": []}] * 3),
-                      48.0, itertools.count(900), loop.RunResult(world=world), {}, [], [])
+                      48.0, itertools.count(900), loop.RunResult(world=world), {}, [])
     told = [e["to"] for e in world.inbox_queue]
     assert told == ["Asla2"]                       # Asla3 도 못 듣는다
 
@@ -188,7 +198,7 @@ def test_a_delivery_failure_reaches_only_the_sender(cfg, world):
         "text": "NOT_DELIVERED", "translate_instruction": None})
     loop._settle_step(world, cfg, random.Random(0), sink,
                       StubClient([{"role": "assistant", "content": "x", "tool_calls": []}] * 3),
-                      48.0, itertools.count(900), loop.RunResult(world=world), {}, [], [])
+                      48.0, itertools.count(900), loop.RunResult(world=world), {}, [])
     fails = [e for e in world.inbox_queue if "delivery_failed_to" in e["msg"]]
     assert [e["to"] for e in fails] == ["Asla2"]
 
@@ -242,7 +252,7 @@ def test_no_secret_value_reaches_any_rendered_string(cfg):
         seen.append(json.dumps(r, ensure_ascii=False))
     # 사건도 — 이 판에서 생긴 것 전부
     loop._settle_step(world, probe, random.Random(0), sink, None, 48.0,
-                      itertools.count(900), loop.RunResult(world=world), {}, [], [])
+                      itertools.count(900), loop.RunResult(world=world), {}, [])
     for e in world.inbox_queue:
         seen.append(prompts.render_events(world.agents[e["to"]], [e["msg"]]))
 

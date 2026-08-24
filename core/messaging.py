@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import re
+
 from core import translate as translate_mod
 from core.llm import LLMCallError
 
@@ -50,6 +52,38 @@ def cost(kind: str, cfg, knob_ai: float) -> float:
         "original": cfg.costs.comm_intl_learner,
         "ai": knob_ai,
     }[kind]
+
+
+# ── 도착한 글은 무슨 말인가 ────────────────────────────────────────────────────
+#
+# **8/22 부터 발신자가 수신국 말로 쓸 수 있다** (`original` 경로). 그런데 `delivered_lang`
+# 을 `from_lang` 으로 무조건 적고 있었다 — 일본어로 쓴 글을 프랑스어 사전으로 세게 되고,
+# 지표 7(화용 표지 소실)이 통째로 거짓이 된다.
+#
+# 세 언어는 문자로 갈린다. 테스트가 이미 같은 판정을 쓰고 있었으므로 그것을 옮겨 온다.
+_KANA = re.compile(r"[぀-ゟ゠-ヿ]")
+_HAN = re.compile(r"[一-鿿]")
+_LATIN = re.compile(r"[A-Za-zÀ-ÿ]")
+# 도구 토큰은 어느 말에서도 영어 그대로다 — 언어 판정에서 빼야 fr 로 오판하지 않는다
+_TOKENS = re.compile(
+    r"\b(interceptor|bunker|wellness|national|facility|original|ai|speak|invest|learn|"
+    r"observe_risk|propose_vote|vote|give|bear_child|memory_write|end_turn|to)\b")
+
+
+def detect_lang(text: str, fallback: str) -> str:
+    """이 글이 실제로 무슨 말인가. 못 가리면 `fallback`.
+
+    가나가 있으면 ja. 한자만 있으면 zh. 라틴 문자만 있으면 fr. 세 언어뿐이므로 이걸로
+    충분하고, **틀릴 때는 발신 언어로 떨어진다** (전과 같은 값이므로 나빠지지 않는다).
+    """
+    t = _TOKENS.sub("", text or "")
+    if _KANA.search(t):
+        return "ja"
+    if _HAN.search(t):
+        return "zh"
+    if _LATIN.search(t):
+        return "fr"
+    return fallback
 
 
 def can_read(recipient_known_langs, from_lang: str) -> bool:
@@ -118,7 +152,9 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         # 도착한 글이 실제로 무슨 언어인가. **번역을 안 탄 경로는 발신 언어 그대로다.**
         # 이걸 dst_lang 으로 채점하면 같은 글을 다른 언어 사전으로 세어 화용 표지가
         # 통째로 "소실" 로 잡힌다 (지표 7).
-        "delivered_lang": from_lang,
+        # **실제로 쓰인 말**이다 (8/22). `original` 은 발신자가 수신국 말로 쓸 수 있으므로
+        # `from_lang` 으로 적으면 거짓이 된다 — 지표 7 이 다른 언어 사전으로 센다.
+        "delivered_lang": detect_lang(text_sent, from_lang),
         "translate_prompt": None, "logprob_mean": None,
     }
 
@@ -134,9 +170,17 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     if kind == "original":
         if direct:
             meta["text_delivered"] = text_sent      # 원문 그대로 (지표 4d)
-            # 어느 쪽 덕인지 라벨이 데려간다. 읽는 쪽 덕이면 「그대로 읽었다」,
-            # 쓰는 쪽 덕이면 「나는 못 읽지만 상대가 내 말을 다룬다」 — 사실이 다르다.
-            lbl = (DIRECT_READ_LABEL if direct_by == "reader" else DIRECT_WRITE_LABEL)
+            # **라벨은 도착한 글의 실제 언어로 고른다** (8/22).
+            #
+            # 전에는 `direct_by` 로 골랐다 — 「쓰는 쪽 덕」 이면 「나는 못 읽지만 상대가 내
+            # 말을 다룬다」 를 붙였다. 그런데 이제 그 발신자가 **내 말로 쓸 수도 있다.**
+            # 그러면 나는 읽을 수 있는데 「못 읽는다」 고 적히고, 어제 고친 그 거짓말이
+            # 방향만 바꿔 되살아난다.
+            #
+            # 읽을 수 있으면 읽었다고 적고, 못 읽으면 왜 그래도 통했는지를 적는다.
+            lbl = (DIRECT_READ_LABEL
+                   if meta["delivered_lang"] in recipient_known_langs
+                   else DIRECT_WRITE_LABEL)
             inbox = {"from": sent["from"], "label": lbl, "text": text_sent,
                      "original": None}
             return {"kind": kind, "delivered": True, "inbox": inbox,

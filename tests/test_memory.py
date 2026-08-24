@@ -18,6 +18,17 @@ from core.llm import StubClient, assistant_msg, tool_call
 from domains.meteor import prompts
 
 
+# **인구가 늘어난다** (8/21). `bear_child` 는 부모를 죽이지 않으므로 초기 9명 말고도
+# 사람이 생긴다 — 초기 id 로만 만든 클라이언트 사전은 새 사람에게서 KeyError 를 낸다.
+# 없는 id 는 즉시 끝내는 스텁으로 채운다.
+def _client_for(clients, script_end):
+    def get(aid):
+        if aid not in clients:
+            clients[aid] = StubClient([script_end] * 4)
+        return clients[aid]
+    return get
+
+
 @pytest.fixture()
 def cfg():
     return config.load("configs/base.yaml")
@@ -25,7 +36,12 @@ def cfg():
 
 @pytest.fixture()
 def world(cfg):
-    return loop.init_world(cfg, itertools.count(1))
+    w = loop.init_world(cfg, itertools.count(1))
+    # **개체 차이를 1.0 으로 눕힌다** (8/22) — 다른 기제를 재는 테스트가 사람마다 다른
+    # 액수에 흔들리지 않게. 차이 자체는 test_world_rules_v2 의 전용 테스트가 본다.
+    for a in w.agents.values():
+        a.income_mult = a.invest_mult = 1.0
+    return w
 
 
 def _turn(world, cfg, aid, script, warn=False):
@@ -74,33 +90,29 @@ def test_memory_costs_ap_not_budget(cfg, world):
     assert a.ap == pytest.approx(1.0 - cfg.ap.memory_write)
 
 
-def test_only_the_testament_survives_death(cfg, world):
-    """개인에 속한 것은 전부 소실. **유언 한 문장만** 아이에게 전해진다.
+def test_nothing_of_a_life_survives_a_natural_death(cfg, world):
+    """**유언이 없어졌다** (8/21). 자연사에는 넘길 통로가 아예 없다.
 
-    기억이 아니라 **들은 말**로 간다 (8/21 정정) — 아이는 빈손으로 태어나고, 그 말을
-    옮겨 적을지 스스로 고른다. 안 옮기면 대화가 밀려나며 사라진다. **그 선택이 곧 구전의
-    감쇠**이고, 무엇을 남길 가치가 있다고 봤는지가 관측됩니다.
+    전에는 `procreate` 가 유언·예산·학습 진척 절반을 아이에게 넘겼다. 이제 재생산은
+    `bear_child` 이고 **부모가 죽지 않으므로**, 넘기고 싶은 것은 살아서 넘긴다 — 돈은
+    주고, 말은 하고, 언어는 가르친다 (부모가 국내 구사자이므로 아이의 학습이 싸다).
+
+    그래서 죽음은 **순수한 소실**이 됐다. 개인에 속한 것은 전부 사라진다.
     """
     a = world.agents["Asla1"]
     a.memory = "내가 평생 알아낸 것"
     a.convo.append({"role": "user", "content": "옛 기억"})
-    loop._procreate_child(world, "Asla1", "유언만 넘어간다", cfg,
-                          itertools.count(9000), loop.RunResult(world=world))
+    a.lang_progress = {"fr": 400.0}
+    a.budget = 500.0
+
+    child = loop._newborn("Asla9", "Asla", "ja", 0.0, set(), world.turn,
+                          "natural", cfg, itertools.count(9000))
+    loop._replace(world, "Asla1", child, [])
+
     assert "Asla1" not in world.agents        # id 는 재사용하지 않는다
-    child = world.agents["Asla4"]             # 3명 다음이니 4번
-    assert child.convo == []                       # 대화 이력은 소실
-    assert "내가 평생 알아낸 것" not in child.memory  # 부모의 메모도 소실
-    # **유언은 기억이 아니라 들은 말로 온다** (8/21 정정). 아이는 빈손으로 태어나고,
-    # 옮겨 적을지를 스스로 고른다 — 그 선택이 구전의 감쇠다.
-    assert child.memory == ""
-    q = [e for e in world.inbox_queue if e["to"] == "Asla4"]
-    assert len(q) == 1 and q[0]["msg"]["testament"] == ["유언만 넘어간다"]
-    assert world.testaments["Asla4"][0] == "유언만 넘어간다"   # 계보 저장소는 그대로
-    assert "Asla1" not in world.testaments                    # 죽은 자리는 비운다
-
-
-# ── 압박·축출 ─────────────────────────────────────────────────────────────────
-
+    assert child.convo == [] and child.memory == ""
+    assert child.lang_progress == {} and child.budget == 0.0
+    assert child.parent_langs == set()       # 자연사에는 부모가 없다 (3.2)
 def test_pressure_warning_prepended(cfg, world):
     """임계를 넘으면 관측 **앞**에 통지가 붙는다. 사실 통지이지 지시가 아니다."""
     a = world.agents["Asla1"]
@@ -149,14 +161,17 @@ def test_repeat_guard_stops_loop(cfg, world):
 def test_free_actions_keep_can_act_true(cfg, world):
     """**종료 조건 ② 는 자유 행동이 생기면서 사실상 죽었다** (8/17).
 
-    `memory_write` 와 `procreate` 가 돈도 AP 도 안 쓰므로, 자원이 완전히 바닥나도
-    고를 것이 남아 있다. 여기서 거짓으로 False 를 돌려주면 **합법적인 행동을 잘라내게**
-    된다 — 빈털터리가 유언을 남기고 죽는 것이 이 세계에서 가장 흔한 결말이다.
-    정상 종료는 `end_turn` 이고, 폭주는 `RUNAWAY_CAP`(64) 이 막는다.
+    `memory_write` 가 돈도 AP 도 안 쓰므로, 자원이 바닥나도 고를 것이 남아 있다. 여기서
+    거짓으로 False 를 돌려주면 **합법적인 행동을 잘라내게** 된다. 정상 종료는 `end_turn`
+    이고, 폭주는 `RUNAWAY_CAP`(64) 이 막는다.
+
+    **`procreate` 는 없어졌다** (8/21). 그것도 AP 0 이었는데 `bear_child` 는 1.0 을 문다 —
+    그래서 「공짜 행동」 은 이제 `memory_write` 하나이고, 그것도 압박선 위에서만 열린다.
     """
     a = world.agents["Asla1"]
     a.budget, a.ap = 0.0, 0.0
-    assert cfg.ap.memory_write == 0.0 and cfg.ap.procreate == 0.0
+    a.memory_open = True                       # 압박선 위 — 기억이 열려 있다
+    assert cfg.ap.memory_write == 0.0
     assert can_act(a, cfg, 48.0) is True
 
 
@@ -179,7 +194,7 @@ def test_sender_context_has_no_translation(cfg):
                                                  text=long_text, reasoning="r")), end]}
     clients = {a: StubClient(list(scripts.get(a, []))) for a in ids}
     tr = StubClient([{"role": "assistant", "content": "TRANSLATED_MARK", "tool_calls": []}] * 30)
-    res = loop.run_agentic(cfg, random.Random(1), lambda a: clients[a], tr, 48.0,
+    res = loop.run_agentic(cfg, random.Random(1), _client_for(clients, assistant_msg(tool_call("end_turn", "z", reasoning="r"))), tr, 48.0,
                            prompts.render_turn_open, prompts.system_for, parallel=False)
     sender = res.world.agents["Asla1"]
     blob = json.dumps(sender.convo, ensure_ascii=False)
@@ -201,25 +216,28 @@ def test_agents_have_separate_contexts(cfg):
     object.__setattr__(cfg.world, "total_turns", 2)
     ids = [f"{c}{i}" for c in ("Asla", "Ranoa", "Miris") for i in (1, 2, 3)]
     end = assistant_msg(tool_call("end_turn", "e", reasoning="r"))
-    clients = {a: StubClient([end, end]) for a in ids}
-    res = loop.run_agentic(cfg, random.Random(1), lambda a: clients[a],
+    clients = {a: StubClient([end, end]) for a in ids}   # 새로 태어난 사람은 _client_for 가 채운다
+    res = loop.run_agentic(cfg, random.Random(1), _client_for(clients, assistant_msg(tool_call("end_turn", "z", reasoning="r"))),
                            StubClient([{"role": "assistant", "content": "t", "tool_calls": []}] * 30),
                            48.0, prompts.render_turn_open, prompts.system_for, parallel=False)
     # **신원은 이제 system 에 있다.** 관측(지금 그러한 것)이 system 으로 옮겨갔고,
     # 대화에는 턴을 여는 한 마디와 내 행동·결과만 쌓인다.
-    for aid in ids:
+    # **9명이 그대로 있지 않다** (8/21). 자연사는 자리를 갈고, 아이 낳기는 사람을 늘린다.
+    # 그래서 「초기 id」 가 아니라 **지금 살아 있는 사람들**을 본다.
+    live = sorted(res.world.agents)
+    for aid in live:
         agent = res.world.agents[aid]
         sysp = prompts.system_for(agent, res.world, cfg, 48.0)
         assert (f"あなたは {aid}" in sysp or f"你是 {aid}" in sysp
                 or f"Vous êtes {aid}" in sysp), aid
-        for other in ids:
+        for other in live:
             if other != aid:
                 assert f"あなたは {other}" not in sysp
                 assert f"你是 {other}" not in sysp
                 assert f"Vous êtes {other}" not in sysp
         # 대화에 남의 신원이 섞이지 않는다
         blob = json.dumps(agent.convo, ensure_ascii=False)
-        for other in ids:
+        for other in live:
             if other != aid:
                 assert f"あなたは {other}" not in blob
 

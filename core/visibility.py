@@ -63,10 +63,15 @@ FACTS: dict[str, tuple[Vis, str]] = {
     "lang_progress":     (Vis.PRIVATE, "내 언어 학습 진척"),
     "facility_invested": (Vis.PRIVATE, "내가 어느 나라에 얼마를 냈나"),
     "memory":            (Vis.PRIVATE, "내 메모"),
-    "testament":         (Vis.PRIVATE, "부모가 남긴 말. **아이 본인에게만** 간다 — 기억에 "
-                                       "미리 심지 않고 들은 말로 온다. 옮겨 적을지는 "
-                                       "아이가 고르고, 안 옮기면 대화에서 밀려 사라진다 "
-                                       "(3.3 구전의 감쇠)"),
+    "testament":         (Vis.PRIVATE, "앞사람이 죽으며 남긴 말. **뒷사람에게만** — "
+                                       "기억에 심지 않고 들은 말로 온다. 옮겨 적을지는 "
+                                       "본인이 고르고, 안 옮기면 대화에서 밀려 사라진다 "
+                                       "(3.3 구전의 감쇠). 자연사는 예고가 없어 도구로는 "
+                                       "남길 수 없으므로 죽는 그 순간에 우리가 묻는다"),
+    "gift":              (Vis.PRIVATE, "누가 나에게 얼마를 주었나. **받는 이만** — "
+                                       "예산은 PRIVATE 이고, 갑자기 늘어난 이유를 "
+                                       "본인이 모르면 그 돈을 쓸 판단을 못 한다"),
+
     "risk_reading":      (Vis.PRIVATE, "내가 observe_risk 로 읽은 값. 남에게 알리려면 말해야 한다"),
     "fac_gain":          (Vis.PRIVATE, "내 출자가 진척을 얼마 올렸나 (타국이면 여부만)"),
     "delivery_failed":   (Vis.PRIVATE, "내가 보낸 말이 닿지 않았다"),
@@ -94,6 +99,10 @@ FACTS: dict[str, tuple[Vis, str]] = {
     "year":              (Vis.GLOBAL, "올해"),
     "roster":            (Vis.GLOBAL, "누가 있는가. 없으면 서로를 부를 수 없다"),
     "rules":             (Vis.GLOBAL, "세계 규칙 (SYSTEM)"),
+    "birth":             (Vis.GLOBAL, "누가 아이를 낳았고 누가 태어났나 — `roster` 가 "
+                                      "GLOBAL 이므로 새 사람이 나타난 것은 어차피 보인다. "
+                                      "**누구의 아이인가**만 새로 새는 것이고, 그건 "
+                                      "세대 간 전달을 관측하려면 필요하다 (3.3)"),
     "obituary":          (Vis.GLOBAL, "누가 몇 살에 죽고 누가 그 자리에 왔나 — 8/20 에 "
                                       "PUBLIC 에서 올렸다. roster 가 이미 교체를 드러내므로 "
                                       "새로 새는 것은 **나이**뿐이고, 그것이 수명을 배우는 "

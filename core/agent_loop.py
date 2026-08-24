@@ -5,7 +5,7 @@
       resp = client.chat(messages, tools=TOOLS)
       tool_calls 없으면 종료
       각 tool_call 실행 → 결과를 role="tool" 로 append
-  procreate / end_turn 은 루프를 즉시 끝낸다.
+  end_turn 은 루프를 즉시 끝낸다 (재생산 행위는 8/22 에 폐기 — 자연사가 후손을 남긴다).
 
 ⚠ 도구는 세계를 즉시 바꾸지 않는다. 자기 budget/ap 만 즉시 차감하고 효과는 Sink 에
   넣는다. 국토 확정·진척 판정·cap 배분·번역은 전원의 루프가 끝난 뒤 loop.py 5단계에서.
@@ -40,7 +40,12 @@ class Sink:
     votes: list = field(default_factory=list)         # 제안 (agent_id, country, target)
     ballots: list = field(default_factory=list)       # 표 (agent_id, country, choice)
     learns: list = field(default_factory=list)        # (agent_id, lang) — 다음 턴부터 유효
-    procreations: list = field(default_factory=list)  # (agent_id, testament)
+    # **아이를 낳은 사람들** (8/21). 전에는 `procreations` 로 (id, 유언) 을 담았다 —
+    # 유언이 없어지고 부모가 죽지 않으므로 id 하나면 된다.
+    births: list = field(default_factory=list)        # agent_id
+    # **준 돈** (from, to, amount). 받는 쪽 예산을 즉시 바꾸면 병렬이 깨지므로 (남의
+    # 상태다) 정산에서 넣는다 — 보내는 쪽 차감만 즉시다.
+    gifts: list = field(default_factory=list)
     observations: list = field(default_factory=list)  # 위험 관측 (진실·관측치·오차)
     observations_by: dict = field(default_factory=dict)   # 이번 턴 개체별 관측 횟수
 
@@ -110,25 +115,38 @@ def learn_discounts(agent, country_id: str, world) -> tuple[bool, bool]:
     return domestic, target_lang in agent.parent_langs
 
 
-def learn_cost(agent, country_id: str, world, cfg) -> tuple[float, str]:
-    """(비용, 할인사유). **L − 사유당 정액.**
+def learn_speed(agent, country_id: str, world, cfg) -> tuple[float, str]:
+    """(회당 수확 배율, 사유). **필요액은 고정이고 속도가 오른다** (8/22).
 
-    비율(×0.5)이었을 때 사유가 둘이면 ×0.25 라 정가와 네 배가 벌어졌다. L 을 200 으로
-    내리면서 그 배율은 50 이 되어 **두 번 만에 끝나는** 값이 된다. 정액이면 사유 하나가
-    언제나 같은 값어치라 사다리가 200 · 150 · 100 으로 고르다.
+    전에는 필요액을 깎았다 (200 → 150 → 100). 그러면 **목표가 움직인다** — 반쯤 낸 학습이
+    구사자가 생기는 순간 갑자기 완성되는 경로가 생기고, 그 주변에서 이미 버그를 한 번 잡았다.
 
-    한 번의 학습이 20 원이므로 바닥은 그 아래로 내려가지 않게 잡는다.
+    이제 필요액은 `learn_base` 에 고정하고 회당 수확을 올린다. 사유 하나마다 `+0.5` 배다.
+
+        사유 없음   회당 40   →  5회 · 200원 · AP 1.0
+        하나        회당 60   →  4회 · 160원 · AP 0.8
+        둘          회당 80   →  3회 · 120원 · AP 0.6
+
+    **곱이 아니라 합이다.** ×1.5 를 두 번 곱하면 2.25 배라 정가와 너무 벌어진다 — 정액
+    할인으로 바꿀 때 비율을 버린 것과 같은 이유다.
     """
-    base = cfg.costs.learn_base
-    cut = cfg.costs.learn_discount
+    up = cfg.costs.learn_speedup
     domestic, parent = learn_discounts(agent, country_id, world)
     reasons = []
     if domestic:
-        reasons.append(f"someone in your nation speaks it (-{cut:.0f})")
+        reasons.append(f"someone in your nation speaks it (x{1 + up:.1f} faster)")
     if parent:
-        reasons.append(f"your parent spoke it (-{cut:.0f})")
-    cost = max(cfg.costs.unit, base - cut * len(reasons))
-    return cost, " · ".join(reasons) if reasons else "no discount"
+        reasons.append(f"your parent spoke it (x{1 + up:.1f} faster)")
+    return 1.0 + up * len(reasons), " · ".join(reasons) if reasons else "no help"
+
+
+def learn_cost(agent, country_id: str, world, cfg) -> tuple[float, str]:
+    """(필요액, 사유). **필요액은 이제 고정이다** — 사유는 속도에 붙는다 (`learn_speed`).
+
+    이름을 남겨 둔다: 필요액을 묻는 자리가 여러 곳이고, 그 값이 「목표」 라는 뜻은 그대로다.
+    """
+    _, reason = learn_speed(agent, country_id, world, cfg)
+    return cfg.costs.learn_base, reason
 
 
 # ── 새어나온 도구 호출 회수 ──────────────────────────────────────────────────
@@ -218,7 +236,7 @@ def recover_tool_calls(content: str | None) -> list[dict]:
 
 def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                  knob_ai: float) -> tuple[dict, str | None]:
-    """(tool_result, control). control="end" 면 턴 종료 (procreate/end_turn)."""
+    """(tool_result, control). control="end" 면 턴 종료 (end_turn)."""
 
     if name == "end_turn":
         return {"ok": True}, "end"
@@ -258,7 +276,14 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         #
         # 금액이 자유였을 때는 요청·절삭·과금이 서로 달라서, 응답이 그 차이를 알려야
         # 했고(`_clamped`) 표에는 「額÷300」 이라는 비율이 필요했다. 고정하면 셋이 하나다.
-        amount, ap_used = cfg.costs.unit, cfg.ap.unit
+        # **한 번에 옮기는 액수는 사람마다 다르다** (8/22). `invest_mult` 는 태어날 때
+        # 뽑히고 평생 안 바뀐다 — 소득 배수와 **독립**이라 「고소득·저처리」 와
+        # 「저소득·고처리」 가 같이 생긴다. 그 둘이 서로를 필요로 하는 것이 `give` 와
+        # `speak` 가 필수가 되는 지점이다.
+        #
+        # **학습에는 안 걸린다.** 학습 눈금은 `x̂` 를 재는 자이므로 사람마다 달라지면
+        # 그 자가 흔들린다 (spec 7).
+        amount, ap_used = cfg.costs.unit * agent.invest_mult, cfg.ap.unit
         if not _afford(agent.ap, ap_used):
             return {"ok": False,
                     "error": f"not enough action; one investment needs {ap_used}, have {agent.ap:.2f}"}, None
@@ -305,9 +330,14 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         done_before = agent.lang_progress.get(lang, 0.0)
         # **invest 와 같은 단위다.** 한 번에 정해진 액수만 내고, 마지막 한 번은 남은
         # 만큼만 낸다 — 넘치게 받으면 남는 돈이 조용히 사라진다.
-        amount, ap_used = cfg.costs.unit, cfg.ap.unit
-        amount = min(amount, max(0.0, need - done_before))
-        if amount <= 0:
+        # **돈은 고정이고 수확이 배율을 탄다** (8/22). 마지막 한 번은 남은 만큼만 —
+        # 넘치게 걷으면 남는 돈이 조용히 사라진다. 절삭은 **수확 쪽**에서 하고, 돈은
+        # 그 비율만큼만 받는다.
+        mult, _ = learn_speed(agent, country_id, world, cfg)
+        ap_used = cfg.ap.unit
+        gain = min(cfg.costs.unit * mult, max(0.0, need - done_before))
+        amount = gain / mult                     # 수확에 비례해 낸다
+        if gain <= 0:
             return {"ok": False, "error": f"{country_id}'s language is already paid for"}, None
         if not _afford(agent.ap, ap_used):
             return {"ok": False,
@@ -325,7 +355,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         #
         # `lang_progress` 는 **개인의 것**이라 즉시 바꿔도 병렬이 안전하다. 남이 읽는
         # 것은 `known_langs` 뿐이고, 그건 아래 sink 로 넘겨 정산 때 반영한다.
-        agent.lang_progress[lang] = done_before + amount
+        agent.lang_progress[lang] = done_before + gain
         # known_langs 는 다른 에이전트가 읽으므로(국내 구사자 판정) 즉시 바꾸지 않는다.
         # sink 에 넣어 정산 때(정렬 순) 반영한다 — 병렬 레이스·재현성 방지.
         domestic, parent = learn_discounts(agent, country_id, world)
@@ -333,12 +363,19 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "agent": agent.id, "country": agent.country,
             "target": country_id, "lang": lang,
             "charged": amount, "progress_before": round(done_before, 2),
-            "required": need, "rung": round(need / cfg.costs.learn_base, 4),
+            # **`rung` 을 `speed` 로 갈았다** (8/23). `rung` 은 `need / learn_base` 였고
+            # 할인 모델에서는 1.0 / 0.5 / 0.25 로 뜻이 있었다. 그런데 8/22 에 할인을
+            # **가속**으로 바꾸면서 `need` 가 늘 `learn_base` 가 됐다 — 그날부터 `rung`
+            # 은 **항상 1.0** 인 상수였고, 뷰어는 모든 학습에 「L×1」 을 찍고 있었다.
+            # 지금 변하는 값은 배속이다.
+            "required": need, "speed": mult,
             "discount_domestic": domestic, "discount_parent": parent,
             "age": agent.age, "budget_after": round(agent.budget, 2),
             "lam": round(agent.lam, 4),
         })
-        done = done_before + amount
+        # **응답도 수확으로 센다.** 상태는 `gain` 을 쌓는데 응답만 `amount` 로 세면
+        # 「진척 198.3 / 200 · 남음 1.7」 처럼 **완성한 뒤에도 안 끝났다고 말한다.**
+        done = done_before + gain
         # 남는 것은 **내가 몰랐던 것**뿐이다. 누적 진척과 그때그때의 필요액은 턴을
         # 넘나들며 바뀌고(국내 구사자가 생기면 절반이 된다), 계산으로 알 수 없다.
         return {"ok": True,
@@ -493,12 +530,36 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         sink.ballots.append((agent.id, agent.country, choice))
         return {"ok": True, "ap_left": round(agent.ap, 1)}, None
 
-    if name == "procreate":
-        if not _afford(agent.ap, cfg.ap.procreate):
-            return {"ok": False, "error": f"not enough action; procreate needs {cfg.ap.procreate}, have {agent.ap:.2f}"}, None
-        _spend(agent, cfg.ap.procreate)
-        sink.procreations.append((agent.id, args.get("testament", "")))
-        return {"ok": True}, "end"
+    if name == "give":
+        to = args.get("to")
+        if to is None:
+            return {"ok": False, "error":
+                    "give needs `to`, the recipient id (e.g. Ranoa2)"}, None
+        if to not in world.agents:
+            return {"ok": False, "error":
+                    f"unknown recipient: {to}. Use an id from the list of people in "
+                    f"your observation"}, None
+        if to == agent.id:
+            return {"ok": False, "error": "you cannot give to yourself"}, None
+        try:
+            amount = float(args.get("amount"))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "amount must be a number"}, None
+        if amount <= 0:
+            return {"ok": False, "error": "amount must be more than 0"}, None
+        if not _afford(agent.ap, cfg.ap.give):
+            return {"ok": False, "error":
+                    f"not enough action; give needs {cfg.ap.give}, "
+                    f"have {agent.ap:.2f}"}, None
+        # **넘치게 주지 않는다.** 잘라서 주면 받는 쪽이 얼마를 받았는지 되짚어야 한다.
+        if agent.budget < amount:
+            return {"ok": False, "error":
+                    f"not enough budget; you have {agent.budget:.0f}"}, None
+        agent.budget -= amount
+        _spend(agent, cfg.ap.give)
+        sink.gifts.append((agent.id, to, amount))
+        return {"ok": True, "budget_left": round(agent.budget, 1),
+                "ap_left": round(agent.ap, 1)}, None
 
     return {"ok": False, "error": f"unknown tool: {name}"}, None
 
@@ -569,6 +630,27 @@ def _tool_tokens(tool_list) -> int:
     return _TOOL_TOKENS_BY_ID.get(id(tool_list), _TOOL_TOKENS)
 
 
+def fixed_tokens(tool_tokens: int, system_prompt: str) -> int:
+    """축출 예산에서 **뺄 수 없는** 몫. 도구 스키마 + system 프롬프트.
+
+    **system 을 안 세고 있었다** (8/23). 「system 은 convo 밖이라 안전하다」 는 주석이
+    있었는데, 축출 대상이 아닌 것과 **예산에 안 세는 것**은 다르다. `evict` 가
+    convo+도구만 8192 아래로 눌러도 그 위에 system 이 얹히므로 실질 한계가 9,000~10,000
+    이 됐다. `inh30` 실측:
+
+        추정 토큰   system 중앙 881 (최대 1,802) · convo+도구 중앙 5,804 (최대 8,283)
+        system 이 전체에서 차지하는 비중 중앙 **17%**
+        실제 prompt_tokens 이 8192 를 넘은 콜 **220/1080 = 20%** · 최대 11,600
+
+    문맥 한계는 이 세계의 제약이고 그 압박에서 잃는 것이 관측 대상이다 (spec 4.5).
+    20% 가 새면 그 관측이 느슨해진다.
+
+    system 은 매 스텝 새로 만들어지고 길이가 변한다 (기억·학습표·도착분). 그래서
+    상수로 둘 수 없고 매번 잰다 — 문자열 길이 연산이라 값이 싸다.
+    """
+    return tool_tokens + estimate_tokens([{"role": "system", "content": system_prompt}])
+
+
 def _turn_blocks(convo: list[dict]) -> list[tuple[int, int]]:
     """대화를 턴 블록으로 나눈다. 블록 = user(관측) 하나 + 뒤따르는 assistant/tool."""
     idx = [i for i, m in enumerate(convo) if m.get("role") == "user"]
@@ -599,7 +681,7 @@ def under_pressure(agent, cfg) -> bool:
     return agent.last_prompt_tokens >= cfg.llm.context_limit * cfg.llm.warn_ratio
 
 
-def compact_after_memory(agent, cfg, tool_tokens: int) -> int:
+def compact_after_memory(agent, cfg, fixed: int) -> int:
     """**기억을 쓰면 앞쪽 대화를 버린다.** 버린 블록 수를 돌려준다.
 
     압박 경고는 「한계에 다가가고 있다」 는 사실 통지였는데, 경고를 받고 memory_write 를
@@ -621,9 +703,9 @@ def compact_after_memory(agent, cfg, tool_tokens: int) -> int:
     """
     target = cfg.llm.context_limit * cfg.llm.warn_ratio
     before = len(agent.convo)
-    agent.convo, dropped = evict(agent.convo, target, tool_tokens, min_blocks=2)
+    agent.convo, dropped = evict(agent.convo, target, fixed, min_blocks=2)
     if dropped:
-        agent.last_prompt_tokens = estimate_tokens(agent.convo, tool_tokens)
+        agent.last_prompt_tokens = estimate_tokens(agent.convo, fixed)
     del before
     return dropped
 
@@ -653,7 +735,7 @@ def _redact_args(name: str, args: dict) -> dict:
 
     `reasoning` 은 같은 이벤트의 `reasonings` 에, `speak` 의 `text` 는 `messages.jsonl` 에
     원문·도착문이 함께 있다. 그 둘 말고는 아무것도 버리지 않는다 — `memory_write` 의
-    본문과 `procreate` 의 유언이 바로 그렇게 사라지고 있었다.
+    본문이 바로 그렇게 사라지고 있었다.
     """
     drop = {"reasoning"} | ({"text"} if name == "speak" else set())
     return {k: v for k, v in args.items() if k not in drop}
@@ -669,8 +751,11 @@ def can_act(agent, cfg, knob_ai: float) -> bool:
     > 종료는 `end_turn` 이고, 폭주는 `RUNAWAY_CAP`(64) 이 막습니다. 그래도 **정직하게
     > 계산합니다** — 여기서 거짓으로 False 를 돌려주면 합법적인 행동을 잘라내게 됩니다.
     """
-    free_ap = min(cfg.ap.memory_write, cfg.ap.procreate)
-    if free_ap <= 0:                                  # 공짜 행동이 하나라도 있으면 참
+    # **공짜 행동이 사라졌다** (8/21). `procreate` 가 AP 0 이었고 `memory_write` 도
+    # 0 인데 압박선 위에서만 열린다. 출산 행위가 없어진 뒤로 공짜 행동은 그것뿐이라, AP 가 0 이면
+    # 실제로 할 수 있는 것이 없을 수 있다 — 그래서 정직하게 센다.
+    free_ap = cfg.ap.memory_write if agent.memory_open else None
+    if free_ap is not None and free_ap <= 0:
         return True
     if agent.budget >= cfg.costs.comm_domestic and _afford(agent.ap, cfg.ap.speak):
         return True
@@ -725,8 +810,10 @@ def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
     "error"), 계속하면 None. steps·actions·reasonings·calls 는 st 에 누적된다.
     """
     st.steps += 1
-    # 한계를 넘으면 오래된 턴 블록부터 버린다. system 은 convo 밖이라 안전하다.
-    agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, tool_tokens)
+    # 한계를 넘으면 오래된 턴 블록부터 버린다. system 은 축출 대상이 아니지만
+    # **예산에는 든다** (`fixed_tokens`).
+    fixed = fixed_tokens(tool_tokens, system_prompt)
+    agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, fixed)
     st.evicted += dropped
     messages = [{"role": "system", "content": system_prompt}, *agent.convo]
     t_call = time.time()
@@ -827,7 +914,7 @@ def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
         # 이득 없이 대화만 잃는다. 결과를 append 한 **뒤**에 도는 이유는, 방금 부른
         # 도구의 결과가 남은 블록 안에 들어가야 하기 때문이다.
         if name == "memory_write" and result.get("ok") and under_pressure(agent, cfg):
-            st.compacted += compact_after_memory(agent, cfg, tool_tokens)
+            st.compacted += compact_after_memory(agent, cfg, fixed)
         # 실패한 호출만 센다 (성공은 자원을 쓰므로 can_act 가 이미 막는다).
         if not result.get("ok"):
             key = f"{name}|{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
@@ -835,7 +922,7 @@ def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
             if st.seen[key] >= cfg.llm.repeat_guard:
                 return "repeat_guard"
         if control == "end":
-            return "ended"     # procreate/end_turn 뒤쪽 tool_call 은 버린다
+            return "ended"     # end_turn 뒤쪽 tool_call 은 버린다
     return None
 
 
@@ -892,7 +979,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     전체 시뮬레이션은 계속된다 — 단일 API 실패가 50턴 런을 죽이면 안 된다.
 
     종료 조건 (임의 상한을 두지 않는다):
-      ① end_turn / procreate
+      ① end_turn
       ② 남은 예산으로도 AP 로도 실행 가능한 도구가 없다
       ③ 동일한 (도구, 인자) 호출이 repeat_guard 회 반복
     """
@@ -939,8 +1026,10 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             ended_by = "exhausted"
             break
         steps += 1
-        # 한계를 넘으면 오래된 턴 블록부터 버린다. system 은 convo 밖이라 안전하다.
-        agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, tool_tokens)
+        # 한계를 넘으면 오래된 턴 블록부터 버린다. system 은 축출 대상이 아니지만
+        # **예산에는 든다** (`fixed_tokens`).
+        fixed = fixed_tokens(tool_tokens, system_prompt)
+        agent.convo, dropped = evict(agent.convo, cfg.llm.context_limit, fixed)
         evicted += dropped
         messages = [{"role": "system", "content": system_prompt}, *agent.convo]
         t_call = time.time()
@@ -1062,7 +1151,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             # 경로에서는 기억을 적어도 자리가 생기지 않고, 그 차이는 테스트가 한쪽만
             # 보면 안 보인다 (이 프로젝트에서 이미 겪은 부류다).
             if name == "memory_write" and result.get("ok") and under_pressure(agent, cfg):
-                compacted += compact_after_memory(agent, cfg, tool_tokens)
+                compacted += compact_after_memory(agent, cfg, fixed)
             # ③ 실패한 호출만 센다. 성공은 자원을 쓰므로 ②가 이미 막는다 —
             #    성공까지 세면 정상 행동(같은 상대에게 3번 말하기)이 끊긴다.
             if not result.get("ok"):
@@ -1075,7 +1164,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             if control == "end":
                 stop = True
                 ended_by = "ended"
-                break     # procreate 뒤쪽 tool_call 은 버린다
+                break     # end_turn 뒤쪽 tool_call 은 버린다
         if stop:
             break
 

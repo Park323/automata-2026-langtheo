@@ -18,6 +18,17 @@ from core.llm import StubClient, assistant_msg, tool_call
 from domains.meteor import prompts
 
 
+# **인구가 늘어난다** (8/21). `bear_child` 는 부모를 죽이지 않으므로 초기 9명 말고도
+# 사람이 생긴다 — 초기 id 로만 만든 클라이언트 사전은 새 사람에게서 KeyError 를 낸다.
+# 없는 id 는 즉시 끝내는 스텁으로 채운다.
+def _client_for(clients, script_end):
+    def get(aid):
+        if aid not in clients:
+            clients[aid] = StubClient([script_end] * 4)
+        return clients[aid]
+    return get
+
+
 @pytest.fixture
 def cfg_think(cfg):
     """사고형 모드 (도구 reasoning 없음). base.yaml 은 지금 켠 상태다 — DeepInfra 에서
@@ -42,7 +53,7 @@ def _run(cfg, scripts, turns=1):
     object.__setattr__(cfg.world, "total_turns", turns)
     ids = [f"{c}{i}" for c in ("Asla", "Ranoa", "Miris") for i in (1, 2, 3)]
     clients = {a: StubClient(list(scripts.get(a, []))) for a in ids}
-    return loop.run_agentic(cfg, random.Random(1), lambda a: clients[a],
+    return loop.run_agentic(cfg, random.Random(1), _client_for(clients, assistant_msg(tool_call("end_turn", "z", reasoning="r"))),
                             StubClient([{"role": "assistant", "content": "译文",
                                          "tool_calls": []}] * 60),
                             48.0, prompts.render_turn_open, prompts.system_for,
@@ -128,7 +139,12 @@ def test_intent_is_gone(cfg):
 @pytest.fixture
 def world(cfg):
     import itertools
-    return loop.init_world(cfg, itertools.count(1))
+    w = loop.init_world(cfg, itertools.count(1))
+    # **개체 차이를 1.0 으로 눕힌다** (8/22) — 다른 기제를 재는 테스트가 사람마다 다른
+    # 액수에 흔들리지 않게. 차이 자체는 test_world_rules_v2 의 전용 테스트가 본다.
+    for a in w.agents.values():
+        a.income_mult = a.invest_mult = 1.0
+    return w
 
 
 def test_recovers_a_tool_call_that_leaked_into_content():
@@ -211,7 +227,8 @@ def test_exhausted_still_means_exhausted(cfg, world):
     from dataclasses import replace
     a = world.agents["Asla1"]
     a.ap, a.budget = 0.0, 0.0
-    broke = replace(cfg, ap=replace(cfg.ap, memory_write=0.1, procreate=1.0))
+    # `procreate` 는 없어졌고 `bear_child` 가 이미 1.0 이다 (8/21)
+    broke = replace(cfg, ap=replace(cfg.ap, memory_write=0.1))
     lg = run_agent_turn(world, a, broke, StubClient([]), Sink(), 48.0,
                         prompts.system_for(a, None, cfg),
                         prompts.render_observation(world, a, broke, 48.0))

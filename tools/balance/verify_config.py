@@ -24,12 +24,18 @@ import yaml  # noqa: E402
 
 from tools.balance.sweep import (  # noqa: E402
     POLICIES, POLICY_COEF, W_TARGET, Cfg, bounds, evaluate, expected_life,
-    passes_asserts, required_w, required_w_growth,
+    mean_age_multiplier, passes_asserts, required_w, required_w_growth,
 )
 
-# 무성장 0.45 / 성장 0.20 — 못 박을 때 실측한 값 (todo · RESULTS.md).
+# 무성장 0.50 / 성장 0.30 — 못 박을 때 실측한 값 (todo · RESULTS.md).
 # 코드가 바뀌어 여기서 벗어나면 세계의 난이도가 조용히 달라진 것이다.
-EXPECTED = {"w_star": 0.45, "w_star_growth": 0.20}
+#
+# **0.45 / 0.20 에서 갱신했다** (8/23). 그 값은 임계 9558 · 100해 · adult_age 10 시절
+# 것이고, `adult_age` 를 5 로 내린 이틀 전부터 이미 낡아 있었다 — 이 도구를 안 돌려서
+# 몰랐다. 「숫자를 두 군데 적으면 하나가 낡는다」 의 여섯 번째다.
+#
+# 지금 값은 임계 13206 (창 [11483, 17225] 의 0.30 지점) · 국가 효율 최선 1.3 기준이다.
+EXPECTED = {"w_star": 0.50, "w_star_growth": 0.30}
 TOL = 0.05
 
 
@@ -50,6 +56,9 @@ def cfg_from_yaml(path: Path) -> Cfg:
         interceptor=d["thresholds"]["interceptor"],
         bunker=d["thresholds"]["bunker_scale"],
         facility_eff=d["facility"]["eff"],
+        age_growth=d["income"].get("age_growth", 0.0),
+        adult_age=d["world"].get("adult_age", 10),
+        build_best=max(d["facility"].get("build_spread") or [1.0]),
     )
 
 
@@ -57,7 +66,7 @@ def report(c: Cfg, seeds: int) -> int:
     A, B, C, E = bounds(c)
     lo, hi = max(A, B, E), C * POLICY_COEF
     k = c.facility_eff * c.success_prob
-    epoch_progress = c.income * c.agents * c.epoch_turns * k
+    epoch_progress = c.income * mean_age_multiplier(c) * c.agents * c.epoch_turns * k
     whole_progress = c.income * c.agents * c.total_turns * k
 
     print(f"세계   {c.total_turns}턴 · 주기 {c.epoch_turns} · 국가당 {c.agents}명 · "

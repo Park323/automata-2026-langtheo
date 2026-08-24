@@ -39,6 +39,11 @@ def cfg():
 def world(cfg):
     w = loop.init_world(cfg, itertools.count(1), random.Random(1))
     w.turn = 1
+    # **개체 차이를 1.0 으로 눕힌다** (8/22). 소득 배수·처리량 배수는 태어날 때 뽑히므로,
+    # 그것을 그대로 두면 **다른 기제를 재는 테스트가 사람마다 다른 액수에 흔들린다.**
+    # 차이 자체는 `test_world_rules_v2.py` 의 전용 테스트가 본다.
+    for _a in w.agents.values():
+        _a.income_mult = _a.invest_mult = 1.0
     return w
 
 
@@ -77,6 +82,33 @@ AGENT_EXEMPT = {
     "lang_progress": "state 의 `lang_progress` 로 나간다",
     "invested_turn": "턴 안에서만 쓰는 누적치 — calls 의 결과에 실제 과금이 남는다",
 }
+
+
+# 턴 로그(`_turn_log`)에서 로그로 안 내보내도 되는 키와 **그 이유**.
+TURN_LOG_EXEMPT: dict[str, str] = {}
+
+
+def test_every_turn_log_key_reaches_the_log(tmp_path, cfg, world):
+    """**`_turn_log` 가 내는 키가 전부 events.agent_turn 에 닿아야 한다.**
+
+    `run_io` 는 필드를 **손으로 열거**한다. `_turn_log` 에 키를 더하고 그쪽을 잊으면
+    조용히 사라지는데, 기존 가드는 `Agent`·`Country` **dataclass** 만 봐서 이걸 못 봤다.
+
+    실제로 `compacted_blocks`(기억으로 산 자리)와 `truncated_calls` 가 그렇게 빠져
+    있었다 — `inh30` 30해에서 압박 아래 `memory_write` 가 127건이었는데 **거래가
+    일어났는지 사후에 확인할 수 없었다.** 그것이 spec 4.5 의 관측 대상이다.
+    """
+    from core.agent_loop import _StepAcc, _turn_log
+    keys = set(_turn_log(world.agents["Asla1"], _StepAcc(), "exhausted", 0.0))
+    w, _ = _write_one_turn(
+        tmp_path, cfg, world,
+        logs={"Asla1": _turn_log(world.agents["Asla1"], _StepAcc(), "exhausted", 0.0)})
+    got = set()
+    for row in _rows(w, "events"):
+        if row.get("type") == "agent_turn":
+            got |= set(row)
+    missing = {k for k in keys - got if k not in TURN_LOG_EXEMPT}
+    assert not missing, f"events.agent_turn 에 안 나가는 턴 로그 키: {sorted(missing)}"
 
 
 def test_every_agent_field_reaches_the_log(tmp_path, cfg, world):

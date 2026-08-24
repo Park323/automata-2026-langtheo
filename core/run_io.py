@@ -218,6 +218,7 @@ class RunWriter:
                 "parent_langs": sorted(a.parent_langs), "budget": round(a.budget, 4),
                 "budget_start": round(a.budget_start, 4),
                 "income_this_year": round(a.income_this_year, 4),
+                "income_last_year": round(a.income_last_year, 4),
                 "wellness_spent": round(a.wellness_spent, 4),
                 "born_turn": a.born_turn, "born_by": a.born_by, "alive": a.alive,
                 "uid": a.uid, "native_lang": a.native_lang,
@@ -237,6 +238,9 @@ class RunWriter:
                 # 기억 도구가 열려 있었나 — 압박과 함께 움직이지만, 어긋난 적이 있어
                 # 상태에서 바로 대조되게 남긴다
                 "memory_open": a.memory_open,
+                # **개체 차이** — 소득·처리량 배수 (8/22). 남에게는 안 보이지만
+                # 로그에는 남는다: 비교우위가 실제로 교환으로 이어졌는지 재려면 필요하다
+                "income_mult": a.income_mult, "invest_mult": a.invest_mult,
             })
         for m in result.messages_log:
             if m.get("turn") == turn and not m.get("_written"):
@@ -255,6 +259,14 @@ class RunWriter:
                 "reasoning_missing": lg.get("reasoning_missing"),
                 "steps": lg.get("steps"), "prompt_tokens": lg.get("prompt_tokens"),
                 "pressured": lg.get("pressured"), "evicted_blocks": lg.get("evicted_blocks"),
+                # **거래가 일어났는지.** `evicted_blocks` 는 한계에 밀려 잃은 것이고
+                # `compacted_blocks` 는 기억을 적어서 산 자리다 (spec 4.5). 둘을 가려야
+                # 「압박을 받고 memory_write 를 했더니 자리가 생겼는가」 를 볼 수 있다.
+                # 이 둘이 `_turn_log` 에는 있는데 **여기 열거에서 빠져** 있었다 —
+                # inh30 의 127건이 그래서 사후 확인 불가였다.
+                "compacted_blocks": lg.get("compacted_blocks"),
+                # 응답이 max_tokens 에 걸려 잘린 횟수. 행동 없음과 구분해야 한다.
+                "truncated_calls": lg.get("truncated_calls"),
                 "memory_len": lg.get("memory_len"),
                 # 한 사람이 한 턴을 사는 데 걸린 시간. llm_ms 가 elapsed 의 거의 전부여야
                 # 정상이고, 갈리면 우리 코드가 병목이라는 뜻이다.
@@ -306,6 +318,9 @@ class RunWriter:
             "land": {c.id: c.land for c in world.countries.values()},
             "national_capital": {c.id: round(c.national_capital, 3)
                                  for c in world.countries.values()},
+            # **요격기 효율.** 시드마다 배정이 달라지므로 로그에 없으면 어느 나라가
+            # 최선이었는지 사후에 복원할 수 없다 — 결과 해석의 전제다.
+            "build_mult": {c.id: c.build_mult for c in world.countries.values()},
             # **열린 제안.** vote 이벤트로만 남아 있어서, 제안이 열려 있던 구간을
             # 사후에 복원하려면 이벤트를 되짚어야 했다 — 採決 전에 무슨 말이 오갔는지를
             # 보려면 매 턴의 상태가 있어야 한다.

@@ -35,22 +35,37 @@ def _with(**overrides) -> Config:
 
 def test_valid_config_loads():
     cfg = config.load(BASE)
-    assert cfg.thresholds.interceptor == 16038
+    assert cfg.thresholds.interceptor == 13206     # 창의 0.30 지점 (8/23)
     assert cfg.k == pytest.approx(0.3)          # eff 1.0 × success_prob 0.3
 
 
 def test_window_values():
-    """A-4 자가검증: A 5400  B 9000  E 12960  <  임계 16038  <  C×0.6 16200.
+    """A-4 자가검증. **60턴** 기준: A 5400 · B 5400 · E 6480 < 임계 9558 < C×0.6 9720.
 
-    100턴·주기 20 으로 가면서 전부 정확히 2배가 됐다 (창은 total_turns 에 선형).
+    창은 `total_turns` 에 선형이다 (A 만 `epoch_turns` 에 걸린다). 100턴에서 60턴으로
+    내리면서 임계도 같은 **상대 위치(0.95)** 로 옮겼다 — 100턴의 [12960, 16200] 안 16038
+    이 60턴의 [6480, 9720] 안 9558 이다.
+
+    **숫자를 여기 두 번 적지 않는다** — 공식에서 유도하고, 순서만 못으로 박는다.
     """
     cfg = config.load(BASE)
     a, b, c, e = asserts.window(cfg)
-    assert a == pytest.approx(5400)
-    assert b == pytest.approx(9000)
-    assert e == pytest.approx(12960)
-    assert c * 0.6 == pytest.approx(16200)
-    assert a < b < e < cfg.thresholds.interceptor < c * 0.6
+    n, total, epoch = (cfg.world.agents_per_country, cfg.world.total_turns,
+                       cfg.world.epoch_turns)
+    # **실효 소득으로 잡는다** (8/22) — 소득이 나이와 함께 오르므로 「전 기간 총소득」 이
+    # `per_turn × n × total` 보다 크다. 그 값을 그대로 쓰면 창이 좁아지고 임계가
+    # 「도달 가능」 쪽에 붙는다.
+    per = cfg.income.per_turn * asserts.mean_age_multiplier(cfg)
+    # **가장 잘 짓는 나라 기준** (8/23). 나라마다 요격기 진척 속도가 다르므로 네 조건이
+    # 모두 최선의 나라에 몰아줬을 때로 걸린다 — ★B 가 그 기준을 강제한다.
+    k = cfg.k * max(cfg.facility.build_spread)
+    assert a == pytest.approx(3 * per * n * epoch * k)
+    assert b == pytest.approx(per * n * total * k)
+    assert e == pytest.approx(3 * per * n * (total - epoch) * k * 0.6)
+    assert c == pytest.approx(3 * per * n * total * k)
+    # **순서가 곧 설계다** — A·B·E 아래면 미루기·독주·휴식이 통하고, C×0.6 위면 아무도 못 짓는다
+    assert max(a, b, e) < cfg.thresholds.interceptor < c * 0.6
+    assert not asserts.check_all(cfg)
 
 
 # ── 일부러 깨뜨리기 (A-4 표) ──────────────────────────────────────────────────
@@ -63,7 +78,11 @@ def test_break_interceptor_4000():
 
 
 def test_break_interceptor_above_window():
-    fails = asserts.check_all(_with(**{"thresholds.interceptor": 16400}))
+    """**창 밖 값을 손으로 적지 않는다** (8/22). 16400 이 창 안으로 들어와 버렸다 —
+    `adult_age` 를 내리며 실효 소득이 커지자 상한이 11900 → 16780 으로 올라갔다."""
+    cfg = config.load(BASE)
+    _, _, c, _ = asserts.window(cfg)
+    fails = asserts.check_all(_with(**{"thresholds.interceptor": c * 0.6 + 1}))
     assert any("★C" in f for f in fails)
 
 
@@ -79,9 +98,19 @@ def test_break_bunker_shallow():
 
 
 def test_bunker_just_above_floor():
-    """하한(1800) 바로 위는 통과한다 — 경계가 어디인지를 코드로 고정."""
-    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": 2000}))
+    """하한 바로 위는 통과한다 — 경계가 어디인지를 코드로 고정.
+
+    **하한을 손으로 적지 않는다** (8/22). 하한은 「한 주기 전력 진척」 이고, 그 값이
+    실효 소득(나이 배수 포함)에서 나오므로 1800 → 2204 로 움직였다.
+    """
+    cfg = config.load(BASE)
+    eff = cfg.income.per_turn * asserts.mean_age_multiplier(cfg)
+    floor = eff * cfg.world.agents_per_country * cfg.world.epoch_turns * cfg.k
+    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": floor + 1}))
     assert not any("벙커↓" in f for f in fails)
+    # 그리고 하한 **아래**는 걸린다
+    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": floor - 1}))
+    assert any("벙커↓" in f for f in fails)
 
 
 def test_break_success_prob_half():
@@ -161,3 +190,30 @@ def test_each_backend_has_its_own_key_name():
     assert KEY_ENV["gemini"] == "GEMINI_API_KEY"
     with pytest.raises(RuntimeError, match="모르는 백엔드"):
         key_for("nope")
+
+
+def test_the_world_section_rejects_keys_it_cannot_use():
+    """**조용한 무시가 가장 나쁜 실패다.**
+
+    `World` 를 다섯 필드만 골라 넘기고 있었다. 그래서 `adult_age`·`init_age_spread`·
+    `init_age_max` 가 **yaml 에서 읽히지 않았고**, 기본값과 우연히 같아서 드러나지 않았다 —
+    config 를 고쳐도 아무 일이 안 일어나는 상태다.
+
+    이제 `world` 절을 통째로 넘기고 dataclass 필드와 대조한다. 새 키를 yaml 에만 넣고
+    배선을 잊으면 로드가 **실패**한다.
+    """
+    import dataclasses
+
+    import yaml
+
+    from core.config import World
+    d = yaml.safe_load(Path(BASE).read_text(encoding="utf-8"))
+    known = {f.name for f in dataclasses.fields(World)}
+    assert set(d["world"]) <= known, set(d["world"]) - known
+
+    # 그리고 yaml 의 값이 **실제로 읽힌다**
+    cfg = _with(**{"world.adult_age": 7})
+    assert cfg.world.adult_age == 7
+
+    with pytest.raises(ConfigError, match="모르는 키"):
+        _with(**{"world.zzz_unwired": 1})

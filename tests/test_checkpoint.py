@@ -85,7 +85,16 @@ def test_ids_do_not_leak_across_checkpoints(tmp_path, cfg):
     ck = tmp_path / "checkpoint.json"
     r = _run(cfg, 4, checkpoint_to=ck)
     uids = sorted(a.uid for a in r.world.agents.values())
-    assert uids == list(range(1, 10)), uids       # 9명, 사망 없음 → 1..9 연속
+    # **인구가 늘어난다** (8/21) — 아이 낳기가 부모를 죽이지 않으므로 9명이 아니다.
+    # 그래도 uid 는 **틈 없이** 이어져야 한다. 훔쳐본 값을 버리면 턴마다 하나씩 새어
+    # 듬성듬성해지고, 그게 이 검사가 잡으려는 것이다.
+    # **살아 있는 uid 는 이제 띄엄띄엄하다** — 자연사가 자리를 갈면 옛 uid 가 빠진다.
+    # 검사할 것은 「빠짐」 이 아니라 **「건너뜀」** 이다: 지금까지 만든 사람 수와 uid 의
+    # 최대값이 같아야 한다. 훔쳐본 값을 버리면 턴마다 하나씩 새어 최대값이 앞서 나간다.
+    n0 = cfg.world.agents_per_country * len(cfg.world.countries)
+    made = n0 + len(r.births)
+    assert max(uids) == made, f"uid 최대 {max(uids)} ≠ 만든 사람 {made}"
+    assert len(set(uids)) == len(uids)
 
 
 def test_a_stale_checkpoint_is_refused(tmp_path, cfg):

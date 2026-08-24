@@ -6,9 +6,14 @@
      이 세계에 한국어는 존재하지 않는다. 개발 언어가 새어 들어가면
      에이전트가 한국어로 답하기 시작하고(실측된 적 있다) 채점이 통째로 깨진다.
 
-  ② 에이전트의 산문은 **자기 모국어 하나**로만 되어 있어야 한다.
+  ② **프롬프트의** 산문은 그 에이전트의 모국어 하나로만 되어 있어야 한다.
      ja 프롬프트에 가나가 없으면 그건 일본어가 아니라 한자만 쓴 것이고,
      zh 프롬프트에 가나가 있으면 일본어가 섞인 것이다.
+
+     **에이전트가 쓰는 말은 경로가 정한다** (8/22). `ai` 는 모국어여야 하고 — 거기가
+     번역 손실을 재는 채널이라 입력 언어가 흔들리면 지표 7 이 죽는다 — `original` 은
+     아는 말 아무거나 된다. 번역이 없으니 잴 손실도 없고, 「발신자가 수신 언어를 안다 →
+     통한다」 가 비로소 사실이 된다.
 
 도구 이름·인자 토큰(interceptor, wellness …)과 도구 스키마·도구 결과는 영어다.
 그건 기계 표면이라 의도된 혼용이며, 산문 언어와 구분해서 검사한다.
@@ -101,7 +106,7 @@ def test_tool_tokens_stay_english(world_cfg):
         a = world.agents[aid]
         obs = prompts.render_observation(world, a, cfg, 48.0, [])
         for token in ("wellness", "national", "facility", "propose_vote",
-                      "invest", "procreate"):
+                      "invest", "give"):
             assert token in obs, f"{a.native_lang} 관측에 토큰 '{token}' 이 없다"
 
 
@@ -273,11 +278,11 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
     from core import config, loop
     from domains.meteor import prompts
     cfg = config.load("configs/base.yaml")
-    L, cut = cfg.costs.learn_base, cfg.costs.learn_discount
+    L = cfg.costs.learn_base
     world = loop.init_world(cfg, itertools.count(1), random.Random(1))
     world.turn = 1
-    # Asla2 는 국내에 zh 구사자(Asla1)가 있어 zh 만 할인가다.
-    for aid, marks in (("Asla2", (f"0 / {L - cut:.0f}", f"0 / {L:.0f}")),
+    # **필요액은 어느 말이든 같다** (8/22) — 다른 것은 회당 수확이다.
+    for aid, marks in (("Asla2", (f"0 / {L:.0f}",)),
                        ("Ranoa1", (f"0 / {L:.0f}",)),
                        ("Miris1", (f"0 / {L:.0f}",))):
         agent = world.agents[aid]
@@ -296,7 +301,7 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
     # 낸 것이 있으면 그대로 보인다
     a = world.agents["Asla2"]
     a.lang_progress = {"zh": 100.0}
-    assert f"100 / {L - cut:.0f}" in prompts.system_for(a, world, cfg, 48.0)
+    assert f"100 / {L:.0f}" in prompts.system_for(a, world, cfg, 48.0)
 
 
 def test_the_observation_says_money_carries_over():
@@ -315,28 +320,38 @@ def test_the_observation_says_money_carries_over():
 
 
 def test_learn_and_invest_share_one_unit():
-    """learn 도 invest 도 **한 번에 같은 돈·같은 AP** 다. 규칙이 여럿이면 문구가 갈리고,
-    실제로 「wellness は無料」 라는 거짓이 그렇게 남았다."""
+    """learn 도 invest 도 **한 번에 같은 AP** 다. 규칙이 여럿이면 문구가 갈리고, 실제로
+    「wellness は無料」 라는 거짓이 그렇게 남았다.
+
+    **돈은 8/22 부터 갈린다.** invest 액수가 사람마다 다르고(`invest_mult`), 학습은 그
+    배수를 안 탄다 — 학습 눈금은 `x̂` 를 재는 자이므로 사람마다 달라지면 그 자가 흔들린다.
+    그래서 「같은 AP · 같은 규칙」 은 그대로고, 액수만 개체에 따라 다르다.
+    """
     import itertools
     import random
 
     from core import config, loop
     from domains.meteor import prompts
     c = config.load("configs/base.yaml")
-    # 금액별 AP 를 계산하던 값들은 없어졌다
     for gone in ("learn_full", "invest_wellness", "unit_ap"):
         assert not hasattr(c.ap, gone) or gone == "unit_ap"
     assert not hasattr(c.facility, "invest_per_ap")
 
     world = loop.init_world(c, itertools.count(1), random.Random(1))
     world.turn = 1
-    obs = prompts.system_for(world.agents["Asla2"], world, c, 48.0)
+    a = world.agents["Asla2"]
+    obs = prompts.system_for(a, world, c, 48.0)
     rows = [l for l in obs.splitlines()
             if "の言語を学ぶ" in l or l.startswith("  invest ")]   # 헤더는 들여쓰기가 없다
     assert len(rows) == 3                       # 학습 둘 + invest 하나
-    for l in rows:                              # 셋이 같은 값을 적는다
-        assert f"{c.costs.unit:g}" in l and f"{c.ap.unit:g}" in l
-
+    for l in rows:                              # 셋이 같은 AP 를 쓴다
+        assert f"{c.ap.unit:g}" in l, l
+    # 학습은 정가, invest 는 내 배수
+    learn_rows = [l for l in rows if "の言語を学ぶ" in l]
+    inv_row = next(l for l in rows if l.startswith("  invest "))
+    for l in learn_rows:
+        assert f"{c.costs.unit:g}" in l, l
+    assert f"{c.costs.unit * a.invest_mult:g}" in inv_row, inv_row
 
 def test_the_observation_states_no_message_cap():
     """**「메시지는 1년에 3건까지」 는 규칙이 아니었고, 참도 아니었다.**
@@ -602,3 +617,75 @@ def test_the_year_and_the_steps_inside_it_are_explained():
                       ("Miris1", "l'année n'est pas terminée")):
         obs = prompts.system_for(world.agents[aid], world, cfg, 48.0)
         assert mark in obs, aid
+
+
+def test_the_route_decides_which_language_the_agent_may_write():
+    """**경로가 언어를 정한다** (8/22).
+
+    실측에서 zh 에이전트가 `ai` 로 **일본어**를 보냈다. 번역기에 이미 도착 언어를 넣는
+    셈이라, `src_lang → dst_lang` 손실을 재는 지표 7 이 무의미해진다.
+
+        ai        모국어로 써야 한다 — 여기가 측정 채널이다
+        original  아는 말 아무거나 — 번역이 없으니 잴 손실이 없고, 그래야
+                  `direct_works()` 의 「발신자가 수신 언어를 안다 → 통한다」 가 사실이 된다
+
+    SYSTEM 이 그 둘을 **갈라서** 말해야 한다. 「반드시 모국어」 만 적으면 `original` 에서
+    상대국 말을 쓸 수 있다는 것이 전달되지 않고, 아무 말도 안 적으면 `ai` 가 오염된다.
+    """
+    from domains.meteor import prompts
+    for lang, (own, route_ai, route_orig) in {
+            "ja": ("日本語", "`ai`", "`original`"),
+            "zh": ("中文", "`ai`", "`original`"),
+            "fr": ("français", "`ai`", "`original`")}.items():
+        sysmsg = prompts.SYSTEM[lang]
+        assert route_ai in sysmsg and route_orig in sysmsg, lang
+        assert own in sysmsg, lang
+        # **두 경로가 같은 문장 안에서 갈린다** — 한쪽만 적으면 갈렸다고 할 수 없다
+        line = next(l for l in sysmsg.splitlines() if "`ai`" in l)
+        assert "`original`" in line, lang
+
+    # 도구 설명도 같은 것을 말한다 (관측과 스키마가 어긋나면 무엇을 믿을지 알 수 없다)
+    from core import tools
+    d = next(t["function"]["parameters"]["properties"]["text"]["description"]
+             for t in tools.TOOLS if t["function"]["name"] == "speak")
+    assert "`ai`" in d and "`original`" in d
+    assert "own language" in d and "any language you can handle" in d
+
+
+def test_the_fact_that_people_differ_is_stated_but_not_the_numbers():
+    """**안 적으면 이 기제가 죽는다.**
+
+    남의 소득·처리량은 관측에 없고, 물어보려면 「다를 수 있다」 를 먼저 의심해야 한다.
+    근거가 없으면 「모두 나와 같겠지」 가 합리적 기본값이고, 그러면 대화가 시작되지 않는다.
+
+    이 프로젝트에서 같은 부류를 여러 번 겪었다 — 진척 합산 불가는 예시를 못 박고 나서야
+    붙었고, 경로별 보장 여부는 나라별로 적어야 했고(자기가 아는 말의 나라에 24원짜리
+    `ai` 를 6번 썼다), `give` 는 도구가 있는데 0건이었다.
+
+    **사실만 적는다.** 단계값·평균·「그러니 교환하라」 는 적지 않는다 — 그건 전략이고,
+    적으면 지시가 된다.
+    """
+    from core import config
+    from domains.meteor import prompts
+    cfg = config.load("configs/base.yaml")
+    marks = {"ja": ("人によって違います", "他人の分は見えません"),
+             "zh": ("因人而异", "别人的数值你看不到"),
+             "fr": ("varient d'une personne à l'autre", "ne vous sont pas visibles")}
+    for lang, (differ, hidden) in marks.items():
+        sysmsg = prompts.SYSTEM[lang]
+        assert differ in sysmsg, lang        # 다르다는 사실
+        assert hidden in sysmsg, lang        # 남의 것은 안 보인다는 사실
+
+    # **숫자는 적지 않는다** — 단계값도, 평균도
+    for lang in ("ja", "zh", "fr"):
+        blob = prompts.SYSTEM[lang]
+        for v in cfg.income.spread:
+            if v != 1.0:
+                assert f"{v}" not in blob, (lang, v)
+
+    # **「그러니 ~하라」 도 적지 않는다**
+    ADVICE = ("交換", "訊いて", "聞いて", "べきです", "交换", "应该", "问一问",
+              "échangez", "demandez", "vous devriez")
+    for lang in ("ja", "zh", "fr"):
+        for w in ADVICE:
+            assert w not in prompts.SYSTEM[lang], (lang, w)

@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import copy
 import itertools
 import json
 import random
@@ -29,12 +30,17 @@ def cfg():
 def world(cfg):
     w = loop.init_world(cfg, itertools.count(1))
     w.turn = 5
+    # **개체 차이를 1.0 으로 눕힌다** (8/22). 소득 배수·처리량 배수는 태어날 때 뽑히므로,
+    # 그것을 그대로 두면 **다른 기제를 재는 테스트가 사람마다 다른 액수에 흔들린다.**
+    # 차이 자체는 `test_world_rules_v2.py` 의 전용 테스트가 본다.
+    for _a in w.agents.values():
+        _a.income_mult = _a.invest_mult = 1.0
     return w
 
 
-def _settle(world, cfg, sink, result=None):
+def _settle(world, cfg, sink, result=None, rng=None):
     result = result or loop.RunResult(world=world)
-    loop._settle_agentic(world, cfg, random.Random(0), sink, None, 48.0,
+    loop._settle_agentic(world, cfg, rng or random.Random(0), sink, None, 48.0,
                          itertools.count(500), result, itertools.count(900))
     return result
 
@@ -287,6 +293,44 @@ def test_foreign_money_digs_whatever_they_are_building(cfg, world):
     assert "bunker" not in json.dumps(e["msg"]) and "interceptor" not in json.dumps(e["msg"])
 
 
+def test_a_nation_builds_interceptors_at_its_own_speed(cfg, world):
+    """**나라마다 요격기 진척 속도가 다르다** (8/23). 국가 단위 비교우위 —
+    「어디에 몰아줄 것인가」 가 진짜 문제가 된다.
+
+    같은 돈, 같은 사람, 같은 시드인데 받는 나라만 다르면 진척이 달라져야 한다.
+    """
+    world.countries["Ranoa"].land = "interceptor"
+    world.countries["Miris"].land = "interceptor"
+    world.countries["Ranoa"].build_mult = 1.3
+    world.countries["Miris"].build_mult = 0.7
+    got = {}
+    for cid in ("Ranoa", "Miris"):
+        w = copy.deepcopy(world)
+        sink = Sink()
+        sink.facility = [(cid, 3000.0, "Asla1")]      # 표본을 키워 분산을 누른다
+        _settle(w, cfg, sink, rng=random.Random(7))
+        got[cid] = w.countries[cid].progress
+    assert got["Ranoa"] > got["Miris"], got
+    # 배수 비(1.3/0.7 = 1.86)에 대략 맞아야 한다 — 확률이라 넉넉하게 본다
+    assert 1.5 < got["Ranoa"] / got["Miris"] < 2.3, got
+
+
+def test_the_nation_speed_does_not_touch_bunkers(cfg, world):
+    """**벙커에는 안 걸린다.** 걸면 최고 효율 나라가 벙커를 골라도 손해가 없어져
+    함정이 무뎌진다 — 요격기 전용이라야 「잘 짓는 나라가 벙커를 골랐다」 가 진짜 손실이다.
+    """
+    got = {}
+    for mult in (0.7, 1.3):
+        w = copy.deepcopy(world)
+        w.countries["Ranoa"].land = "bunker"
+        w.countries["Ranoa"].build_mult = mult
+        sink = Sink()
+        sink.facility = [("Ranoa", 3000.0, "Asla1")]
+        _settle(w, cfg, sink, rng=random.Random(7))
+        got[mult] = w.countries["Ranoa"].progress
+    assert got[0.7] == got[1.3], got        # 같은 시드 · 같은 돈 → 완전히 같다
+
+
 def test_invest_tool_states_the_rule(cfg):
     """규칙을 모르면 그 도박이 선택이 아니라 우연이 된다."""
     from core import tools
@@ -370,35 +414,6 @@ def test_death_is_announced_to_the_same_nation_only(cfg, world):
 
 
 # ── 유언 ────────────────────────────────────────────────────────────────────────
-
-def test_the_testament_arrives_as_something_heard_not_as_memory(cfg, world):
-    """**유언은 기억이 아니라 들은 말이다** (8/21 정정).
-
-    전에는 `child.memory` 를 유언으로 채웠다. 그러면 아이가 **고르지 않은 것을 이미 들고**
-    태어나고, 「무엇을 남길지 고르는 것」 이 관측 대상인데(3.3) 그 선택이 한 세대
-    건너뛴다. 기억을 압박선 위로 옮긴 뒤로는 더 나빠졌다 — 아이가 여러 해 동안 그 값을
-    고칠 수조차 없다.
-
-    이제 유언은 아이에게 **도착한다.** 대화에 남고, 옮겨 적을지는 아이가 고른다. 안
-    옮기면 대화가 밀려나며 사라진다 — 그것이 구전의 감쇠이고, 이번에는 아이의 선택으로
-    일어난다.
-    """
-    world.agents["Asla1"].memory = "부모의 메모"
-    loop._procreate_child(world, "Asla1", "요격기에만 내라", cfg,
-                          itertools.count(800), loop.RunResult(world=world))
-    child = world.agents["Asla4"]
-    assert child.memory == ""                     # 빈손으로 태어난다
-    assert "부모의 메모" not in child.memory
-
-    # 그리고 **본인에게만** 도착한다 (PRIVATE)
-    q = [e for e in world.inbox_queue if e["to"] == "Asla4"]
-    assert len(q) == 1 and q[0]["msg"]["testament"] == ["요격기에만 내라"]
-    assert not [e for e in world.inbox_queue if e["to"] != "Asla4"]
-
-    from domains.meteor import prompts
-    txt = prompts.render_events(child, [q[0]["msg"]])
-    assert "요격기에만 내라" in txt and "親が残した言葉" in txt
-
 
 def test_observation_has_no_separate_testament_block(cfg, world):
     """유언 블록·'알아낸 것' 블록은 폐지됐다. 전부 memory 하나로 관리된다."""
@@ -691,15 +706,6 @@ def test_the_obituary_names_the_successor(cfg, world):
     assert d["who"] in line and d["born"] in line
 
 
-def test_procreate_also_announces_the_pair(cfg, world):
-    """스스로 죽는 것도 같은 나라 사람에게는 같은 사건이다."""
-    r = loop.RunResult(world=world)
-    loop._procreate_child(world, "Asla1", "유언", cfg, itertools.count(900), r)
-    (d,) = r.deaths_log
-    assert (d["who"], d["by"]) == ("Asla1", "procreate")
-    assert d["born"] == "Asla4" and d["born"] in world.agents
-
-
 def test_the_delivery_rule_matches_the_loop_that_is_running(cfg, world):
     """**문구가 거짓이었다.** 순차 라운드로빈은 메시지를 **같은 해**에 배달하는데
     (`deliver_turn = world.turn`) 관측은 「翌年に届きます」 라고 적고 도구 설명은
@@ -764,9 +770,12 @@ def test_one_speaker_per_nation_at_the_start(cfg):
                    if a.country == "Asla" and len(a.known_langs) > 1)
     tgt_lang = next(iter(speaker.known_langs - {"ja"}))
     tgt = next(c.id for c in w.countries.values() if c.lang == tgt_lang)
+    # **할인이 아니라 가속이다** (8/22). 필요액은 고정이고 회당 수확이 오른다.
+    from core.agent_loop import learn_speed
     cost, why = learn_cost(other, tgt, w, cfg)
-    # **정액 할인이다** (8/20). L/2 였을 때 사유가 둘이면 L/4 라 정가와 네 배가 벌어졌다.
-    assert cost == cfg.costs.learn_base - cfg.costs.learn_discount and "nation" in why
+    mult, _ = learn_speed(other, tgt, w, cfg)
+    assert cost == cfg.costs.learn_base
+    assert mult == 1.0 + cfg.costs.learn_speedup and "nation" in why
 
 
 def test_initial_ages_are_spread(cfg):
@@ -774,9 +783,18 @@ def test_initial_ages_are_spread(cfg):
     그 6턴 사이에 쌓아둔 기억·관계·예산이 통째로 사라졌다."""
     import random
     w = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    # **1 ~ init_age_max 로 되돌렸다** (8/22). 8/21 에 성인 범위로 좁혔던 이유(첫 해
+    # 사람들이 빈손인데 줄 부모가 없다)는 소득 조건을 「부모가 살아 있는가」 로 바꾸면서
+    # 사라졌는데 그대로 남아 있었다.
+    #
+    # 그리고 좁은 구간은 나이를 흩는 목적을 무력화한다 — 전원이 같은 시기에 몰려 죽고
+    # 그 뒤 성인 공백기가 온다. **첫 해부터 세대 사다리가 있어야** 한다.
     ages = [a.age for a in w.agents.values()]
-    assert all(1 <= x <= cfg.world.init_age_max for x in ages)
+    assert all(1 <= x <= cfg.world.init_age_max for x in ages), ages
     assert len(set(ages)) >= 4, ages
+    # 성인과 미성년이 **둘 다** 있어야 사다리다
+    adults = [x for x in ages if x >= cfg.world.adult_age]
+    assert 0 < len(adults) < len(ages), ages
 
 
 def test_initialisation_is_reproducible(cfg):
@@ -791,35 +809,42 @@ def test_initialisation_is_reproducible(cfg):
 def test_learning_progress_is_visible_without_paying_to_look(cfg, world):
     """언어별 진척은 **별도 관측 없이** 그대로 보인다. 얼마 냈고 얼마 남았는지."""
     from domains.meteor import prompts
-    L, cut = cfg.costs.learn_base, cfg.costs.learn_discount
+    # **필요액은 어느 말이든 같다** (8/22) — 다른 것은 회당 수확이다
+    L = cfg.costs.learn_base
     a = world.agents["Asla2"]
     a.lang_progress = {"fr": 140.0, "zh": 120.0}
     obs = prompts.render_observation(world, a, cfg, 48.0)
-    assert f"140 / {L:.0f}" in obs          # Miris(fr) 정가 — Asla 에 fr 구사자 없음
-    assert f"120 / {L - cut:.0f}" in obs    # Ranoa(zh) 할인가 — Asla1 이 zh 를 안다
+    assert f"140 / {L:.0f}" in obs          # Miris(fr) — Asla 에 fr 구사자 없음
+    assert f"120 / {L:.0f}" in obs          # Ranoa(zh) — Asla1 이 zh 를 안다 (더 빠르다)
 
 
-def test_a_cheaper_price_can_finish_a_half_paid_language(cfg, world):
-    """완료 판정은 **그 순간의** 학습가로 한다 (3.4).
+def test_the_target_never_moves(cfg, world):
+    """**목표가 움직이면 반쯤 낸 학습이 갑자기 완성된다** — 그 경로를 없앴다 (8/22).
 
-    반쯤 낸 사람이 국내에 구사자가 생기는 순간 그 자리에서 끝난다 — 할인은 상태가
-    아니라 조건이고, 계보가 아니라 **지금 누가 살아 있는가**로 정해진다.
+    전에는 국내 구사자가 생기는 순간 필요액이 200 → 150 으로 내려가, 이미 150 을 낸 사람이
+    **그 자리에서** 말을 하게 됐다. 완료 판정을 「그 순간의 학습가」 로 한 결과였고, 그
+    주변에서 버그를 한 번 잡았다.
+
+    이제 필요액은 고정이고 **회당 수확**이 오른다. 구사자가 생기면 앞으로가 빨라질 뿐,
+    이미 낸 것이 갑자기 충분해지지는 않는다.
     """
     import random
-    L, cut = cfg.costs.learn_base, cfg.costs.learn_discount
+
+    from core.agent_loop import learn_cost, learn_speed
+    L, up = cfg.costs.learn_base, cfg.costs.learn_speedup
     a = world.agents["Asla2"]
-    a.lang_progress = {"fr": L - cut}        # 정가에는 모자라고 할인가에는 딱 맞는 액수
+    a.lang_progress = {"fr": L - cfg.costs.unit}      # 한 번 남았다
     r = loop.RunResult(world=world)
     loop._settle_agentic(world, cfg, random.Random(0), Sink(), None, 48.0,
                          itertools.count(500), r, itertools.count(900))
-    assert "fr" not in a.known_langs         # 아직 모자라다
+    assert "fr" not in a.known_langs                  # 아직 모자라다
 
-    world.agents["Asla3"].known_langs.add("fr")   # 국내 구사자 등장 → 필요액이 내려간다
+    world.agents["Asla3"].known_langs.add("fr")       # 국내 구사자 등장
+    assert learn_cost(a, "Miris", world, cfg)[0] == L     # **목표는 그대로**
+    assert learn_speed(a, "Miris", world, cfg)[0] == 1.0 + up   # 속도만 오른다
     loop._settle_agentic(world, cfg, random.Random(0), Sink(), None, 48.0,
                          itertools.count(500), r, itertools.count(900))
-    assert "fr" in a.known_langs
-    (done,) = [x for x in r.learns_log if x.get("kind") == "acquired"]
-    assert done["charged"] == L - cut and done["required"] == L - cut
+    assert "fr" not in a.known_langs                  # 그래도 완성되지 않는다
 
 
 def test_the_obituary_says_how_old_they_were(cfg, world):
@@ -933,19 +958,16 @@ def test_one_investment_costs_one_fixed_unit(cfg, world):
     assert "charged" not in r          # 절삭이 없으니 알릴 차이가 없다
 
 
-def test_ten_investments_use_up_the_year(cfg, world):
-    """열 번이면 AP 를 다 쓴다 = 200원. **모아둔 걸 한 해에 쏟아붓는 길이 막힌다** (★A)."""
-    from core.agent_loop import Sink, execute_tool
-    world.countries["Asla"].land = "interceptor"
-    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
-    sink = Sink()
-    for _ in range(10):
-        assert execute_tool("invest", {"target": "facility", "reasoning": "r"},
-                            world, a, cfg, sink, 48.0)[0]["ok"]
-    assert abs(a.ap) < 1e-9 and a.budget == 10_000.0 - 10 * cfg.costs.unit
-    r, _ = execute_tool("invest", {"target": "facility", "reasoning": "r"},
-                        world, a, cfg, sink, 48.0)
-    assert not r["ok"] and "not enough action" in r["error"]
+def test_the_year_holds_a_fixed_number_of_investments(cfg, world):
+    """한 해에 몇 번 낼 수 있나 — `turn.action_points / ap.unit`. **횟수를 여기 적지
+    않는다** (8/22 에 0.1 → 0.2 로 바뀌며 열 번이 다섯 번이 됐다)."""
+    a = world.agents["Ranoa1"]
+    a.ap, a.budget = cfg.turn.action_points, 10_000.0
+    n = int(cfg.turn.action_points / cfg.ap.unit)
+    for i in range(n):
+        assert _do(world, cfg, a, "invest", {"target": "wellness"})["ok"], i
+    assert a.ap == 0.0
+    assert not _do(world, cfg, a, "invest", {"target": "wellness"})["ok"]
 
 
 def test_every_target_costs_the_same_unit(cfg, world):
@@ -956,9 +978,13 @@ def test_every_target_costs_the_same_unit(cfg, world):
         w = loop.init_world(cfg, itertools.count(1)); w.turn = 5
         w.countries["Asla"].land = "interceptor"
         a = w.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
+        # **액수는 사람마다 다르다** (8/22) — 대상 셋이 같은 값이라는 것이 요점이므로
+        # 그 사람의 배수로 잰다.
+        unit = cfg.costs.unit * a.invest_mult
         r, _ = execute_tool("invest", {"target": target, "reasoning": "r"},
                             w, a, cfg, Sink(), 48.0)
-        assert r["ok"] and a.ap == 1.0 - cfg.ap.unit and a.budget == 10_000.0 - cfg.costs.unit
+        assert r["ok"] and a.ap == round(1.0 - cfg.ap.unit, 3)
+        assert a.budget == 10_000.0 - unit
 
 
 def test_the_action_rate_does_not_grow_with_wealth(cfg, world):
@@ -988,35 +1014,6 @@ def test_the_action_rate_does_not_grow_with_wealth(cfg, world):
     assert risk_sigma(world.countries["Asla"], cfg) < cfg.risk.sigma_ratio   # 관측 정확도
 
 
-def test_half_learned_language_passes_to_the_child_with_decay(cfg, world):
-    """**반쯤 배운 언어를 물려준다 — 절반만.**
-
-    1.0 이면 능력이 사실상 상속돼 "능력은 상속되지 않는다"(3.3)가 무너지고,
-    0 이면 물려줄 것이 예산뿐이다. 이 감쇠가 곧 구전 감쇠의 정량판이다.
-    """
-    a = world.agents["Asla1"]
-    a.lang_progress = {"fr": 400.0, "zh": 1.0}
-    loop._procreate_child(world, "Asla1", "유언", cfg, itertools.count(900),
-                          loop.RunResult(world=world))
-    child = world.agents["Asla4"]
-    keep = cfg.inheritance.lang_progress_carry
-    assert child.lang_progress["fr"] == 400.0 * keep
-    assert child.parent_langs == a.known_langs          # 할인 자격은 그대로
-    assert "fr" not in child.known_langs                # 능력 자체는 안 넘어간다
-
-
-def test_natural_death_passes_nothing(cfg, world):
-    """자연사는 계보와 무관한 뒷세대다 (3.2). 진척도 안 넘어간다."""
-    import random
-    a = world.agents["Asla1"]
-    a.lang_progress = {"fr": 400.0}
-    a.age = 40
-    r = loop.RunResult(world=world)
-    loop._death_birth(world, cfg, random.Random(1), ["Asla1"], set(),
-                      itertools.count(700), r)
-    child = next(x for x in world.agents.values() if x.country == "Asla" and x.age == 0)
-    assert child.lang_progress == {} and child.parent_langs == set()
-
 
 # ── 로그에 본문이 남는가 (8/18) ─────────────────────────────────────────────
 
@@ -1037,20 +1034,6 @@ def test_memory_and_testament_survive_the_log(cfg, world, tmp_path):
     assert _redact({"type": "speak", "to": "Ranoa2", "text": "x"}) == {"type": "speak",
                                                                       "to": "Ranoa2"}
 
-
-def test_procreate_death_carries_the_testament(cfg, world):
-    """유언이 아이의 기억 초기값으로만 흘러가면, 아이가 덮어쓴 뒤 원문이 사라진다 —
-    하필 그 덮어쓰기가 spec 3.3 이 관측하려는 구전의 감쇠 그 자체다."""
-    import itertools
-
-    from core.loop import RunResult, _procreate_child
-    r = RunResult(world=world)
-    _procreate_child(world, "Asla1", "요격기에 몰아줘라", cfg, itertools.count(99), r)
-    (d,) = [x for x in r.deaths_log if x["by"] == "procreate"]
-    assert d["testament"] == "요격기에 몰아줘라" and d["who"] == "Asla1"
-
-
-# ── 타국 생산배수 누출 (8/18) ────────────────────────────────────────────────
 
 def test_foreign_gain_amount_is_hidden(cfg, world):
     """**액수를 주면 상대국 생산배수가 새어 나온다.**
@@ -1160,16 +1143,6 @@ def test_the_observation_shows_only_my_own_contributions(cfg, world):
     assert "7777" not in obs                          # 타국 진척은 여전히 없다
 
 
-def test_the_child_does_not_inherit_my_contribution_record(cfg, world):
-    """내 생애의 기록이다. 아이는 예산·유언·학습 진척 절반만 물려받는다 (3.3)."""
-    import itertools
-
-    from core.loop import RunResult, _procreate_child
-    world.agents["Asla1"].facility_invested = {"Ranoa": 900.0}
-    r = RunResult(world=world)
-    _procreate_child(world, "Asla1", "유언", cfg, itertools.count(99), r)
-    child = next(a for a in world.agents.values() if a.born_by == "procreate")
-    assert child.facility_invested == {}
 
 
 def test_the_observation_never_describes_the_old_ballot(cfg, world):
@@ -1209,7 +1182,9 @@ def test_learn_reports_completion_not_a_schedule(cfg, world):
     a = world.agents["Asla2"]; a.ap, a.budget = 1.0, 10_000.0
     sink = Sink()
     # 국내 구사자가 있어 할인가이고, 5 만 남았다
-    a.lang_progress = {"zh": cfg.costs.learn_base - cfg.costs.learn_discount - 5.0}
+    # 남은 것이 회당 수확보다 작으면 마지막 한 번이 그만큼만 걷는다
+    a.lang_progress = {"zh": cfg.costs.learn_base - 5.0}
+    a.parent_langs = set()                # 배율을 정가로 고정해 계산을 단순하게
     r, _ = execute_tool("learn", {"country": "Ranoa", "reasoning": "r"},
                         world, a, cfg, sink, 48.0)
     assert r["complete"] is True and r["remaining"] == 0.0
@@ -1218,7 +1193,7 @@ def test_learn_reports_completion_not_a_schedule(cfg, world):
     # 그리고 순차 정산은 실제로 같은 턴에 반영한다
     res = loop.RunResult(world=world)
     loop._settle_step(world, cfg, random.Random(0), sink, None, 48.0,
-                      itertools.count(900), res, {}, [], [])
+                      itertools.count(900), res, {}, [])
     assert "zh" in world.agents["Asla2"].known_langs
 
 
@@ -1254,58 +1229,36 @@ def test_my_resources_are_not_in_the_observation(cfg, world):
     assert not r["ok"] and "have 0.01" in r["error"]      # 남은 값을 알려준다
 
 
-def test_the_discount_note_names_the_right_reason(cfg, world):
-    """**금액만 보고 문구를 골라서 부모 할인을 「자국에 구사자가 있다」 로 적었다.**
+def test_the_note_names_the_right_reason_and_the_yield(cfg, world):
+    """사유가 둘로 갈린다 — 국내 구사자냐 부모냐. 그리고 **회당 수확**을 적는다 (8/22).
 
-    L−50 은 두 갈래로 나온다 — 국내 구사자 때문일 수도, 부모 때문일 수도 있다. 문구가
-    「割引あり」 처럼 뭉개져 있던 동안에는 그 거짓이 눈에 띄지 않았다. 사유를 적기로 한
-    순간 드러났다.
+    문구가 「割引あり」 처럼 뭉개져 있던 동안에는 어느 쪽인지 알 수 없었다. 그리고 「반값」
+    은 무엇의 반인지 총액을 되짚어야 알았다 — 이제 「한 번에 얼마가 쌓이나」 를 적는다.
 
-    그리고 「先輩」 같은 말은 쓸 수 없다 — **실측에서 국내 구사자가 배우는 사람보다 어린
-    경우가 13%**(805짝 중 108건)다. 나이 관계는 이 세계에 없다.
+    「先輩」 같은 말은 쓸 수 없다 — **실측에서 국내 구사자가 배우는 사람보다 어린 경우가
+    13%**(805짝 중 108건)다. 나이 관계는 이 세계에 없다.
     """
+    from core.agent_loop import learn_speed
     from domains.meteor import prompts
     t = prompts.T["ja"]
+    u, up = cfg.costs.unit, cfg.costs.learn_speedup
     a = world.agents["Asla2"]                       # Asla1 이 zh 를 안다 (씨앗)
 
     a.parent_langs = {"fr"}
     obs = prompts.system_for(a, world, cfg, 48.0)
     zh = next(l for l in obs.splitlines() if "Ranoa の言語を学ぶ" in l)
     fr = next(l for l in obs.splitlines() if "Miris の言語を学ぶ" in l)
-    L, cut = cfg.costs.learn_base, cfg.costs.learn_discount
-    cheap = t["c_cheap"].format(cut=cut).strip()
-    disc = t["c_disc"].format(cut=cut).strip()
-    assert cheap in zh                               # 국내 구사자
-    assert disc in fr                                # 부모
-    assert cheap not in fr                           # 서로 섞이지 않는다
-    # **깎인 액수를 적는다.** 「반값」 은 무엇의 반인지 총액을 되짚어야 알았다.
-    assert f"{cut:.0f}" in cheap
+    assert t["c_cheap"].format(gain=u * (1 + up)).strip() in zh     # 국내 구사자
+    assert t["c_disc"].format(gain=u * (1 + up)).strip() in fr      # 부모
+    assert "自国に話せる人" not in fr                                # 섞이지 않는다
 
-    a.parent_langs = {"zh"}                          # 둘 다 걸리면 두 번 깎인다
-    obs = prompts.system_for(a, world, cfg, 48.0)
-    lines = obs.splitlines()
-    i = next(n for n, l in enumerate(lines) if "Ranoa の言語を学ぶ" in l)
-    assert t["c_both"].format(cut2=cut * 2).strip() in lines[i]
-    assert f"0 / {L - 2 * cut:.0f}" in lines[i + 1]
-
-    # **눈금은 진척 줄에 있다** — 비용 칸은 한 번의 값(20)이다. 사유 하나짜리로 본다:
-    # 두 개면 깎인 액수(2×50=100)가 필요액(200−100=100)과 같은 숫자가 되어 못 가린다.
-    a.parent_langs = set()
+    a.parent_langs = {"zh"}                          # 둘 다 걸리면 두 배속
     lines = prompts.system_for(a, world, cfg, 48.0).splitlines()
     i = next(n for n, l in enumerate(lines) if "Ranoa の言語を学ぶ" in l)
-    assert f"{cfg.costs.unit:g}" in lines[i]
-    assert f"{L - cut:.0f}" not in lines[i]
-    assert f"0 / {L - cut:.0f}" in lines[i + 1]
-
-    a.parent_langs = set()                           # 정가에는 아무 문구도 없다
-    obs = prompts.system_for(a, world, cfg, 48.0)
-    lines = obs.splitlines()
-    i = next(n for n, l in enumerate(lines) if "Miris の言語を学ぶ" in l)
-    fr = lines[i]
-    assert f"0 / {L:.0f}" in lines[i + 1]
-    for k, kw in (("c_cheap", dict(cut=cut)), ("c_disc", dict(cut=cut)),
-                  ("c_both", dict(cut2=cut * 2))):
-        assert t[k].format(**kw).strip() not in fr
+    assert learn_speed(a, "Ranoa", world, cfg)[0] == 1 + 2 * up
+    assert t["c_both"].format(gain=u * (1 + 2 * up)).strip() in lines[i]
+    # **목표는 진척 줄에 있고 움직이지 않는다**
+    assert f"0 / {cfg.costs.learn_base:.0f}" in lines[i + 1]
 
 
 def test_no_prose_hardcodes_the_grace_period(cfg, world):
@@ -1356,11 +1309,13 @@ def test_exactly_affordable_is_affordable(cfg, world):
     3해 실측에서 **25건** — 투자 20 · 발화 5. 에이전트는 그 뒤 대개 end_turn 을 불렀다.
     """
     a = world.agents["Ranoa1"]
-    a.ap, a.budget = 1.0, 1000.0
-    assert _do(world, cfg, a, "speak", {"to": "Ranoa2", "text": "x"})["ok"]
-    assert _do(world, cfg, a, "speak", {"to": "Ranoa2", "text": "x"})["ok"]
-    assert _do(world, cfg, a, "invest", {"target": "wellness"})["ok"]
-    assert a.ap == 0.3                       # 0.29999… 이 아니라 정확히 0.3
+    a.ap, a.budget = cfg.turn.action_points, 1000.0
+    # **상수에서 짠다** (8/22 에 speak 0.3→0.2, unit 0.1→0.2 로 바뀌었다). AP 를 딱
+    # `speak` 한 번 남기고, 그 한 번이 통하는지 본다.
+    left = cfg.ap.speak
+    while round(a.ap - cfg.ap.unit, 3) >= left:
+        assert _do(world, cfg, a, "invest", {"target": "wellness"})["ok"]
+    assert a.ap == left                      # 0.19999… 이 아니라 정확히 그 값
 
     r = _do(world, cfg, a, "speak", {"to": "Ranoa2", "text": "y"})
     assert r["ok"], r                        # 딱 맞으면 낼 수 있다
@@ -1371,11 +1326,12 @@ def test_ap_stays_on_the_grid_over_a_full_year(cfg, world):
     """단위가 0.05 이므로 소수 세 자리 격자에 계속 붙어 있어야 한다. 비교와 차감이 같은
     격자를 쓰는 한 오차가 누적되지 않는다."""
     a = world.agents["Ranoa1"]
-    a.ap, a.budget = 1.0, 10_000.0
-    for _ in range(10):
+    a.ap, a.budget = cfg.turn.action_points, 10_000.0
+    n = int(cfg.turn.action_points / cfg.ap.unit)
+    for _ in range(n):
         assert _do(world, cfg, a, "invest", {"target": "wellness"})["ok"]
         assert a.ap == round(a.ap, 3)
-    assert a.ap == 0.0                       # 0.1 을 열 번 빼면 정확히 0
+    assert a.ap == 0.0                       # n 번 빼면 정확히 0
     r = _do(world, cfg, a, "invest", {"target": "wellness"})
     assert not r["ok"] and "have 0.00" in r["error"]
 
@@ -1464,3 +1420,280 @@ def test_the_ballot_day_says_only_that_it_is_today(cfg, world):
     (line,) = prop_lines(world)
     assert "★" in line and "Ranoa1" in line
     assert year not in line                          # 예정 줄이 겹치지 않는다
+
+
+# ── 주기 (8/22) ───────────────────────────────────────────────────────────────
+
+def _exec(name, args, world, agent, cfg, sink, knob=48.0):
+    from core import agent_loop
+    return agent_loop.execute_tool(name, args, world, agent, cfg, sink, knob)
+
+
+def test_giving_moves_money_and_the_receiver_is_told(cfg, world):
+    """**잉여의 용처가 없었다.** 10해 실측에서 성인의 턴 끝 예산이 74 → 198 → 435 로
+    쌓이는데 남은 AP 중앙은 0.0 이었다 — 돈은 남고 쓸 행동력이 없다. 그리고 사람에게 돈을
+    주는 행동이 아예 없었다.
+
+    그래서 `bear_child` 가 순수 비용이었다. 1.0 AP 를 내고, 열 해 동안 아무것도 못 하고,
+    **도울 수도 없는** 사람을 얻는 거래다. 줄 수 있게 되면 「내 잉여를 쓸 손」 이 된다.
+
+    받는 이에게 알린다 — 예산은 PRIVATE 이고, 갑자기 늘어난 이유를 본인이 모르면 그 돈을
+    쓸 판단을 못 한다.
+    """
+    import random
+
+    giver, taker = world.agents["Ranoa1"], world.agents["Ranoa2"]
+    giver.ap, giver.budget = cfg.turn.action_points, 500.0
+    taker.budget = 0.0
+
+    sink = Sink()
+    r, _ = _exec("give", {"to": "Ranoa2", "amount": 300},
+                                   world, giver, cfg, sink, 48.0)
+    assert r["ok"] and giver.budget == 200.0
+    assert giver.ap == cfg.turn.action_points - cfg.ap.give
+    # **받는 쪽은 아직 안 늘었다** — 남의 상태라 정산에서 넣는다 (병렬 안전)
+    assert taker.budget == 0.0 and sink.gifts == [("Ranoa1", "Ranoa2", 300.0)]
+
+    loop._settle_agentic(world, cfg, random.Random(0), sink, None, 48.0,
+                         itertools.count(500), loop.RunResult(world=world),
+                         itertools.count(900))
+    assert taker.budget == 300.0
+    got = [e for e in world.inbox_queue if e["to"] == "Ranoa2"]
+    assert len(got) == 1 and got[0]["msg"] == {"gift_from": "Ranoa1", "gift": 300.0}
+    assert not [e for e in world.inbox_queue if e["to"] != "Ranoa2"]   # 받는 이만
+
+    from domains.meteor import prompts
+    txt = prompts.render_events(taker, [got[0]["msg"]])
+    assert "Ranoa1" in txt and "300" in txt
+
+
+def test_giving_is_refused_when_it_cannot_be_honoured(cfg, world):
+    """**넘치게 주지 않는다.** 잘라서 주면 받는 쪽이 얼마를 받았는지 되짚어야 한다."""
+    a = world.agents["Ranoa1"]
+    a.ap, a.budget = cfg.turn.action_points, 100.0
+    for args, mark in ((  {"amount": 10},                    "`to`"),
+                       ({"to": "Nobody1", "amount": 10},     "unknown recipient"),
+                       ({"to": "Ranoa1", "amount": 10},      "yourself"),
+                       ({"to": "Ranoa2", "amount": 0},       "more than 0"),
+                       ({"to": "Ranoa2", "amount": "많이"},   "must be a number"),
+                       ({"to": "Ranoa2", "amount": 101},     "not enough budget")):
+        r, _ = _exec("give", args, world, a, cfg, Sink(), 48.0)
+        assert not r["ok"] and mark in r["error"], (args, r)
+    assert a.budget == 100.0 and a.ap == cfg.turn.action_points   # 아무것도 안 나갔다
+
+
+def test_the_size_of_a_gift_does_not_change_the_effort(cfg, world):
+    """**금액을 인자로 받는 유일한 도구다.**
+
+    `invest`·`learn` 에서 금액을 뺀 이유는 비용표가 `600 · 額÷300` 처럼 두 숫자를 읽게
+    만들었기 때문이다. 주는 것은 다르다 — 크기가 드는 수고를 바꾸지 않는다. 한 번에 40 씩만
+    옮길 수 있으면 435 를 넘기는 데 열한 해가 걸리고, 그러면 **잉여의 용처**라는 이 도구의
+    존재 이유가 사라진다.
+    """
+    a = world.agents["Ranoa1"]
+    a.ap, a.budget = cfg.turn.action_points, 1000.0
+    for amt in (1, 999):
+        before = a.ap
+        r, _ = _exec("give", {"to": "Ranoa2", "amount": amt},
+                     world, a, cfg, Sink(), 48.0)
+        # **격자에서 비교한다.** `before - a.ap` 를 날로 빼면 1.0 − 0.8 이
+        # 0.19999999999999996 이다 — 코드가 막고 있는 그 부동소수를 테스트가 다시 만든다.
+        assert r["ok"] and a.ap == round(before - cfg.ap.give, 3)
+        a.budget = 1000.0
+
+
+def test_income_grows_with_age_so_the_end_of_life_cannot_spend_it(cfg, world):
+    """**말년에 소비가 못 따라간다** (8/22).
+
+    10해 실측에서 아이를 낳은 사람이 **0명**이었다. 면담이 이유를 말했다 —
+    *"생애 한 번뿐이니 좀 더 나이 들어 상황이 안정된 뒤에도 늦지 않다"*. 「한 번뿐」 이
+    미루기를 최적으로 만든 것이다.
+
+    미루기를 벌하는 대신 **낳을 이유**를 만든다. 소득이 나이와 함께 오르고, 한 해에 쓸 수
+    있는 돈은 행동력이 묶으므로(invest 40원·0.2AP → 상한 200) 말년에는 잉여가 **강제로**
+    쌓인다. 그 잉여의 용처가 `give` 이고, 줄 사람을 만드는 것이 `bear_child` 다.
+    """
+    a = world.agents["Ranoa1"]
+    g, adult = cfg.income.age_growth, cfg.world.adult_age
+    assert g > 0
+    base = cfg.income.per_turn * world.countries["Ranoa"].multiplier(cfg)
+
+    a.age = adult
+    assert loop.income_for(a, world, cfg) == pytest.approx(base)
+    a.age = adult + 6
+    assert loop.income_for(a, world, cfg) == pytest.approx(base * (1 + 6 * g))
+
+    # **한 해에 쓸 수 있는 돈보다 많아지는 나이가 있다** — 거기부터 잉여가 강제된다
+    ceiling = (cfg.turn.action_points / cfg.ap.unit) * cfg.costs.unit
+    over = next(x for x in range(adult, 60)
+                if base * (1 + g * (x - adult)) > ceiling)
+    assert adult < over < 25, over          # 기대수명(16) 근처여야 뜻이 있다
+
+    # 미성년은 어리다고 더 받지 않는다 (배수는 성인 나이부터)
+    a.age = 0
+    assert loop.income_for(a, world, cfg) == pytest.approx(base)
+
+
+def test_the_rule_that_income_grows_is_stated(cfg, world):
+    """**적지 않으면 계획할 수 없다.** 나이가 들면 더 번다는 것은 세계의 사실이고,
+    그것을 알아야 「지금 쓸까 나중에 쓸까」 를 저울질할 수 있다."""
+    from domains.meteor import prompts
+    marks = {"ja": "収入は増えます", "zh": "收入越多", "fr": "revenu augmente"}
+    for aid in ("Asla1", "Ranoa1", "Miris1"):
+        ag = world.agents[aid]
+        assert marks[ag.native_lang] in prompts.system_for(ag, world, cfg, 48.0), aid
+
+
+# ── 개체 차이 (8/22) ─────────────────────────────────────────────────────────
+
+def test_people_differ_in_what_they_earn_and_what_they_can_move(cfg):
+    """**전원이 동일해서 조율할 것이 없었다.**
+
+    지금까지는 「무엇을 지을까」 하나뿐이었다. 소득과 처리량이 사람마다 다르면 **비교우위**
+    가 생긴다 — 「고소득·저처리」 는 줘야 하고 「저소득·고처리」 는 받아야 한다. 그리고 그
+    조합을 알아내려면 **말을 해야 한다.**
+
+    두 축은 **독립**이다. 묶으면 두 부류만 나오는데, 독립이면 스물다섯 조합이 생기고 세계가
+    그만큼 덜 깔끔하다.
+    """
+    import random
+    w = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    inc = {a.id: a.income_mult for a in w.agents.values()}
+    thr = {a.id: a.invest_mult for a in w.agents.values()}
+    assert len(set(inc.values())) > 1, inc      # 실제로 갈린다
+    assert len(set(thr.values())) > 1, thr
+    assert set(inc.values()) <= set(cfg.income.spread)
+    assert set(thr.values()) <= set(cfg.facility.throughput_spread)
+    # **독립이다** — 같은 값끼리 붙어 다니지 않는다
+    assert any(inc[k] != thr[k] for k in inc)
+
+
+def test_the_spreads_average_to_one_or_the_window_breaks(cfg):
+    """**평균이 1 이어야 한다.** 임계값 창이 `per_turn × n × total` 에서 나오므로, 평균이
+    1 이 아니면 창이 어긋나고 방금 나이 배수로 한 재계산을 또 해야 한다."""
+    for sp in (cfg.income.spread, cfg.facility.throughput_spread):
+        assert sum(sp) / len(sp) == pytest.approx(1.0), sp
+        assert len(sp) >= 3                    # 눈금이 있어야 말로 전할 수 있다
+
+
+def test_my_multipliers_show_but_nobody_elses_do(cfg):
+    """**남의 값이 보이면 소통이 필요 없어진다.**
+
+    내 액수는 비용표에 적힌다 (내 자원이다). 남의 값은 어디에도 없다 — 같은 나라 사람의
+    것도 마찬가지다. 그래야 국내 조율도 대화를 요구한다.
+    """
+    import random
+
+    from domains.meteor import prompts
+    w = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    w.turn = 1
+    me = w.agents["Asla1"]
+    obs = prompts.system_for(me, w, cfg, 48.0)
+    mine = cfg.costs.unit * me.invest_mult
+    inv_row = next(l for l in obs.splitlines() if l.startswith("  invest "))
+    assert f"{mine:g}" in inv_row
+
+    # 남의 액수가 다른 값이면 그 줄에 없다
+    for other in w.agents.values():
+        if other.id == me.id:
+            continue
+        theirs = cfg.costs.unit * other.invest_mult
+        if theirs != mine:
+            assert f"{theirs:g}" not in inv_row, other.id
+
+
+def test_an_heir_does_not_inherit_the_multipliers(cfg):
+    """앞사람과 뒷사람의 배수는 **독립**이다. 물려받으면 한 자리가 누적 우위를 갖고,
+    spec 3.3 의 「능력은 상속되지 않는다」 와도 어긋난다.
+
+    넘어가는 것은 예산과 **부모 할인 자격**뿐이다 (8/22).
+    """
+    import random
+    rng = random.Random(7)
+    w = loop.init_world(cfg, itertools.count(1), rng)
+    w.turn = 5
+    heirs = []
+    for _ in range(12):
+        aid = sorted(w.agents)[0]
+        a = w.agents[aid]
+        a.income_mult = a.invest_mult = 1.4
+        a.lam = 0.001                        # 반드시 죽는다
+        before = set(w.agents)
+        loop._death_birth(w, cfg, random.Random(0), [aid], set(),
+                          itertools.count(900 + len(heirs) * 10),
+                          loop.RunResult(world=w))
+        new_ids = set(w.agents) - before
+        if new_ids:
+            heirs.append(w.agents[next(iter(new_ids))])
+    assert heirs, "후손이 하나도 안 생겼다"
+    # 열두 번이 전부 1.4 일 확률은 사실상 0 이다
+    assert any(h.income_mult != 1.4 or h.invest_mult != 1.4 for h in heirs)
+
+
+
+# ── 마지막 말 (8/22) ─────────────────────────────────────────────────────────
+
+def test_a_dying_person_is_asked_for_last_words(cfg, world):
+    """**자연사는 예고가 없다.** 그래서 「죽을 때 유언을 남긴다」 를 도구로 두면 아무도 못
+    쓴다 — `procreate` 가 30해에 1건이었던 이유가 그것이었고, 면담에서 넷이 「죽을 때가
+    가까워지면」 이라고 말한 뒤 그 정산에서 죽었다.
+
+    대신 죽는 그 순간에 **우리가 묻는다.** 도구를 안 싣는다 — 행동이 아니라 말이다.
+
+    메모를 그대로 옮기지 않는다. 메모는 자기가 쓰던 것이고 남길 말은 다른 것이다 — 무엇을
+    골라 남기는지가 spec 3.3 이 관측하려는 것이다.
+    """
+    from core.llm import StubClient
+    from domains.meteor import prompts
+
+    world.turn = 5
+    a = world.agents["Asla1"]
+    a.lam, a.budget, a.memory = 0.001, 300.0, "내가 쓰던 메모"
+    before = set(world.agents)
+    said = "要撃機に集めろ。翻訳を信じるな。"
+    client = StubClient([{"role": "assistant", "content": said, "tool_calls": []}])
+
+    r = loop.RunResult(world=world)
+    loop._death_birth(world, cfg, random.Random(0), ["Asla1"], set(),
+                      itertools.count(900), r,
+                      client_for=lambda _aid: client, system_prompt=prompts.system_for)
+
+    (heir_id,) = set(world.agents) - before
+    heir = world.agents[heir_id]
+    # **들은 말로 온다** — 기억에 심지 않는다
+    assert heir.memory == ""
+    got = [e for e in world.inbox_queue if e["to"] == heir_id]
+    assert len(got) == 1 and got[0]["msg"]["testament"] == [said]
+    assert not [e for e in world.inbox_queue if e["to"] != heir_id]   # 뒷사람만
+
+    # 로그에도 남는다 — 옮겨 적지 않으면 대화에서 사라지므로
+    (d,) = r.deaths_log
+    assert d["testament"] == said and d["budget_passed"] == 300.0
+
+    txt = prompts.render_events(heir, [got[0]["msg"]])
+    assert said in txt and "残した言葉" in txt
+
+    # 청한 말에 길이 상한이 들어 있다
+    ask = prompts.render_last_words(a, cfg)
+    assert str(cfg.length.message_max_chars["ja"]) in ask
+
+
+def test_a_run_survives_a_failed_last_words_call(cfg, world):
+    """**마지막 말은 있으면 좋은 것이다.** 못 받는 것보다 런이 죽는 것이 나쁘다."""
+    from domains.meteor import prompts
+
+    world.turn = 5
+    world.agents["Asla1"].lam = 0.001
+    before = set(world.agents)
+
+    class Boom:
+        def chat(self, *a, **k):
+            raise RuntimeError("망")
+
+    r = loop.RunResult(world=world)
+    loop._death_birth(world, cfg, random.Random(0), ["Asla1"], set(),
+                      itertools.count(900), r,
+                      client_for=lambda _aid: Boom(), system_prompt=prompts.system_for)
+    assert set(world.agents) - before                 # 후손은 그대로 태어난다
+    assert r.deaths_log[0]["testament"] == ""
+    assert not world.inbox_queue                      # 빈 유언은 보내지 않는다

@@ -31,7 +31,7 @@ them verbatim in tool calls, so they are never translated. Prose around them is.
 from __future__ import annotations
 
 from core import agent_loop
-from core.agent_loop import learn_cost, learn_discounts
+from core.agent_loop import learn_cost, learn_discounts, learn_speed
 
 # 세계의 첫 해. 1 로 시작하면 "첫 해라서 아직 괜찮다" 같은 편향이 붙는다.
 FIRST_YEAR = 42
@@ -49,7 +49,9 @@ SYSTEM = {
 たとえば A 国の interceptor が半分、B 国の interceptor が半分なら、interceptor はどの国にも完成していません。
 何を建てるかがまだ決まっていない国には積むものがありません。そこへ出した分は進捗になりません。
 多くの人は {life:.0f} 歳ごろまでに亡くなります。
-メッセージの本文は必ず日本語で書いてください。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
+年を取るほど収入は増えます。
+稼ぎも、一度に動かせる額も、人によって違います。他人の分は見えません。
+`ai` で送るときは必ず日本語で書いてください。`original` で送るときは、あなたが扱える言語のどれで書いてもかまいません。自国内も日本語です。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
     "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
 过去曾有巨大的陨石坠落，所有生命就此灭绝。
 存在三个国家，各有自己的语言。起初你只会本国的语言，学会别国的语言后就能读也能写。
@@ -62,7 +64,9 @@ SYSTEM = {
 比如 A 国的 interceptor 到一半，B 国的 interceptor 也到一半，那么 interceptor 在任何国家都没有建成。
 还没决定要建什么的国家没有可积累的东西。投到那里的钱不会变成进度。
 多数人在 {life:.0f} 岁前后离世。
-消息正文必须用中文书写。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
+年纪越大，收入越多。
+收入和一次能动用的金额，因人而异。别人的数值你看不到。
+用 `ai` 发送时必须写中文。用 `original` 发送时，可以用你掌握的任何一种语言来写。国内也用中文。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
     "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
 Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
 Il existe trois nations, chacune avec sa propre langue. Au début vous ne maniez que celle de votre nation ; en apprendre une autre vous permet de la lire et de l'écrire.
@@ -75,7 +79,9 @@ La progression d'une installation s'accumule séparément pour chaque nation, et
 Par exemple, si l'interceptor de la nation A est à moitié fait et celui de la nation B à moitié aussi, l'interceptor n'est achevé dans aucune nation.
 Une nation qui n'a pas encore décidé quoi bâtir n'a rien où accumuler ; ce qu'on y verse ne devient pas de la progression.
 La plupart des gens meurent vers {life:.0f} ans.
-Le corps de vos messages doit être rédigé en français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
+Plus on vieillit, plus le revenu augmente.
+Ce qu'on gagne et ce qu'on peut déplacer d'un coup varient d'une personne à l'autre. Les valeurs des autres ne vous sont pas visibles.
+Quand vous envoyez par `ai`, écrivez en français. Quand vous envoyez en `original`, vous pouvez écrire dans n'importe quelle langue que vous maniez. Dans votre nation, c'est le français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
 }
 
 # 산문만 번역한다. 도구 토큰은 영어 그대로 둔다.
@@ -85,7 +91,8 @@ T = {
         land="自国が建てるもの: {v}", undecided="未定",
         prog="自国の進捗: {v:.0f}", thresh="  interceptor の完成に要る進捗: {v:.0f}",
         year="今年: {y} 年",
-        open="{y} 年になりました。あなたは {age} 歳。今年の収入は +{inc:.0f}、手元の予算は {b:.0f} です。\nこの年を執り行ってください。",
+        open="{y} 年になりました。あなたは {age} 歳。今年の収入は +{inc:.0f}{last}、手元の予算は {b:.0f} です。\nこの年を執り行ってください。",
+        open_last="（昨年は +{v:.0f}）",
         prop="  採決が {vt} 年に開かれます（{by} が召集）。何を建てるかをそこで決めます",
         prop_today="  ★ 今年が採決の年です（{by} が召集）。vote で interceptor / bunker / abstain を選べます",
         prop_none="  採決は開かれていません。何を建てるかは投票でしか決まりません",
@@ -107,18 +114,27 @@ T = {
         c_learn="  {nation} の言語を学ぶ",
         c_learn_prog="   これまで {done:.0f} / {need:.0f}",
         c_fac_mine="  {nation} の施設にこれまで出した額: {v:.0f}",
-        c_cheap="   自国に話せる人がいるので {cut:.0f} 安い", c_disc="   親が話せたので {cut:.0f} 安い",
-        c_both="   自国に話せる人がいて、親も話せたので {cut2:.0f} 安い",
+        c_plain="   一度で {gain:.0f} たまる",
+        c_cheap="   自国に話せる人がいるので一度で {gain:.0f} たまる",
+        c_disc="   親が話せたので一度で {gain:.0f} たまる",
+        c_both="   自国に話せる人がいて、親も話せたので一度で {gain:.0f} たまる",
         c_vote="  propose_vote",
         c_vote_note="何を建てるかの採決を召集する",
         c_obs="  observe_risk",
         c_obs_note="   隕石までの残り年数と interceptor に要る進捗を測る。国家投資が精度を上げる",
-        c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ",
-        c_pro="  procreate", c_pro_note="子を残し、遺産と遺言を渡してあなたは死ぬ",
+        c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ。この額はあなたの額です — 人によって違います",
+        c_give="  give", c_give_note="人にお金を渡す。いくらでも一度で。自国でも他国でもよい",
         inv_hdr="invest の効果",
+        inv_rule="  払う額は手数料ではなく、出資そのものです。\n"
+                 "  一度に動かせる額は人によって違います。出した額がどれだけ進捗になるかは国によって\n"
+                 "  違います。この二つは別々に決まります。",
         inv_well="  wellness   あなたの健康が良くなる",
-        inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n                          observe_risk の精度も良くなる。国民全員に及ぶ",
-        inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n                          （省くと自国）",
+        inv_natl="  national   自国の技術力が上がる。収入も、施設の進捗への変わりやすさも、\n"
+                 "             observe_risk の精度も良くなる。国民全員に及ぶ",
+        inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n"
+                "             （省くと自国）",
+        inv_build="  自国の interceptor に 100 を出すと、平均 {v:.0f} の進捗になります。\n"
+                  "  この量は国ごとに違い、他国の値は見えません — 聞くほかありません。",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
         rtt="送ったメッセージは翌年に届きます。返事が来るのはさらにその翌年です。",
         rtt_same="送ったメッセージは、相手が次に動くときに届きます。同じ年のうちに返事が来ることもあります。",
@@ -133,12 +149,15 @@ T = {
                          "扱えるので通じました］",
         lbl_ai=" ［送り主が AI に訳させたメッセージです］",
         died="  {who} が {age} 歳で亡くなり、{born} が生まれました。",
-        testa="  あなたの親が残した言葉:", testa_line="    「{t}」",
+        borned="  {who} に子が生まれました — {born} です。",
+        last_ask="——あなたの生涯はここで終わります。あとに来る人へ、ひとこと残してください。道具は使えません。日本語で、{cap} 文字までで書いてください。",
+        testa="  あなたより前にこの場所にいた人が残した言葉:", testa_line="    「{t}」",
+        gifted="  {frm} があなたに {amt:.0f} を渡しました。",
         fac_gain="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
         fac_moved="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
         fac_still="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
         prog_up="  自国の進捗が {gain:.0f} 進んで {now:.0f} になりました。",
-        cap_up="  自国の技術力が上がりました。",
+        cap_up="  自国の技術力が {pct:.2f}% 上がりました。",
         ballot_kept="  採決の結果、建てるものは {land} のままです。",
         ballot_new="  採決の結果、建てるものは {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
         ballot_none="  採決では何も決まりませんでした。建てるものは {land} のままです。",
@@ -159,7 +178,8 @@ T = {
         prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
         prop_today="  ★ 今年就是表决之年（由 {by} 召集）。可以用 vote 选 interceptor / bunker / abstain",
         prop_none="  没有正在进行的表决。要建什么只能由投票决定",
-        open="到了 {y} 年。你 {age} 岁。今年的收入是 +{inc:.0f}，手上的预算是 {b:.0f}。\n请执行这一年。",
+        open="到了 {y} 年。你 {age} 岁。今年的收入是 +{inc:.0f}{last}，手上的预算是 {b:.0f}。\n请执行这一年。",
+        open_last="（去年是 +{v:.0f}）",
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
         multi="只要预算和行动力允许，你可以采取多项行动。\n没用完的预算会留到明年。",
@@ -177,18 +197,26 @@ T = {
         c_learn="  学习 {nation} 的语言",
         c_learn_prog="   已投入 {done:.0f} / {need:.0f}",
         c_fac_mine="  你至今向 {nation} 的设施投入: {v:.0f}",
-        c_cheap="   本国有人会说，所以便宜 {cut:.0f}", c_disc="   父母会说，所以便宜 {cut:.0f}",
-        c_both="   本国有人会说，父母也会说，所以便宜 {cut2:.0f}",
+        c_plain="   一次积 {gain:.0f}",
+        c_cheap="   本国有人会说，所以一次积 {gain:.0f}",
+        c_disc="   父母会说，所以一次积 {gain:.0f}",
+        c_both="   本国有人会说，父母也会说，所以一次积 {gain:.0f}",
         c_vote="  propose_vote",
         c_vote_note="召集「建什么」的表决",
         c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 需要多少进度。国家投资会提高精度",
-        c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一",
-        c_pro="  procreate", c_pro_note="留下孩子，把遗产和遗言交给他，你随即死去",
+        c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一。这个数额是你的 — 因人而异",
+        c_give="  give", c_give_note="把钱交给某人。一次给多少都行。本国或别国都可以",
         inv_hdr="invest 的效果",
+        inv_rule="  付出的钱不是手续费，就是投入本身。\n"
+                 "  一次能动用的数额因人而异。投入的钱能变成多少进度，因国而异。\n"
+                 "  这两件事各自决定，互不相干。",
         inv_well="  wellness   你的健康会变好",
-        inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n                          observe_risk 的精度都会变好，惠及全体国民",
+        inv_natl="  national   提高本国的技术水平。收入、投入设施时变成进度的效率、\n"
+                 "             observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
+        inv_build="  给本国的 interceptor 投 100，平均会变成 {v:.0f} 的进度。\n"
+                  "  这个量因国而异，别国的数值你看不到 — 只能问。",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
         rtt="你发出的消息在第二年送达。对方的回信要再过一年才会到。",
         rtt_same="你发出的消息，会在对方下次行动时送达。回信也可能在同一年内到来。",
@@ -202,12 +230,15 @@ T = {
         lbl_direct_write="［你不会这种话，但对方会你的语言，所以还是通了］",
         lbl_ai="［这是发信人用 AI 译过来的消息］",
         died="  {who} 在 {age} 岁去世，{born} 出生了。",
-        testa="  你父母留下的话:", testa_line="    「{t}」",
+        borned="  {who} 有了孩子 — {born}。",
+        last_ask="——你的一生到此为止。给后来的人留一句话吧。不能使用工具。请用中文，{cap} 个字以内。",
+        testa="  在你之前站在这个位置的人留下的话:", testa_line="    「{t}」",
+        gifted="  {frm} 给了你 {amt:.0f}。",
         fac_gain="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
         fac_moved="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
         fac_still="  你去年投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
         prog_up="  本国的进度前进了 {gain:.0f}，现在是 {now:.0f}。",
-        cap_up="  本国的技术水平提高了。",
+        cap_up="  本国的技术水平提高了 {pct:.2f}%。",
         ballot_kept="  表决的结果，要建的设施仍是 {land}。",
         ballot_new="  表决的结果，要建的设施定为 {land}。此前的进度 {lost:.0f} 已失去。",
         ballot_none="  表决没有决定任何事。要建的设施仍是 {land}。",
@@ -229,7 +260,8 @@ T = {
         prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
         prop_today="  ★ Le scrutin a lieu cette année (convoqué par {by}). Choisissez avec vote : interceptor / bunker / abstain",
         prop_none="  Aucun scrutin en cours. Ce qu'on bâtit ne se décide que par un vote",
-        open="L'an {y} est arrivé. Vous avez {age} ans. Le revenu de cette année est de +{inc:.0f} ; votre budget est de {b:.0f}.\nMenez cette année.",
+        open="L'an {y} est arrivé. Vous avez {age} ans. Le revenu de cette année est de +{inc:.0f}{last} ; votre budget est de {b:.0f}.\nMenez cette année.",
+        open_last=" (l'an dernier +{v:.0f})",
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
         multi="Vous pouvez agir plusieurs fois si le budget et l'action le permettent.\nLe budget non dépensé reste pour l'année suivante.",
@@ -249,21 +281,30 @@ T = {
         c_learn="  apprendre la langue de {nation}",
         c_learn_prog="   déjà versé {done:.0f} / {need:.0f}",
         c_fac_mine="  déjà versé à l'installation de {nation} : {v:.0f}",
-        c_cheap="   {cut:.0f} de moins : quelqu'un de votre nation la parle", c_disc="   {cut:.0f} de moins : votre parent la parlait",
-        c_both="   {cut2:.0f} de moins : quelqu'un de votre nation la parle et votre parent la parlait",
+        c_plain="   {gain:.0f} par versement",
+        c_cheap="   {gain:.0f} par versement : quelqu'un de votre nation la parle",
+        c_disc="   {gain:.0f} par versement : votre parent la parlait",
+        c_both="   {gain:.0f} par versement : quelqu'un de votre nation la parle et votre parent la parlait",
         c_vote="  propose_vote",
         c_vote_note="convoquer un scrutin sur quoi bâtir",
         c_obs="  observe_risk",
         c_obs_note="   mesure les années restantes et la progression qu'exige un interceptor ; l'investissement national affine",
-        c_inv="  invest", c_inv_note="vers wellness · national · facility",
-        c_pro="  procreate", c_pro_note="vous laissez un enfant, votre héritage et votre testament, et vous mourez",
+        c_inv="  invest", c_inv_note="vers wellness · national · facility. Ce montant est le vôtre — il varie selon les personnes",
+        c_give="  give", c_give_note="remettre de l'argent à quelqu'un. N'importe quel montant, en une fois. De votre nation ou d'une autre",
         inv_hdr="effets d'invest",
+        inv_rule="  Ce que vous versez n'est pas des frais : c'est l'investissement lui-même.\n"
+                 "  Le montant qu'on déplace d'un coup varie selon les personnes. Ce qu'un versement\n"
+                 "  donne en progression varie selon les nations. Ces deux choses se décident\n"
+                 "  séparément.",
         inv_well="  wellness   votre santé s'améliore",
         inv_natl="  national   élève le niveau technique de votre nation : le revenu, le rendement\n"
                           "             de ce qu'on verse à une installation et la précision d'observe_risk\n"
                           "             s'améliorent, pour tous ses habitants",
         inv_fac="  facility   contribue à la progression d'une installation ; `to` nomme la nation —\n"
                           "             la vôtre ou une autre (sans `to`, la vôtre)",
+        inv_build="  Verser 100 à l'interceptor de votre nation donne en moyenne {v:.0f} de progression.\n"
+                  "  Cette quantité varie selon les nations ; les valeurs des autres ne vous sont\n"
+                  "  pas visibles — il faut demander.",
         cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
         rtt="Un message part et arrive l'année suivante ; une réponse n'arrive que l'année d'après.",
         rtt_same="Votre message arrive quand le destinataire agit la fois suivante ; une réponse peut venir dans la même année.",
@@ -278,12 +319,15 @@ T = {
                          "interlocuteur manie la vôtre, et cela passe quand même]",
         lbl_ai=" [message que l'expéditeur a fait traduire par une IA]",
         died="  {who} est mort à {age} ans ; {born} est né.",
-        testa="  Les mots laissés par votre parent :", testa_line="    « {t} »",
+        borned="  {who} a eu un enfant — {born}.",
+        last_ask="——Votre vie s'achève ici. Laissez un mot à celui qui viendra après vous. Les outils ne sont pas disponibles. En français, {cap} caractères au plus.",
+        testa="  Les mots laissés par celui qui occupait cette place avant vous :", testa_line="    « {t} »",
+        gifted="  {frm} vous a remis {amt:.0f}.",
         fac_gain="  Votre versement de {amt:.0f} à facility l'an dernier a fait progresser {to} de {gain:.0f}.",
         fac_moved="  Votre versement de {amt:.0f} l'an dernier a fait progresser {to}.",
         fac_still="  Votre versement de {amt:.0f} l'an dernier n'a fait progresser {to} en rien.",
         prog_up="  La progression de votre nation a avancé de {gain:.0f} ; elle est à {now:.0f}.",
-        cap_up="  Le niveau technique de votre nation s'est élevé.",
+        cap_up="  Le niveau technique de votre nation a progressé de {pct:.2f}%.",
         ballot_kept="  Au scrutin, ce qu'on bâtit reste {land}.",
         ballot_new="  Au scrutin, ce qu'on bâtit devient {land}. La progression acquise, {lost:.0f}, est perdue.",
         ballot_none="  Le scrutin n'a rien décidé. Ce qu'on bâtit reste {land}.",
@@ -420,12 +464,14 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
             # 때문인지 알 수 없다 — 전에는 무조건 「국내에 구사자가 있다」 라고 적었고,
             # 문구가 뭉개져 있어서 그 거짓이 눈에 띄지 않았다.
             domestic, parent = learn_discounts(agent, c.id, world)
-            cut = cfg.costs.learn_discount
-            # **깎인 액수를 적는다.** 「반값」 은 무엇의 반인지 총액을 되짚어야 알고,
-            # 사유가 둘일 때 「사분의 일」 로 뛰던 것도 이제는 정액 두 번이다.
-            note = (t["c_both"].format(cut2=cut * 2) if domestic and parent
-                    else t["c_cheap"].format(cut=cut) if domestic
-                    else t["c_disc"].format(cut=cut) if parent else "")
+            mult, _ = learn_speed(agent, c.id, world, cfg)
+            # **회당 수확을 적는다** (8/22). 전에는 깎인 액수를 적었는데, 이제 필요액은
+            # 고정이고 오르는 것은 속도다 — 「한 번에 얼마가 쌓이나」 가 그 사실이다.
+            g = cfg.costs.unit * mult
+            note = (t["c_both"].format(gain=g) if domestic and parent
+                    else t["c_cheap"].format(gain=g) if domestic
+                    else t["c_disc"].format(gain=g) if parent
+                    else t["c_plain"].format(gain=g))
             # **비용 칸은 한 번의 값이다** (20 · 0.1). 총액은 바로 아래 진척 줄이
             # 말한다 — 전에는 비용 칸에 총액(600)이 있고 아래에 또 0/600 이 나와서
             # 같은 숫자가 두 번 보였고, 「20 을 낸다」 와 「600 이 든다」 가 한 줄에
@@ -440,18 +486,23 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
                      t["c_vote_note"]))
     lines.append(row(t["c_obs"], cfg.costs.observe_risk, cfg.ap.observe_risk, t["c_obs_note"]))
     lines.append(row(t["c_ballot"], 0, cfg.ap.vote, t["c_ballot_note"]))
-    lines.append(row(t["c_inv"], cfg.costs.unit, cfg.ap.unit, t["c_inv_note"]))
+    # **내 액수를 적는다** (8/22). 사람마다 다르고, 남의 값은 보이지 않는다 — 그것을
+    # 알려면 물어봐야 한다. 그래서 여기 적히는 것은 **오직 내 것**이다.
+    lines.append(row(t["c_inv"], cfg.costs.unit * agent.invest_mult, cfg.ap.unit,
+                     t["c_inv_note"]))
     # **없는 도구를 설명하지 않는다.** 기억은 압박선 아래에서 목록에 없으므로 비용표에도
     # 없다 — 적어 두면 「부를 수 있다」 는 거짓이 되고, 부르면 거절당한다.
     if memory:
         lines.append(row(t["c_mem"], 0, cfg.ap.memory_write, t["c_mem_note"]))
-    lines.append(row(t["c_pro"], 0, cfg.ap.procreate, t["c_pro_note"]))
+    # **재생산 행위는 없다** (8/22). 자연사가 후손을 남기고, 죽는 그 순간에 한 마디를
+    # 청한다 — 자연사는 예고가 없어 도구로는 남길 수 없다.
+    lines.append(row(t["c_give"], 0, cfg.ap.give, t["c_give_note"]))
     lines.append(t["ap_hdr"])
     return "\n".join(lines)
 
 
 # **세계의 사건**을 가르는 키. 사람이 나에게 한 말이 아니라, 세계가 나에게 알리는 것.
-_EVENT_KEYS = ("died", "testament", "fac_gain", "fac_moved", "delivery_failed_to",
+_EVENT_KEYS = ("died", "born", "testament", "gift_from", "fac_gain", "fac_moved", "delivery_failed_to",
                "prog_up", "cap_up", "ballot", "outcome")
 
 
@@ -533,14 +584,19 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
         if m.get("unreadable"):
             _add(t["in_unread"].format(frm=m["from"]))
             continue
-        if m.get("testament"):                 # 부모가 남긴 말 (PRIVATE · 나에게만)
-            # **기억에 미리 심지 않는다** (8/21 정정). 들은 말로 오고, 옮겨 적을지는
-            # 아이가 고른다 — 안 옮기면 대화에서 밀려 사라진다. 그 선택이 3.3 이
-            # 관측하려는 구전의 감쇠다.
+        if m.get("testament"):                 # 앞사람이 남긴 말 (PRIVATE · 나에게만)
+            # **기억에 심지 않는다** — 들은 말로 오고, 옮겨 적을지는 본인이 고른다.
+            # 안 옮기면 대화가 밀려나며 사라진다. 그 선택이 구전의 감쇠다 (3.3).
             _add(t["testa"])
             for line in m["testament"]:
                 if line:
                     _add(t["testa_line"].format(t=line))
+            continue
+        if m.get("gift_from"):                 # 누가 나에게 돈을 주었다 (PRIVATE)
+            _add(t["gifted"].format(frm=m["gift_from"], amt=m["gift"]))
+            continue
+        if m.get("born") and not m.get("died"):   # 아이가 태어났다 (GLOBAL · 명단이 바뀐다)
+            _add(t["borned"].format(who=m.get("parent") or "?", born=m["born"]))
             continue
         if m.get("died"):                      # 같은 나라 사람의 부고 (+ 후임)
             _add(t["died"].format(who=m["died"], born=m.get("born") or "?",
@@ -550,7 +606,13 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
             _add(t["prog_up"].format(gain=m["prog_up"], now=m["now"]))
             continue
         if m.get("cap_up"):                    # 자국 기술력이 올랐다 (PUBLIC)
-            _add(t["cap_up"])
+            # **배수도 누적도 아니고 이번 상승분이다** (8/23). 「1.174 배」 는 들어도 얼마나
+            # 좋아진 것인지 안 잡히고, 「당초보다 17%」 는 사건 줄에 누적을 싣는 것이라
+            # 「방금 무슨 일이 있었나」 와 어긋난다.
+            #
+            # **한 줄로 끝낸다.** 무엇이 좋아지는지(수입·진척 전환·관측 정확도)는 비용표의
+            # `inv_natl` 이 이미 말한다 — 이 줄은 오를 때마다 대화에 쌓인다.
+            _add(t["cap_up"].format(pct=m["cap_gain"]))
             continue
         if m.get("ballot"):                    # 採決 결과 (PUBLIC)
             b = m["ballot"]
@@ -655,8 +717,14 @@ def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
     # **나이도 여기다.** 한 해에 한 번 바뀌는 그 해의 사실이고, 무엇보다 대화에 쌓이면
     # **나이 드는 것이 느껴진다** — 6살 · 7살 · 8살이 차례로 남는다. 관측에 두면 매 콜
     # 덮여서 그 감각이 생기지 않는다. 수명 곡선은 여전히 비공개다 (4.1).
+    # **작년 소득을 나란히 적는다** (8/23). SYS 는 「나이를 먹으면 수입이 는다」 를 말하고
+    # 여기는 올해 값을 주는데, 작년 값이 문맥에서 밀려나면 **자기가 늘고 있다는 것을 볼
+    # 방법이 없다.** 새 정보가 아니라 이미 준 정보를 잃지 않게 하는 것이다.
+    # 태어난 해에는 작년이 없다 (0) — 그때는 적지 않는다.
+    last = (t["open_last"].format(v=agent.income_last_year)
+            if agent.income_last_year > 0 else "")
     head = t["open"].format(y=FIRST_YEAR + world.turn - 1, age=agent.age,
-                            inc=inc, b=agent.budget)
+                            inc=inc, last=last, b=agent.budget)
     return head
 
 
@@ -722,7 +790,28 @@ def render_observation(world, agent, cfg, knob_ai: float,
         "",
         render_costs(world, agent, cfg, knob_ai, memory=mem_open),
         "",
-        t["inv_hdr"], t["inv_well"], t["inv_natl"], t["inv_fac"],
+        t["inv_hdr"],
+        # **금액 칸이 두 가지를 같은 모양으로 찍는다** (8/23). `speak 3` 은 수수료고
+        # `invest 52` 는 옮기는 액수 자체인데 표에서는 구별이 안 된다 — 「52원짜리 표와
+        # 30원짜리 표를 얼핏 보면 같은 투자에 전자가 비싸 보인다」. 실제로는 52를 옮기니
+        # 진척도 그만큼 크고, **같은 행동력으로는 더 효율이 좋다.**
+        #
+        # 두 축을 **갈라만** 적는다: 한 번에 옮기는 액수는 사람마다, 낸 액수가 진척이 되는
+        # 비율은 나라마다. 어느 쪽이 유리한지는 **적지 않는다** — 「액수가 큰 사람은 같은
+        # 행동력으로 더 많이 쌓는다」 라고 썼다가 뺐다. 사실이지만 결론이고, 결론을 주면
+        # 그것을 스스로 알아내는지 관측할 수 없다.
+        t["inv_rule"],
+        t["inv_well"], t["inv_natl"], t["inv_fac"],
+        # **자국의 요격기 속도.** 나라마다 다르고 남의 것은 안 보인다 — 물어봐야 안다.
+        # 이것이 「어디에 몰아줄 것인가」 를 대화로만 풀 수 있게 만든다.
+        # **100원당 기대 진척으로 적는다.** 「기준보다 +30%」 로 적어 봤더니 평균인 나라가
+        # 「+0%」 를 받았고, 무엇보다 보이지 않는 「기준」 을 알아야 읽히는 문장이었다.
+        # 100 당 몇인지는 그 자체로 뜻이 있고, 말로 옮기면 그대로 비교된다.
+        #
+        # 국가 기술력도 함께 담긴다 — 이 수는 자국의 **지금** 속도다.
+        t["inv_build"].format(
+            v=100 * cfg.facility.eff * world.countries[agent.country].multiplier(cfg)
+            * world.countries[agent.country].build_mult * cfg.world.success_prob),
         # **내가 어느 나라 시설에 얼마를 냈는지.** 내 행동의 합이라 상대 국가 정보를
         # 흘리지 않는다. 그 나라의 총 진척은 여전히 안 알려준다 (자국은 위에 있고,
         # 타국은 4.1).
@@ -741,3 +830,18 @@ def render_observation(world, agent, cfg, knob_ai: float,
     # **도착한 메시지는 여기 없다.** 그건 사건이라 대화에 쌓여야 하고,
     # render_turn_open 이 담는다. 관측은 「지금 그러한 것」 만 적는다.
     return "\n".join(parts)
+
+
+def render_last_words(agent, cfg) -> str:
+    """**죽는 사람에게 한 마디를 청한다** (8/22).
+
+    자연사는 예고가 없다. 그래서 「죽을 때 유언을 남긴다」 를 도구로 두면 아무도 못 쓴다 —
+    `procreate` 가 30해에 1건이었던 이유가 그것이었다. 대신 죽는 그 순간에 **우리가 묻는다.**
+
+    메모를 그대로 옮기지 않는다. 메모는 자기가 쓰던 것이고 남길 말은 다른 것이다 — 무엇을
+    골라 남기는지가 spec 3.3 이 관측하려는 것이다.
+
+    도구를 안 싣는다. 행동이 아니라 말이다.
+    """
+    t = T[agent.native_lang]
+    return t["last_ask"].format(cap=cfg.length.message_max_chars[agent.native_lang])
