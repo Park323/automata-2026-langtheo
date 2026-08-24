@@ -508,6 +508,40 @@ def test_no_error_message_says_turn():
         assert not re.search(r"\bturn\b", line.replace("end_turn", "")), line
 
 
+def test_no_tool_response_says_turn():
+    """**성공 응답은 「년」 통일의 그물 밖이었다** (#43).
+
+    바로 위 테스트는 `"error"` 가 든 줄만 봤다. 그래서 `propose_vote` 의 **성공** 응답이
+    `{"ballot_turn": 5}` 로 내부 인덱스를 그대로 돌려주는 것을 못 잡았다 — 같은 採決을
+    `vote` 의 실패 응답은 「year 46」 이라고 부르고 있었는데도.
+
+    문자열만 보지 않고 **키까지** 본다. 값을 연도로 고쳐도 키가 `_turn` 이면 그 눈금을
+    계속 말한다.
+    """
+    import itertools
+    import random
+
+    from core import config, loop
+    from core.agent_loop import Sink, execute_tool
+    c = config.load("configs/base.yaml")
+    world = loop.init_world(c, itertools.count(1), random.Random(1))
+    world.turn = 10
+
+    calls = [("propose_vote", {"reasoning": "r"}),
+             ("invest", {"target": "facility", "reasoning": "r"}),
+             # Asla1 은 초기화로 Ranoa 말을 이미 안다 (`init_world` 가 나라마다 한 명)
+             ("learn", {"country": "Miris", "reasoning": "r"}),
+             ("give", {"to": "Asla2", "amount": 10, "reasoning": "r"}),
+             ("observe_risk", {"reasoning": "r"}),
+             ("speak", {"to": "Asla2", "text": "こんにちは", "reasoning": "r"})]
+    for name, args in calls:
+        a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 1000.0
+        res, _ = execute_tool(name, args, world, a, c, Sink(), 48.0)
+        assert res["ok"], (name, res)
+        for k in res:
+            assert "turn" not in k, (name, k, res)
+
+
 def test_the_inbox_shows_no_message_ids():
     """**`[N]` 은 에이전트에게 잡음이었다.**
 

@@ -556,16 +556,28 @@ def sec_J(d: dict, trials: int) -> None:
     year = prompts.FIRST_YEAR + (w.turn + loopmod.VOTE_DELAY) - 1
     print(f"  ② propose_vote 응답 {res}")
     print(f"     같은 採決을 실패 응답은 「year {year}」 라고 부른다 (execute_tool 의 vote 분기).")
-    print(f"     성공 응답만 **턴 번호 {res.get('ballot_turn')}** 을 흘린다 — 세계에는 없는 눈금이다.")
+    leak = [k for k in res if "turn" in k]
+    print(f"     성공 응답이 턴 눈금을 흘리는가: "
+          f"{'**결함** ' + str(leak) if leak else '아니다 — 고쳐짐 (#43)'}")
 
     # ③ learn 과 invest 가 정말 같은 돈인가 (도구 설명: "costs the same money as an investment")
-    print(f"  ③ 「learn 은 invest 와 같은 돈·행동력이 든다」 (tools.py)")
+    from core import tools as toolsmod
+    learn_desc = next(t["function"]["description"] for t in toolsmod.TOOLS
+                      if t["function"]["name"] == "learn")
+    says_same_money = "same money" in learn_desc
+    print(f"  ③ learn 설명이 「invest 와 같은 돈」 이라고 말하는가: "
+          f"{'**결함**' if says_same_money else '아니다 — 고쳐짐 (#41)'}")
     for mult in cfg.facility.throughput_spread:
         print(f"     invest_mult {mult}: invest {cfg.costs.unit * mult:>5.0f}원 vs "
               f"learn {cfg.costs.unit:>5.0f}원   {'같다' if mult == 1.0 else '**다르다**'}")
 
     # ④ fac_gain 통지가 「작년」 인가
-    print(f"  ④ fac_gain 문구는 세 언어 모두 「작년/去年/l'an dernier」 로 시작한다:")
+    LASTYEAR = {"ja": "昨年", "zh": "去年", "fr": "l'an dernier"}
+    stale = [l for l in ("ja", "zh", "fr")
+             if any(LASTYEAR[l] in prompts.T[l][k]
+                    for k in ("fac_gain", "fac_moved", "fac_still"))]
+    print(f"  ④ 출자 통지가 「작년」 이라고 말하는가: "
+          f"{'**결함** ' + str(stale) if stale else '아니다 — 고쳐짐 (#42)'}")
     for l in ("ja", "zh", "fr"):
         print(f"     {l}: {prompts.T[l]['fac_gain'][:34]}…")
     print(f"     순차 라운드로빈은 `_settle_step` 에서 **같은 해**에 통지한다 "
@@ -576,15 +588,20 @@ def sec_J(d: dict, trials: int) -> None:
     w2.turn = 1
     child = next(iter(w2.agents.values()))
     child.age = 1
-    print(f"  ⑤ give 도구 설명: \"A child has no income of its own until it is old enough\"")
+    give_desc = next(t["function"]["description"] for t in toolsmod.TOOLS
+                     if t["function"]["name"] == "give")
+    says_child = "child has no income" in give_desc
+    print(f"  ⑤ give 설명이 「아이는 소득이 없다」 고 말하는가: "
+          f"{'**결함**' if says_child else '아니다 — 고쳐짐 (#40)'}")
     print(f"     income_for(나이 1) = {loopmod.income_for(child, w2, cfg):.0f}원  "
-          f"← adult_age {cfg.world.adult_age} 미만인데 소득이 나온다")
+          f"← adult_age {cfg.world.adult_age} 미만이어도 소득이 나온다 (그래서 문구를 뺐다)")
 
     # ⑥ cap_per_turn 이 프롬프트 어디에도 없는가
     txt = prompts.system_for(w2.agents["Asla1"], w2, cfg, 48.0, same_year=True)
     print(f"  ⑥ facility.cap_per_turn = {cfg.facility.cap_per_turn:.0f} (국가·한 해 상한)")
+    shown = str(int(cfg.facility.cap_per_turn)) in txt
     print(f"     관측+SYSTEM 전문에 '{cfg.facility.cap_per_turn:.0f}' 등장 여부: "
-          f"{str(int(cfg.facility.cap_per_turn)) in txt}")
+          f"{shown}" + ("  ← 고쳐짐 (#45)" if shown else "  ← **결함**"))
     per_nation_max = (cfg.world.agents_per_country * 3) * int(
         cfg.turn.action_points / cfg.ap.unit) * cfg.costs.unit * max(
         cfg.facility.throughput_spread)

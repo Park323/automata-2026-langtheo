@@ -135,6 +135,8 @@ T = {
                 "             （省くと自国）",
         inv_build="  自国の interceptor に 100 を出すと、平均 {v:.0f} の進捗になります。\n"
                   "  この量は国ごとに違い、他国の値は見えません — 聞くほかありません。",
+        fac_cap="  一つの国の施設に一年で入る額は {v:.0f} までです。それを超えて出した分は戻りますが、\n"
+                "  使った行動力は戻りません。",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
         rtt="送ったメッセージは翌年に届きます。返事が来るのはさらにその翌年です。",
         rtt_same="送ったメッセージは、相手が次に動くときに届きます。同じ年のうちに返事が来ることもあります。",
@@ -153,9 +155,9 @@ T = {
         last_ask="——あなたの生涯はここで終わります。あとに来る人へ、ひとこと残してください。道具は使えません。日本語で、{cap} 文字までで書いてください。",
         testa="  あなたより前にこの場所にいた人が残した言葉:", testa_line="    「{t}」",
         gifted="  {frm} があなたに {amt:.0f} を渡しました。",
-        fac_gain="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
-        fac_moved="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
-        fac_still="  昨年のあなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
+        fac_gain="  あなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
+        fac_moved="  あなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
+        fac_still="  あなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
         prog_up="  自国の進捗が {gain:.0f} 進んで {now:.0f} になりました。",
         cap_up="  自国の技術力が {pct:.2f}% 上がりました。",
         ballot_kept="  採決の結果、建てるものは {land} のままです。",
@@ -217,6 +219,8 @@ T = {
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
         inv_build="  给本国的 interceptor 投 100，平均会变成 {v:.0f} 的进度。\n"
                   "  这个量因国而异，别国的数值你看不到 — 只能问。",
+        fac_cap="  一年内投入一个国家设施的钱最多 {v:.0f}。超出的部分会退回，\n"
+                "  但用掉的行动力不会退回。",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
         rtt="你发出的消息在第二年送达。对方的回信要再过一年才会到。",
         rtt_same="你发出的消息，会在对方下次行动时送达。回信也可能在同一年内到来。",
@@ -234,9 +238,9 @@ T = {
         last_ask="——你的一生到此为止。给后来的人留一句话吧。不能使用工具。请用中文，{cap} 个字以内。",
         testa="  在你之前站在这个位置的人留下的话:", testa_line="    「{t}」",
         gifted="  {frm} 给了你 {amt:.0f}。",
-        fac_gain="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
-        fac_moved="  你去年投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
-        fac_still="  你去年投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
+        fac_gain="  你投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
+        fac_moved="  你投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
+        fac_still="  你投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
         prog_up="  本国的进度前进了 {gain:.0f}，现在是 {now:.0f}。",
         cap_up="  本国的技术水平提高了 {pct:.2f}%。",
         ballot_kept="  表决的结果，要建的设施仍是 {land}。",
@@ -305,6 +309,8 @@ T = {
         inv_build="  Verser 100 à l'interceptor de votre nation donne en moyenne {v:.0f} de progression.\n"
                   "  Cette quantité varie selon les nations ; les valeurs des autres ne vous sont\n"
                   "  pas visibles — il faut demander.",
+        fac_cap="  Ce qui entre en un an dans l'installation d'une nation va jusqu'à {v:.0f}.\n"
+                "  Le surplus versé est rendu, mais l'action dépensée ne l'est pas.",
         cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
         rtt="Un message part et arrive l'année suivante ; une réponse n'arrive que l'année d'après.",
         rtt_same="Votre message arrive quand le destinataire agit la fois suivante ; une réponse peut venir dans la même année.",
@@ -323,9 +329,9 @@ T = {
         last_ask="——Votre vie s'achève ici. Laissez un mot à celui qui viendra après vous. Les outils ne sont pas disponibles. En français, {cap} caractères au plus.",
         testa="  Les mots laissés par celui qui occupait cette place avant vous :", testa_line="    « {t} »",
         gifted="  {frm} vous a remis {amt:.0f}.",
-        fac_gain="  Votre versement de {amt:.0f} à facility l'an dernier a fait progresser {to} de {gain:.0f}.",
-        fac_moved="  Votre versement de {amt:.0f} l'an dernier a fait progresser {to}.",
-        fac_still="  Votre versement de {amt:.0f} l'an dernier n'a fait progresser {to} en rien.",
+        fac_gain="  Votre versement de {amt:.0f} à facility a fait progresser {to} de {gain:.0f}.",
+        fac_moved="  Votre versement de {amt:.0f} a fait progresser {to}.",
+        fac_still="  Votre versement de {amt:.0f} n'a fait progresser {to} en rien.",
         prog_up="  La progression de votre nation a avancé de {gain:.0f} ; elle est à {now:.0f}.",
         cap_up="  Le niveau technique de votre nation a progressé de {pct:.2f}%.",
         ballot_kept="  Au scrutin, ce qu'on bâtit reste {land}.",
@@ -812,6 +818,14 @@ def render_observation(world, agent, cfg, knob_ai: float,
         t["inv_build"].format(
             v=100 * cfg.facility.eff * world.countries[agent.country].multiplier(cfg)
             * world.countries[agent.country].build_mult * cfg.world.success_prob),
+        # **한 나라에 한 해 들어갈 수 있는 액수에는 상한이 있다** (#45). 집행은 되는데
+        # (`loop._settle_step` · `facility.cap_per_turn`) 프롬프트 어디에도 없었다.
+        # 한 해에 한 나라로 들어올 수 있는 최대는 9명 × 5회 × 40 × 1.6 = 2,880 이라
+        # 조율이 성공하는 해일수록 닿는다 — 그때 돈이 이유 없이 돌아오는 것으로 보인다.
+        #
+        # **행동력이 안 돌아온다는 것까지 적는다.** 돈만 적으면 「넘겨도 손해가 없다」 로
+        # 읽히는데, 잘린 출자도 0.2 를 그대로 먹는다.
+        t["fac_cap"].format(v=cfg.facility.cap_per_turn),
         # **내가 어느 나라 시설에 얼마를 냈는지.** 내 행동의 합이라 상대 국가 정보를
         # 흘리지 않는다. 그 나라의 총 진척은 여전히 안 알려준다 (자국은 위에 있고,
         # 타국은 4.1).
