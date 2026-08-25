@@ -364,9 +364,7 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
 # ─────────────────────────────────────────── 실행 ─────────────────────────────────
 
 def final_survival(world: World, cfg, rng: random.Random) -> dict:
-    """생존 판정 (spec 2.5). 국가당 한 번의 주사위 — 개인별로 굴리지 않는다."""
-    import math
-
+    """생존 판정 (spec 2.5). **주사위가 없다** — 두 임계 모두 결정론이다 (8/25)."""
     # 요격기는 부지별 독립. 최댓값 하나가 임계에 닿아야 성공 (합산 아님, spec 4.4)
     intc_best = max(
         (c.progress for c in world.countries.values() if c.land == "interceptor"),
@@ -375,13 +373,18 @@ def final_survival(world: World, cfg, rng: random.Random) -> dict:
     if intc_best >= cfg.thresholds.interceptor:
         return {"outcome": "all_survive", "interceptor_best": intc_best,
                 "survivors": list(world.countries)}
+    # **벙커도 임계다** (8/25). 전에는 `1 − exp(−진척/척도)` 라는 연속 확률이었다 —
+    # 깊이가 확률로 번역되니 「얼마나 파야 하는가」 에 답이 없고, 관측으로 알아낼 수 있는
+    # 목표가 아니었다. 요격기와 같은 룰로 돌린다: 임계에 닿으면 그 나라 사람이 산다.
+    #
+    # 두 임계의 차이가 함정의 크기다 — 벙커 7,200 은 한 나라가 혼자 닿을 수 있고
+    # 요격기 19,375 는 셋이 모여야 한다. 「혼자 살 수 있다」 가 진짜 선택지여야
+    # 조율을 포기하는 것이 실제 유혹이 된다.
     survivors: list[str] = []
     for cid, c in world.countries.items():
-        if c.land == "bunker":
-            p = 1.0 - math.exp(-c.progress / cfg.thresholds.bunker_scale)
-            if rng.random() < p:               # 국가당 한 번
-                survivors.append(cid)
-        # interceptor 유치국·미확정국은 확률조차 없이 전원 사망
+        if c.land == "bunker" and c.progress >= cfg.thresholds.bunker:
+            survivors.append(cid)
+        # 임계에 못 닿은 벙커국·interceptor 유치국·미확정국은 전원 사망
     return {"outcome": "intercept_failed", "interceptor_best": intc_best,
             "survivors": survivors}
 

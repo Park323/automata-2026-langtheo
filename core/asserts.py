@@ -80,7 +80,7 @@ def check_all(cfg) -> list[str]:
     fails: list[str] = []
     a, b, c, e = window(cfg)
     intc = cfg.thresholds.interceptor
-    bunker = cfg.thresholds.bunker_scale
+    bunker = cfg.thresholds.bunker
 
     # ★A 미루기 방지 — 마지막 한 주기에 3국이 전력을 다해도 도달 불가
     if not (intc > a):
@@ -134,13 +134,13 @@ def check_all(cfg) -> list[str]:
     bunker_hi = nation_all * cfg.k       # 전 기간 진척
     if not (bunker >= bunker_lo):
         fails.append(
-            f"벙커↓: bunker_scale({bunker}) 가 한 주기 진척({bunker_lo:.0f}) 이상이어야 한다. "
-            f"작으면 한 주기로 완성됨 → 함정이 함정이 아니게 된다. bunker_scale 를 올려라."
+            f"벙커↓: bunker({bunker}) 가 한 주기 진척({bunker_lo:.0f}) 이상이어야 한다. "
+            f"작으면 한 주기로 완성됨 → 함정이 함정이 아니게 된다. bunker 를 올려라."
         )
     if not (bunker <= bunker_hi):
         fails.append(
-            f"벙커↑: bunker_scale({bunker}) 가 전 기간 진척({bunker_hi:.0f}) 이하여야 한다. "
-            f"크면 아무리 파도 의미가 없다. bunker_scale 를 내려라."
+            f"벙커↑: bunker({bunker}) 가 전 기간 진척({bunker_hi:.0f}) 이하여야 한다. "
+            f"크면 아무리 파도 의미가 없다. bunker 를 내려라."
         )
 
     # ★D 1인부담 비교 — **분모의 기간을 맞춘다** (#51).
@@ -158,7 +158,7 @@ def check_all(cfg) -> list[str]:
         fails.append(
             f"부담: 벙커 1인부담({bunker_burden:.1f}) 이 요격기 1인부담({intc_burden:.1f}) 보다 "
             f"커야 한다 (둘 다 {span}해·사람당). 벙커가 더 싸지면 아무도 요격기를 안 한다. "
-            f"bunker_scale 를 올리거나 interceptor 를 조정하라."
+            f"bunker 를 올리거나 interceptor 를 조정하라."
         )
 
     # 노브 — **원문 경로보다 싸지면 경로 선택이 무의미해진다.** 전 구간에서.

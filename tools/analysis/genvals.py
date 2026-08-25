@@ -49,7 +49,7 @@ def main() -> None:
     print(f"            첫 해 나이 1~{c.world.init_age_max}")
     print(f"            agents_per_country {c.world.agents_per_country}")
     print(f"임계        interceptor {c.thresholds.interceptor} · "
-          f"bunker_scale {c.thresholds.bunker_scale}")
+          f"bunker {c.thresholds.bunker}")
     print(f"            창 A {a:,.0f} · B {b:,.0f} · E {e:,.0f} < 임계 < C×0.6 {cc * 0.6:,.0f}")
     print(f"처리량      throughput_spread {list(c.facility.throughput_spread)} · "
           f"facility.eff {c.facility.eff}")

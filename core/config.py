@@ -32,7 +32,7 @@ class Costs:
 @dataclass(frozen=True)
 class Thresholds:
     interceptor: float
-    bunker_scale: float
+    bunker: float
 
 
 @dataclass(frozen=True)

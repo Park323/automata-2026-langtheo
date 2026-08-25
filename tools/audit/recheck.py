@@ -369,7 +369,7 @@ def sec_F(d: dict, trials: int) -> None:
     total, epoch = d["world"]["total_turns"], d["world"]["epoch_turns"]
     p, eff = d["world"]["success_prob"], d["facility"]["eff"]
     best = max(d["facility"]["build_spread"])
-    bunker, intc = d["thresholds"]["bunker_scale"], d["thresholds"]["interceptor"]
+    bunker, intc = d["thresholds"]["bunker"], d["thresholds"]["interceptor"]
     m = mean_age_mult_analytic(d)[int(d["survival"]["lambda_base"] * 3) + 1]
     k = eff * p
 

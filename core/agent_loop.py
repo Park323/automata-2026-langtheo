@@ -440,10 +440,19 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         rel = risk_sigma(world.countries[agent.country], cfg)
         thr_truth = cfg.thresholds.interceptor
         thr_seen = max(1, round(thr_truth * (1 + rng.gauss(0, rel))))
+        # **벙커 임계도 잰다** (8/25). 벙커가 확률에서 임계로 바뀌면서 「얼마나 파야
+        # 하는가」 에 답이 생겼고, 그 답은 요격기와 **같은 방식으로** 알아낼 수 있어야
+        # 한다. 한쪽만 관측 가능하면 그것이 곧 설계가 미는 선택지가 된다.
+        #
+        # 같은 잡음 비율을 쓰지만 **다른 뽑기**다 — 같은 값으로 흔들면 두 임계의 비가
+        # 정확히 유지돼, 한쪽을 알면 다른 쪽을 계산할 수 있게 된다.
+        bnk_truth = cfg.thresholds.bunker
+        bnk_seen = max(1, round(bnk_truth * (1 + rng.gauss(0, rel))))
         sink.observations.append({
             "agent": agent.id, "country": agent.country, "nth": n,
             "truth": truth, "observed": seen, "error": round(err, 2),
             "threshold_truth": thr_truth, "threshold_observed": thr_seen,
+            "bunker_truth": bnk_truth, "bunker_observed": bnk_seen,
             "threshold_sigma": round(rel, 4),
             "national_capital": round(world.countries[agent.country].national_capital, 1),
         })
@@ -451,7 +460,9 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         return {"ok": True,
                 "years_until_impact": seen, "typical_error": round(err, 1),
                 "interceptor_needs": thr_seen,
-                "interceptor_typical_error_pct": round(rel * 100, 1), "ap_left": round(agent.ap, 1)}, None
+                # 두 임계를 나란히 돌려준다 — 하나만 주면 그 하나가 설계가 미는 길이 된다
+                "bunker_needs": bnk_seen,
+                "typical_error_pct": round(rel * 100, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "propose_vote":
         # **무엇을 지을지는 여기서 정하지 않는다 — 採決을 소집하기만 한다.**

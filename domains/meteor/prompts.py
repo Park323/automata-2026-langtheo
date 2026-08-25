@@ -42,43 +42,43 @@ SYSTEM = {
 三つの国があり、それぞれ自分の言語を持ちます。はじめは自国の言語しか扱えませんが、他国の言語を学べば読むことも書くこともできます。
 行動は与えられた道具を通してのみ行ってください。何をするかは完全にあなたの選択です。
 一つの国が建てられる施設は二種類あり、着手できるのは一つだけです。別の施設を建て始めると、それまでの施設は壊れて進捗は0になります。
-施設には自国のものにも他国のものにも出せます。他国がどちらを建てているかは、話して確かめるほかに知る道がありません。
-`interceptor` はどこか一つの国で完成すれば隕石を止めます。そのとき全ての国の人が生き残ります。何も出さなかった国の人も同じです。
-`bunker` は深いほど、その国の人々が隕石を生き延びる見込みが高くなります。他国の人は含まれません。
+施設には自国のものにも他国のものにも出せます。
+`interceptor` はどこか一つの国で完成すれば隕石を止めます。そのとき全ての国の人が生き残ります。
+`bunker` は必要な進捗に達すれば、その国の人々が隕石を生き延びます。他国の人は含まれません。
 施設の進捗は国ごとに別々に積まれ、別々に積まれた進捗を足し合わせることはできません。完成したかどうかは、その国の進捗だけで決まります。
 たとえば A 国の interceptor が半分、B 国の interceptor が半分なら、interceptor はどの国にも完成していません。
 何を建てるかがまだ決まっていない国には積むものがありません。そこへ出した分は進捗になりません。
 多くの人は {life:.0f} 歳ごろまでに亡くなります。
-一度に動かせる額は人によって違います。他人の分は見えません。
-`ai` で送るときは必ず日本語で書いてください。`original` で送るときは、行き先ごとの案内にある言語で書いてください。自国内も日本語です。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
+一度に動かせる量は人によって違います。
+`ai` で送るときは必ず日本語で書いてください。`original` で送るときは、行き先ごとの案内にある言語で書いてください。自国内も日本語です。""",
     "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
 过去曾有巨大的陨石坠落，所有生命就此灭绝。
 存在三个国家，各有自己的语言。起初你只会本国的语言，学会别国的语言后就能读也能写。
 只能通过所提供的工具来行动。做什么完全由你自己决定。
 一个国家能建的设施有两种，而且只能着手其中一种。开始建另一种时，原有的设施会被摧毁，进度归零。
-设施可以投本国的，也可以投别国的。别国在建哪一种，除了交谈去弄清，没有别的途径知道。
-`interceptor` 只要在任何一个国家建成，就能拦下陨石。那时所有国家的人都能活下来，没有出过力的国家的人也一样。
-`bunker` 挖得越深，该国国民从陨石中活下来的可能性越大。别国的人不在其内。
+设施可以投本国的，也可以投别国的。
+`interceptor` 只要在任何一个国家建成，就能拦下陨石。那时所有国家的人都能活下来。
+`bunker` 达到所需的进度，该国国民就能从陨石中活下来。别国的人不在其内。
 设施的进度按国家分别累积，分别累积的进度不能相加。是否建成，只看那个国家自己的进度。
 比如 A 国的 interceptor 到一半，B 国的 interceptor 也到一半，那么 interceptor 在任何国家都没有建成。
 还没决定要建什么的国家没有可积累的东西。投到那里的钱不会变成进度。
 多数人在 {life:.0f} 岁前后离世。
-一次能动用的金额因人而异。别人的数值你看不到。
-用 `ai` 发送时必须写中文。用 `original` 发送时，按各目的地的指引所写的语言来写。国内也用中文。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
+一次能动用的量因人而异。
+用 `ai` 发送时必须写中文。用 `original` 发送时，按各目的地的指引所写的语言来写。国内也用中文。""",
     "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
 Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
 Il existe trois nations, chacune avec sa propre langue. Au début vous ne maniez que celle de votre nation ; en apprendre une autre vous permet de la lire et de l'écrire.
 N'agissez qu'au moyen des outils fournis. Ce que vous faites relève entièrement de votre choix.
 Une nation peut bâtir deux sortes d'installation, mais ne peut en entreprendre qu'une seule. Si elle en commence une autre, l'installation précédente est détruite et sa progression retombe à 0.
-Vous pouvez verser à l'installation de votre nation comme à celle d'une autre. Ce qu'une autre nation bâtit, il n'y a pas d'autre moyen de le savoir que d'en parler.
-Un `interceptor`, une fois achevé dans une seule nation, arrête la météorite. Toutes les nations survivent alors, y compris les gens de celles qui n'ont rien versé.
-Plus un `bunker` est profond, plus les habitants de cette nation ont de chances de survivre à la météorite. Les gens des autres nations n'y sont pas compris.
+Vous pouvez verser à l'installation de votre nation comme à celle d'une autre.
+Un `interceptor`, une fois achevé dans une seule nation, arrête la météorite. Toutes les nations survivent alors.
+Un `bunker` qui atteint la progression requise fait survivre les habitants de cette nation. Les gens des autres nations n'y sont pas compris.
 La progression d'une installation s'accumule séparément pour chaque nation, et des progressions accumulées séparément ne s'additionnent pas. L'achèvement se juge sur la seule progression de cette nation.
 Par exemple, si l'interceptor de la nation A est à moitié fait et celui de la nation B à moitié aussi, l'interceptor n'est achevé dans aucune nation.
 Une nation qui n'a pas encore décidé quoi bâtir n'a rien où accumuler ; ce qu'on y verse ne devient pas de la progression.
 La plupart des gens meurent vers {life:.0f} ans.
-Ce qu'on peut déplacer d'un coup varie d'une personne à l'autre. Les valeurs des autres ne vous sont pas visibles.
-Quand vous envoyez par `ai`, écrivez en français. Quand vous envoyez en `original`, écrivez dans la langue indiquée pour cette destination. Dans votre nation, c'est le français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
+La quantité qu'on déplace d'un coup varie d'une personne à l'autre.
+Quand vous envoyez par `ai`, écrivez en français. Quand vous envoyez en `original`, écrivez dans la langue indiquée pour cette destination. Dans votre nation, c'est le français.""",
 }
 
 # 산문만 번역한다. 도구 토큰은 영어 그대로 둔다.
@@ -97,13 +97,13 @@ T = {
         land="自国が建てるもの: {v}", undecided="未定",
         prog="自国の進捗: {v:.0f}",
         year="今年: {y} 年",
-        open="{y} 年になりました。あなたは {age} 歳。\nこの年を執り行ってください。",
+        open="{y} 年になりました。あなたは {age} 歳。行動力は {ap:.2f} です。\nこの年を執り行ってください。",
         prop="  採決が {vt} 年に開かれます（{by} が召集）。何を建てるかをそこで決めます",
         prop_today="  ★ 今年が採決の年です（{by} が召集）。vote で interceptor / bunker / abstain を選べます",
         prop_none="  採決は開かれていません。何を建てるかは投票でしか決まりません",
         c_ballot="  vote",  c_ballot_note="採決で何を建てるかを選ぶ",
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
-        multi="予算と行動力が許す限り複数の行動ができます。\n使い残した予算は翌年に残ります。",
+        multi="行動力が許す限り、一年のうちに何度でも行動できます。\n使い残した行動力は翌年に残りません。",
         # **一年と、その中の手番。** 実測で模型がここを取り違えていた。
         steps="行動力が残っている間、その年はまだ続きます。\n"
               "一度の応答で道具をいくつも呼べます。その分はすべて、ほかの人が動く前に起こります。\n"
@@ -112,7 +112,7 @@ T = {
         costs_hdr="行動の費用", col_ap="行動力",
         ap_hdr="行動力は毎年 1.0 に戻り、繰り越せません。何を諦めるかがここで決まります。",
         c_dom="  話す（自国内）", c_orig="  話す（国際・original）",
-        c_orig_note="   費用は届かなくても請求される",
+        c_orig_note="   行動力は届かなくても使われる",
         c_orig_sure="    {nation} へ — この国の言語を扱えるので、**{lang}で書けば必ず届く**",
         c_orig_risk="    {nation} へ — 扱えないので**日本語で書く**。あなたの言語を読める相手にだけ届く",
         c_ai="  話す（国際・ai）",
@@ -126,21 +126,18 @@ T = {
         c_vote="  propose_vote",
         c_vote_note="何を建てるかの採決を召集する",
         c_obs="  observe_risk",
-        c_obs_note="   隕石までの残り年数と interceptor に要る進捗を測る。国家投資が精度を上げる",
+        c_obs_note="   隕石までの残り年数と、interceptor・bunker に要る進捗を測る。国家投資が精度を上げる",
         c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ。一度に {v:.0f} 動きます — この量は人によって違います",
         inv_hdr="invest の効果",
-        inv_rule="  払う額は手数料ではなく、出資そのものです。\n"
-                 "  一度に動かせる額は人によって違います。出した額がどれだけ進捗になるかは国によって\n"
-                 "  違います。この二つは別々に決まります。",
+        inv_rule="  一度の invest で動く量は人によって違います。動いた量がどれだけ進捗になるかは\n"
+                 "  国によって違います。この二つは別々に決まります。",
         inv_well="  wellness   あなたの健康が良くなる",
-        inv_natl="  national   自国の技術力が上がる。出した額が進捗になる量も、\n"
+        inv_natl="  national   自国の技術力が上がる。出した量が進捗になる比率も、\n"
                  "             observe_risk の精度も良くなる。国民全員に及ぶ",
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n"
                 "             （省くと自国）",
         inv_build="  自国の interceptor に 100 を出すと、平均 {v:.0f} の進捗になります。\n"
-                  "  この量は国ごとに違い、他国の値は見えません — 聞くほかありません。",
-        fac_cap="  一つの国の施設に一年で入る額は {v:.0f} までです。それを超えて出した分は戻りますが、\n"
-                "  使った行動力は戻りません。",
+                  "  この量は国ごとに違います。",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
         rtt="送ったメッセージは翌年に届きます。返事が来るのはさらにその翌年です。",
         rtt_same="送ったメッセージは、相手が次に動くときに届きます。同じ年のうちに返事が来ることもあります。",
@@ -161,7 +158,7 @@ T = {
         fac_moved="  あなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
         fac_still="  あなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
         prog_up="  自国の進捗が {gain:.0f} 進んで {now:.0f} になりました。",
-        cap_up="  自国の技術力が {pct:.2f}% 上がりました。",
+        cap_up="  自国の技術力が上がり、同じ行動力で出せる進捗が {pct:.2f}% 増えました。",
         ballot_kept="  採決の結果、建てるものは {land} のままです。",
         ballot_new="  採決の結果、建てるものは {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
         ballot_none="  採決では何も決まりませんでした。建てるものは {land} のままです。",
@@ -182,10 +179,10 @@ T = {
         prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
         prop_today="  ★ 今年就是表决之年（由 {by} 召集）。可以用 vote 选 interceptor / bunker / abstain",
         prop_none="  没有正在进行的表决。要建什么只能由投票决定",
-        open="到了 {y} 年。你 {age} 岁。\n请执行这一年。",
+        open="到了 {y} 年。你 {age} 岁。行动力是 {ap:.2f}。\n请执行这一年。",
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
-        multi="只要预算和行动力允许，你可以采取多项行动。\n没用完的预算会留到明年。",
+        multi="只要行动力允许，一年之内可以行动多次。\n没用完的行动力不会留到第二年。",
         steps="只要还有行动力，这一年就还没结束。\n"
               "一次回应里可以调用多个工具，这些都会在别人行动之前发生。\n"
               "如果分几次回应来调用，中间别人就会行动。"
@@ -193,7 +190,7 @@ T = {
         costs_hdr="行动费用", col_ap="行动力",
         ap_hdr="行动力每年恢复为 1.0，不能结转。放弃什么，在这里决定。",
         c_dom="  说话（本国内）", c_orig="  说话（国际·original）",
-        c_orig_note="   送不到也照收费用",
+        c_orig_note="   即使没送到，行动力也会消耗",
         c_orig_sure="    发往 {nation} — 你会这个国家的语言，**用{lang}写就一定送到**",
         c_orig_risk="    发往 {nation} — 你不会，**用中文写**。只能送到读得懂你的语言的人那里",
         c_ai="  说话（国际·ai）",
@@ -207,20 +204,17 @@ T = {
         c_vote="  propose_vote",
         c_vote_note="召集「建什么」的表决",
         c_obs="  observe_risk",
-        c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 需要多少进度。国家投资会提高精度",
+        c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 和 bunker 各需要多少进度。国家投资会提高精度",
         c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一。一次动 {v:.0f} — 这个量因人而异",
         inv_hdr="invest 的效果",
-        inv_rule="  付出的钱不是手续费，就是投入本身。\n"
-                 "  一次能动用的数额因人而异。投入的钱能变成多少进度，因国而异。\n"
+        inv_rule="  一次 invest 动的量因人而异。动的量能变成多少进度，因国而异。\n"
                  "  这两件事各自决定，互不相干。",
         inv_well="  wellness   你的健康会变好",
         inv_natl="  national   提高本国的技术水平。投入设施时变成进度的效率、\n"
                  "             observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
         inv_build="  给本国的 interceptor 投 100，平均会变成 {v:.0f} 的进度。\n"
-                  "  这个量因国而异，别国的数值你看不到 — 只能问。",
-        fac_cap="  一年内投入一个国家设施的钱最多 {v:.0f}。超出的部分会退回，\n"
-                "  但用掉的行动力不会退回。",
+                  "  这个量因国而异。",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
         rtt="你发出的消息在第二年送达。对方的回信要再过一年才会到。",
         rtt_same="你发出的消息，会在对方下次行动时送达。回信也可能在同一年内到来。",
@@ -242,7 +236,7 @@ T = {
         fac_moved="  你投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
         fac_still="  你投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
         prog_up="  本国的进度前进了 {gain:.0f}，现在是 {now:.0f}。",
-        cap_up="  本国的技术水平提高了 {pct:.2f}%。",
+        cap_up="  本国的技术水平提高，同样的行动力能产出的进度多了 {pct:.2f}%。",
         ballot_kept="  表决的结果，要建的设施仍是 {land}。",
         ballot_new="  表决的结果，要建的设施定为 {land}。此前的进度 {lost:.0f} 已失去。",
         ballot_none="  表决没有决定任何事。要建的设施仍是 {land}。",
@@ -263,10 +257,10 @@ T = {
         prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
         prop_today="  ★ Le scrutin a lieu cette année (convoqué par {by}). Choisissez avec vote : interceptor / bunker / abstain",
         prop_none="  Aucun scrutin en cours. Ce qu'on bâtit ne se décide que par un vote",
-        open="L'an {y} est arrivé. Vous avez {age} ans.\nMenez cette année.",
+        open="L'an {y} est arrivé. Vous avez {age} ans. Votre action est de {ap:.2f}.\nMenez cette année.",
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
-        multi="Vous pouvez agir plusieurs fois tant qu'il vous reste de l'action.",
+        multi="Vous pouvez agir plusieurs fois dans l'année tant qu'il vous reste de l'action.\nL'action non dépensée ne se reporte pas à l'année suivante.",
         steps="Tant qu'il vous reste de l'action, l'année n'est pas terminée.\n"
               "Vous pouvez appeler plusieurs outils dans une même réponse ; tout cela "
               "se produit avant que les autres n'agissent.\n"
@@ -276,7 +270,7 @@ T = {
         costs_hdr="Coûts des actions", col_ap="action",
         ap_hdr="L'action revient à 1.0 chaque année et ne se reporte pas. Ce que vous renoncez se décide ici.",
         c_dom="  parler (dans votre nation)", c_orig="  parler (international, original)",
-        c_orig_note="   le coût est prélevé même s'il n'arrive pas",
+        c_orig_note="   l'action est dépensée même si rien n'arrive",
         c_orig_sure="    vers {nation} — vous maniez sa langue : **écrivez en {lang}, il arrive à coup sûr**",
         c_orig_risk="    vers {nation} — vous ne la maniez pas : **écrivez en français**. Il n'arrive qu'à qui lit la vôtre",
         c_ai="  parler (international, ai)",
@@ -290,11 +284,10 @@ T = {
         c_vote="  propose_vote",
         c_vote_note="convoquer un scrutin sur quoi bâtir",
         c_obs="  observe_risk",
-        c_obs_note="   mesure les années restantes et la progression qu'exige un interceptor ; l'investissement national affine",
+        c_obs_note="   mesure les années restantes et la progression qu'exigent un interceptor et un bunker ; l'investissement national affine",
         c_inv="  invest", c_inv_note="vers wellness · national · facility. Déplace {v:.0f} d'un coup — cette quantité varie selon les personnes",
         inv_hdr="effets d'invest",
-        inv_rule="  Ce que vous versez n'est pas des frais : c'est l'investissement lui-même.\n"
-                 "  Le montant qu'on déplace d'un coup varie selon les personnes. Ce qu'un versement\n"
+        inv_rule="  La quantité qu'un invest déplace varie selon les personnes. Ce que cette quantité\n"
                  "  donne en progression varie selon les nations. Ces deux choses se décident\n"
                  "  séparément.",
         inv_well="  wellness   votre santé s'améliore",
@@ -304,10 +297,7 @@ T = {
         inv_fac="  facility   contribue à la progression d'une installation ; `to` nomme la nation —\n"
                           "             la vôtre ou une autre (sans `to`, la vôtre)",
         inv_build="  Verser 100 à l'interceptor de votre nation donne en moyenne {v:.0f} de progression.\n"
-                  "  Cette quantité varie selon les nations ; les valeurs des autres ne vous sont\n"
-                  "  pas visibles — il faut demander.",
-        fac_cap="  Ce qui entre en un an dans l'installation d'une nation va jusqu'à {v:.0f}.\n"
-                "  Le surplus versé est rendu, mais l'action dépensée ne l'est pas.",
+                  "  Cette quantité varie selon les nations.",
         cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
         rtt="Un message part et arrive l'année suivante ; une réponse n'arrive que l'année d'après.",
         rtt_same="Votre message arrive quand le destinataire agit la fois suivante ; une réponse peut venir dans la même année.",
@@ -328,7 +318,7 @@ T = {
         fac_moved="  Votre versement de {amt:.0f} a fait progresser {to}.",
         fac_still="  Votre versement de {amt:.0f} n'a fait progresser {to} en rien.",
         prog_up="  La progression de votre nation a avancé de {gain:.0f} ; elle est à {now:.0f}.",
-        cap_up="  Le niveau technique de votre nation a progressé de {pct:.2f}%.",
+        cap_up="  Le niveau technique de votre nation s'élève : à action égale, la progression obtenue augmente de {pct:.2f}%.",
         ballot_kept="  Au scrutin, ce qu'on bâtit reste {land}.",
         ballot_new="  Au scrutin, ce qu'on bâtit devient {land}. La progression acquise, {lost:.0f}, est perdue.",
         ballot_none="  Le scrutin n'a rien décidé. Ce qu'on bâtit reste {land}.",
@@ -435,7 +425,10 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
         `speak 3` 은 수수료이고 `invest 52` 는 옮기는 양 자체였다. 돈이 사라지면서 그
         모호함도 사라졌다: 이제 모든 줄의 숫자는 **같은 뜻**(행동력)이다.
         """
-        a = f"{ap:g}" if isinstance(ap, (int, float)) else str(ap)
+        # **소수 두 자리로 고정한다** (8/25). `:g` 는 0.2 를 「0.2」, 0.05 를 「0.05」 로
+        # 찍어 자릿수가 흔들렸다. AP 가 유일한 단위가 된 뒤로 이 표의 모든 숫자는 같은
+        # 종류이므로 자릿수가 같아야 비교가 눈에 들어온다. 기본 단위는 0.01 이다.
+        a = f"{ap:.2f}" if isinstance(ap, (int, float)) else str(ap)
         return f"{label:<{w}}{a:>{m}}   {note}"
 
     lines = [t["costs_hdr"],
@@ -715,7 +708,11 @@ def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
     # **나이는 여기 남는다.** 한 해에 한 번 바뀌는 그 해의 사실이고, 대화에 쌓이면
     # **나이 드는 것이 느껴진다** — 6살 · 7살 · 8살이 차례로 남는다. 관측에 두면 매 콜
     # 덮여서 그 감각이 생기지 않는다. 수명 곡선은 여전히 비공개다 (4.1).
-    head = t["open"].format(y=FIRST_YEAR + world.turn - 1, age=agent.age)
+    # **행동력을 여기 적는다** (8/25). 돈이 사라지면서 새해에 알려줄 수치가 없어졌고,
+    # AP 는 관측에 없고 도구 응답의 `ap_left` 로만 왔다 — 한 해를 열 때 얼마로 시작하는지
+    # 모르면 몇 번 움직일 수 있는지 셀 수가 없다.
+    head = t["open"].format(y=FIRST_YEAR + world.turn - 1, age=agent.age,
+                            ap=cfg.turn.action_points)
     return head
 
 
@@ -809,7 +806,6 @@ def render_observation(world, agent, cfg, knob_ai: float,
         #
         # **행동력이 안 돌아온다는 것까지 적는다.** 돈만 적으면 「넘겨도 손해가 없다」 로
         # 읽히는데, 잘린 출자도 0.2 를 그대로 먹는다.
-        t["fac_cap"].format(v=cfg.facility.cap_per_turn),
         # **내가 어느 나라 시설에 얼마를 냈는지.** 내 행동의 합이라 상대 국가 정보를
         # 흘리지 않는다. 그 나라의 총 진척은 여전히 안 알려준다 (자국은 위에 있고,
         # 타국은 4.1).
