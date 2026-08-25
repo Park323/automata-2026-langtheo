@@ -1601,3 +1601,40 @@ def test_a_run_survives_a_failed_last_words_call(cfg, world):
     assert set(world.agents) - before                 # 후손은 그대로 태어난다
     assert r.deaths_log[0]["testament"] == ""
     assert not world.inbox_queue                      # 빈 유언은 보내지 않는다
+
+
+def test_a_finished_interceptor_can_still_be_destroyed(cfg, world):
+    """**완성은 흡수 상태가 아니다** (8/25 · Eddie 확인).
+
+    임계를 넘긴 뒤에도 그 나라가 전환하는 採決을 통과시키면 진척이 0 이 된다. 그래서
+    `final_survival` 은 **50해 끝의 값만** 본다 — 「한 번 넘었는가」 가 아니라 「지금
+    넘었는가」 다.
+
+    이것이 **요격기 완성으로 런을 조기 종료하지 않는 이유**다. 30해에 넘겼다고 멈추면
+    그것을 부술 수 있는 20해를 안 본 채 「성공」 을 기록하게 된다.
+
+    세계는 「완성됐다」 를 선언하지 않는다 — 임계는 `observe_risk` 로 오차를 안고 추정
+    하는 값이고, 다 됐다고 믿고 벙커로 돌아서는 것이 **가능한 실패**다. 조율이 끝까지
+    유지돼야 한다는 것이 이 실험의 내용이다.
+    """
+    import random as _rnd
+    c = world.countries["Asla"]
+    c.land, c.progress = "interceptor", cfg.thresholds.interceptor + 1
+    # 이 순간 판정하면 전원 생존이다
+    assert loop.final_survival(world, cfg, _rnd.Random(0))["outcome"] == "all_survive"
+
+    # 그런데 그 나라가 벙커로 전환하는 採決을 통과시킨다
+    world.turn = 7
+    c.proposal = {"by": "Asla1", "opened_turn": 6, "vote_turn": 7}
+    result = loop.RunResult(world=world)
+    loop._roundrobin_tally(world, cfg, result,
+                           [("Asla1", "Asla", "bunker"), ("Asla2", "Asla", "bunker")])
+    (rec,) = result.land_changes
+    assert rec["changed"] and rec["progress_lost"] == cfg.thresholds.interceptor + 1
+    assert c.land == "bunker" and c.progress == 0.0
+
+    # **완성이 되돌려졌다.** 벙커 임계에도 못 닿았으므로 아무도 살지 못한다
+    final = loop.final_survival(world, cfg, _rnd.Random(0))
+    assert final["outcome"] == "intercept_failed"
+    assert final["survivors"] == []
+    assert final["interceptor_best"] == 0.0
