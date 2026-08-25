@@ -30,7 +30,7 @@ them verbatim in tool calls, so they are never translated. Prose around them is.
 """
 from __future__ import annotations
 
-from core import agent_loop
+from core import agent_loop, messaging
 from core.agent_loop import learn_cost, learn_discounts, learn_speed
 
 # 세계의 첫 해. 1 로 시작하면 "첫 해라서 아직 괜찮다" 같은 편향이 붙는다.
@@ -468,7 +468,7 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
         key = "c_orig_sure" if c.lang in agent.known_langs else "c_orig_risk"
         lines.append(t[key].format(nation=c.id, lang=LANG_NAME[agent.native_lang][c.lang]))
     lines += [
-             row(t["c_ai"], knob_ai, cfg.ap.speak)]
+             row(t["c_ai"], knob_ai, messaging.ai_ap(cfg, knob_ai))]
     for c in world.countries.values():
         # **이미 아는 말은 배울 표에 올리지 않는다.** 올려 두었더니 3해 실측에서 `learn`
         # 이 14번 거절당했고 (`you already read Ranoa's language`), 한 에이전트는 메모에

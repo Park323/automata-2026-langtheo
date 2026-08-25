@@ -86,6 +86,8 @@
   .ek.birth{background:#16241a;color:var(--ok)}
   .ek.learn{background:#2a1f3d;color:var(--ai)}
   .ek.facility_gain{background:#1d2b2e;color:#56d4dd}
+  .ek.facility_gain.foreign{background:#33202b;color:#f778ba}
+  .ev.foreign{background:#1a1116;border-radius:6px}
   .ek.risk_observe{background:#332a1a;color:#e3b341}
 
   details.reason{margin-top:6px}
@@ -229,6 +231,8 @@ function start(data, name, keepTurn = false){
 
 // ── 그리기 ────────────────────────────────────────────────────────────────
 const esc = s => (s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+// 에이전트 이름에서 국가만 — "Asla1" → "Asla". 타국투자(집중) 판별에 쓴다.
+const natOf = n => (n || "").replace(/\d+$/, "");
 
 function nations(b){
   const m = b.metric;
@@ -326,8 +330,14 @@ function events(b){
   const ord = {land_change:0, vote:1, death:2, birth:3, learn:4, facility_gain:5};
   const rows = b.events.filter(e => e.type !== "agent_turn")
     .sort((a, c) => (ord[a.type] ?? 9) - (ord[c.type] ?? 9))
-    .map(e => `<div class="ev"><span class="ek ${e.type}">${e.type}</span>
-      <span>${esc(describe(e))}</span></div>`).join("");
+    .map(e => {
+      // 타국투자 = facility_gain 인데 낸 사람 국가 ≠ 받는 국가. 집중(몰아주기) 신호라 따로 물들인다.
+      const foreign = e.type === "facility_gain" && natOf(e.agent) !== e.to;
+      const label = foreign ? "타국투자" : e.type;
+      return `<div class="ev${foreign ? " foreign" : ""}"><span class="ek ${e.type}${
+        foreign ? " foreign" : ""}">${label}</span>
+      <span>${esc(describe(e))}</span></div>`;
+    }).join("");
   return `<h2>이 턴에 일어난 일</h2>${rows || `<div class="empty">—</div>`}`;
 }
 
