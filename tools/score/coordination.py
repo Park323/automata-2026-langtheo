@@ -111,14 +111,18 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("runs", nargs="+")
     a = ap.parse_args()
-    print(f"{'run':<12}{'해':>4}{'노브':>6}{'호스트':>9}{'예산':>8}{'소통비':>8}"
+    print(f"{'run':<18}{'해':>4}{'노브':>7}{'호스트':>12}{'예산':>8}{'소통비':>8}"
           f"{'잔차':>8}{'국제':>6}{'미전달':>7}  판정")
     for r in a.runs:
         m = measure(r)
         b = "—" if m["budget"] is None else f"{m['budget']:+.3f}"
         res = "—" if m["residual"] is None else f"{m['residual']:+.3f}"
         hostm = "—" if m["host"] is None else f"{m['host']}×{m['host_mult']}"
-        print(f"{m['run']:<12}{m['turns']:>4}{m['knob'] or 0:>6}{hostm:>9}{b:>8}"
+        # **`or 0` 을 쓰지 않는다.** `None` 은 「AI 가 없는 세계」 고 `0` 은 「공짜 AI」 다 —
+        # 프롬프트에서 같은 실수를 이미 한 번 했다 (8/25 · `knob_ai or 0.0`). 표에서
+        # 둘이 같은 모양이면 대조군과 최저 눈금 런을 구분할 수 없다.
+        kn = "없음" if m["knob"] is None else f"{m['knob']:.2f}"
+        print(f"{m['run']:<18}{m['turns']:>4}{kn:>7}{hostm:>12}{b:>8}"
               f"{m['comm_per_person_year']:>8.3f}{res:>8}{m['intl_msgs']:>6}"
               f"{m['undelivered']:>7}  {m['outcome']}")
         if m["host"] is None:
