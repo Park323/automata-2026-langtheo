@@ -113,13 +113,15 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["country"]),
 
     fn("observe_risk",
-        "Measure how many years remain until the meteorite strikes, and how much "
-        "progress an interceptor needs. Both readings are imprecise; your nation's "
-        "accumulated national investment is what sharpens them, and the result tells "
-        "you the typical size of its error — a single reading can be much further off "
-        "than that. Each reading is a fresh measurement and costs a "
-        "large share of your action points — measuring the world takes most of a year. "
-        "What you learn is yours alone — nobody else sees it.",
+        "Measure three things: how many years remain until the meteorite strikes, and "
+        "how much progress an interceptor and a bunker each need. All three are "
+        "imprecise; your nation's accumulated national investment is what sharpens "
+        "them. The result names the typical size of each error — `years_typical_error` "
+        "in years, `needs_typical_error_pct` as a percentage of the two amounts — and "
+        "**a single reading can be much further off than that.** Each reading is a "
+        "fresh measurement and costs a large share of your action points — measuring "
+        "the world takes most of a year. What you learn is yours alone — nobody else "
+        "sees it.",
         {}, []),
 
     fn("propose_vote",

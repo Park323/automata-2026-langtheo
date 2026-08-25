@@ -463,12 +463,19 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "national_capital": round(world.countries[agent.country].national_capital, 1),
         })
         # 전부 내가 몰랐던 것이다. "당신만의 것" 은 도구 설명에 이미 있다.
+        # **오차의 이름이 대상을 말해야 한다** (8/25). `typical_error`(해) 와
+        # `typical_error_pct`(임계) 였는데, 어느 쪽이 무엇에 붙는지 아무것도 말하지
+        # 않았다 — 12.5 가 해인지 25.0 이 해인지 옆 키에서 짐작할 뿐이었다.
+        #
+        # 원래는 `interceptor_typical_error_pct` 로 대상이 이름에 있었고, `bunker_needs`
+        # 를 넣으면서 줄이다가 그 결합을 잃었다.
         return {"ok": True,
-                "years_until_impact": seen, "typical_error": round(err, 1),
-                "interceptor_needs": thr_seen,
+                "years_until_impact": seen,
+                "years_typical_error": round(err, 1),
                 # 두 임계를 나란히 돌려준다 — 하나만 주면 그 하나가 설계가 미는 길이 된다
-                "bunker_needs": bnk_seen,
-                "typical_error_pct": round(rel * 100, 1), "ap_left": round(agent.ap, 1)}, None
+                "interceptor_needs": thr_seen, "bunker_needs": bnk_seen,
+                "needs_typical_error_pct": round(rel * 100, 1),
+                "ap_left": round(agent.ap, 1)}, None
 
     if name == "propose_vote":
         # **무엇을 지을지는 여기서 정하지 않는다 — 採決을 소집하기만 한다.**

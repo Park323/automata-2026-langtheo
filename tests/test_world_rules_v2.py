@@ -477,7 +477,7 @@ def test_risk_reading_sharpens_with_national_capital(cfg, world):
         sink = Sink()
         r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, sink, KNOB)
         assert r["ok"]
-        errs.append(r["typical_error"])
+        errs.append(r["years_typical_error"])
     assert errs[0] > errs[1] > errs[2], errs
     assert risk_error(world.countries["Asla"], cfg) == pytest.approx(errs[-1], abs=0.05)
 
@@ -500,9 +500,9 @@ def test_readings_are_normal_around_the_truth(cfg, world):
         r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, sink, KNOB)
         seen.append(r["years_until_impact"])
     truth = cfg.world.total_turns - world.turn
-    assert statistics.mean(seen) == pytest.approx(truth, abs=0.15 * r["typical_error"])
-    assert statistics.pstdev(seen) == pytest.approx(r["typical_error"], rel=0.25)
-    assert max(seen) - min(seen) > 3 * r["typical_error"], "꼬리가 없다"
+    assert statistics.mean(seen) == pytest.approx(truth, abs=0.15 * r["years_typical_error"])
+    assert statistics.pstdev(seen) == pytest.approx(r["years_typical_error"], rel=0.25)
+    assert max(seen) - min(seen) > 3 * r["years_typical_error"], "꼬리가 없다"
 
 
 def test_each_reading_is_fresh_but_costs(cfg, world):
@@ -527,8 +527,9 @@ def test_reading_is_private(cfg, world):
     world.turn = 10
     a = world.agents["Asla1"]; a.ap = 1.0
     r, _ = execute_tool("observe_risk", {"reasoning": "r"}, world, a, cfg, Sink(), KNOB)
-    assert set(r) == {"ok", "years_until_impact", "typical_error", "interceptor_needs",
-                      "bunker_needs", "typical_error_pct", "ap_left"}
+    # **오차의 이름이 대상을 말한다** (8/25) — 12.5 가 해인지 25.0 이 해인지 알아야 한다
+    assert set(r) == {"ok", "years_until_impact", "years_typical_error", "interceptor_needs",
+                      "bunker_needs", "needs_typical_error_pct", "ap_left"}
     # "당신만의 것" 은 **도구 설명**에 있다 — 응답마다 되풀이할 규칙이 아니다
     from core.tools import TOOLS
     (t,) = [f for f in TOOLS if f["function"]["name"] == "observe_risk"]
