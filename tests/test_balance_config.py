@@ -37,15 +37,15 @@ def test_interceptor_sits_inside_the_window(c):
     assert lo < c.interceptor < hi
 
 
-def test_the_two_thresholds_cost_the_same_per_head(c):
-    """**1인부담이 같아야 선택이 남는다** (8/25 · Eddie · spec 3.5).
+def test_the_bunker_costs_more_per_head_or_nobody_coordinates(c):
+    """**벙커가 더 비싸야 협력할 이유가 생긴다** (spec 3.5).
 
-    한쪽이 싸면 그쪽이 정답이 되고 딜레마가 사라진다. 같게 두면 남는 차이가 셋이고,
-    그 셋이 이 실험이 재려는 것이다:
+    8/25 에 「정확히 같게」 로 바꿨다가 되돌렸다 — 같으면 개인에게 비용도 결과(내가 산다)도
+    같은데 협력에는 추가 비용(말하기·학습 AP)과 배신 위험이 얹힌다. 그러면 벙커가 지배한다.
 
-        누가 사는가        벙커 3명 / 요격기 9명
-        누구를 믿어야 하나   벙커 아무도 / 요격기 두 나라
-        조율의 이득        최선의 나라에 몰아주면 46% — 벙커 60% 보다 싸다
+    벙커의 유혹은 「싸다」 가 아니라 **「남이 필요 없다」** 다. 초과분이 불신의 가격이고,
+    그 크기는 요격기를 골랐을 때 남는 AP 가 국제 발신을 살 수 있는지로 정해진다 —
+    7,200 에서 그 경계가 노브 범위 안에 놓인다 (0.2 → 연 1.03통 · 0.5 → 0.41통).
     """
     # **같은 기간으로 나눈다** (#51). 벙커만 한 주기로 나누고 있었다 — 도구는 8/25 에
     # 고쳤는데 이 테스트가 남아 있었다.
@@ -53,7 +53,7 @@ def test_the_two_thresholds_cost_the_same_per_head(c):
     i1 = c.interceptor / (3 * c.agents * c.total_turns)
     # **정확히 같다** (8/25 · Eddie). 한쪽이 싸면 그쪽이 정답이 되어 선택이 사라진다 —
     # 벙커가 임계가 된 뒤로 「벙커가 더 비싸야」 는 함정을 함정이 아니게 만든다.
-    assert abs(b1 - i1) <= 0.01 * i1, (b1, i1)
+    assert b1 > i1, (b1, i1)
 
 
 def test_newborns_do_not_mint_money(c):

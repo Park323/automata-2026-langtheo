@@ -118,9 +118,9 @@ def passes_asserts(c: Cfg):
     # 같은 자를 써야 두 도구가 같은 말을 한다.
     b1 = c.bunker / (c.agents * c.total_turns)
     i1 = c.interceptor / (3 * c.agents * c.total_turns)
-    # **정확히 같아야 한다** (8/25). 「벙커가 더 비싸야」 는 벙커가 확률이던 시절의
-    # 규칙이고, 임계가 된 뒤로는 함정을 함정이 아니게 만든다 — `core.asserts` 와 같다.
-    if abs(b1 - i1) > 0.01 * i1:
+    # **벙커가 더 비싸야 한다.** 같으면 협력의 추가 비용(말하기·학습·배신 위험)을
+    # 감수할 이유가 없어진다 — `core.asserts` 와 같은 규칙이다 (8/25 되돌림).
+    if not b1 > i1:
         return False, "벙커 1인부담 <= 요격기 1인부담"
     return True, ""
 
