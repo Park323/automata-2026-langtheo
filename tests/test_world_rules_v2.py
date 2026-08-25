@@ -85,10 +85,13 @@ def test_calling_a_ballot_carries_no_choice(cfg, world):
     둘 다 도구를 통과하는데 하나만 열렸고, 밀린 쪽은 AP 0.6 을 내고 아무 일도 안 일어난
     것을 알 방법이 없었다. 소집에 내용이 없으면 겹칠 것이 없다."""
     from core.agent_loop import execute_tool
+    from domains.meteor.prompts import FIRST_YEAR
     world.turn = 10
     a = world.agents["Ranoa1"]; a.ap, a.budget = 1.0, 100.0
     res, _ = execute_tool("propose_vote", {"reasoning": "r"}, world, a, cfg, Sink(), 48.0)
-    assert res["ok"] and res["ballot_turn"] == 10 + loop.VOTE_DELAY
+    # **연도로 답한다** (#43). 「턴」 은 에이전트에게 존재하지 않는 눈금이다
+    assert res["ok"] and res["ballot_year"] == FIRST_YEAR + (10 + loop.VOTE_DELAY) - 1
+    assert "ballot_turn" not in res
 
 
 def test_two_people_calling_the_same_ballot_is_harmless(cfg, world):

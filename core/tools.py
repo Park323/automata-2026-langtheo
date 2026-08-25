@@ -97,8 +97,9 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["target"]),
 
     fn("learn",
-        "Put one fixed amount toward learning another nation's language; it costs the "
-        "same money and action as an investment. Give a nation id, not a language code. "
+        "Put one fixed amount toward learning another nation's language; one payment "
+        "takes the same action as an investment, and the cost table shows the money. "
+        "Give a nation id, not a language code. "
         "What you put in accumulates, and your observation shows how far along you are "
         "and how much is still needed. You can read and write the language once the "
         "accumulated amount reaches what it costs. That cost can fall while you are "
@@ -146,9 +147,7 @@ def _build(reasoning_arg: bool) -> list[dict]:
     # 이 도구의 존재 이유가 사라진다.
     fn("give",
         "Give money to one person. Any amount you have, in one go. It can be someone in "
-        "your nation or another. They are told who gave it and how much. "
-        "A child has no income of its own until it is old enough, so what someone gives "
-        "it is all it has.",
+        "your nation or another. They are told who gave it and how much.",
         {"to": {"type": "string", "description": "recipient id (e.g. Ranoa2)"},
          "amount": {"type": "number", "description": "how much to hand over"}},
         ["to", "amount"]),

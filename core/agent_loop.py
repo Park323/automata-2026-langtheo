@@ -503,7 +503,12 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         sink.votes.append((agent.id, agent.country))
         # **이제 날짜를 돌려줄 수 있다.** 소집에 내용이 없으니 둘이 소집해도 같은
         # 採決이고, 밀려서 안 열리는 일이 없다.
-        return {"ok": True, "ballot_turn": world.turn + loop_vote_delay(),
+        #
+        # **연도로 돌려준다** (#43). 여기만 `world.turn` 을 날것으로 흘리고 있었다 —
+        # 같은 採決을 `vote` 의 실패 응답은 `_year()` 로 「year 46」 이라고 부른다.
+        # 「년」 통일이 에러 메시지만 훑었고 **성공 응답은 그 그물 밖이었다.**
+        # 키 이름도 바꾼다 — 값만 고치면 `ballot_turn` 이 그 눈금을 계속 말한다.
+        return {"ok": True, "ballot_year": _year(world.turn + loop_vote_delay()),
                 "ap_left": round(agent.ap, 1)}, None
 
     if name == "vote":
