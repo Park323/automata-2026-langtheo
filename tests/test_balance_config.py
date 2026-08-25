@@ -65,17 +65,29 @@ def test_newborns_do_not_mint_money(c):
     assert c.initial_budget == 0
 
 
-def test_expected_life_is_about_one_epoch(c):
-    """주기(20턴)는 기대수명의 반올림이다. 둘이 어긋나면 계보 회전이 설계와 달라진다."""
-    assert expected_life(c.surv_lambda, c.surv_k) == pytest.approx(16.06, abs=0.1)
-    assert c.epoch_turns == 20
+def test_the_world_holds_five_generations(c):
+    """**세계 50해 ÷ 수명 10해 = 다섯 세대** (8/25).
+
+    전에는 60/16 ≈ 3.7 세대였고 주기(20)가 기대수명(16.06)의 반올림이라고 적혀 있었다.
+    이제 주기는 `total_turns / 3` 이고 수명과 무관하다 — 두 값이 각자의 이유를 갖는다.
+
+    세대가 늘면 유언·상속을 타는 전달이 더 여러 번 시험된다 (spec 3.3 의 구전).
+    """
+    life = expected_life(c.surv_lambda, c.surv_k)
+    assert life == pytest.approx(10.0, abs=0.1)
+    assert c.total_turns / life == pytest.approx(5.0, abs=0.2)
+    assert c.epoch_turns == round(c.total_turns / 3)
 
 
 def test_a_lifetime_holds_several_conversation_round_trips(c):
-    """**소통 왕복 하나에 두 턴이 든다** — 보내면 다음 턴에 도착한다.
+    """**순차 라운드로빈에서는 왕복이 한 해 안에 끝난다** (8/25).
 
-    기대수명 8턴이던 시절엔 왕복 4회가 생애 전부라, 상대를 파악하고 조율에 이르는 것이
-    구조적으로 불가능에 가까웠다. 이 부등식이 100턴·수명 2배 전환의 이유다.
+    옛 문장은 「왕복 하나에 두 턴이 든다 — 보내면 다음 턴에 도착한다」 였고, 그것이 수명을
+    8.26 → 16.52 로 올린 근거였다. 그런데 순차 라운드로빈(issue #20)은 **같은 해에**
+    배달한다 (`rtt_same`: 「相手が次に動くときに届きます」) — 그 근거가 낡았다.
+
+    ⚠ 병렬 경로는 여전히 다음 해 배달이다. `run_agentic` 의 기본값이 병렬이므로, 본실험을
+      순차로 돌린다면 그 기본값도 바꿔야 한다 — 안 바꾸면 인자 없이 돌린 런이 다른 세계다.
     """
-    round_trips = expected_life(c.surv_lambda, c.surv_k) / 2
-    assert round_trips >= 8, f"생애 왕복 {round_trips:.1f}회 — 조율을 배우기엔 짧다"
+    life = expected_life(c.surv_lambda, c.surv_k)
+    assert life >= 8, f"생애 {life:.1f}해 — 순차에서도 왕복 8회는 있어야 한다"

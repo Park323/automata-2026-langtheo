@@ -57,7 +57,6 @@ def cfg_from_yaml(path: Path) -> Cfg:
         interceptor=d["thresholds"]["interceptor"],
         bunker=d["thresholds"]["bunker"],
         facility_eff=d["facility"]["eff"],
-        adult_age=d["world"].get("adult_age", 10),
         build_best=max(d["facility"].get("build_spread") or [1.0]),
     )
 

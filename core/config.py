@@ -122,7 +122,6 @@ class World:
     init_age_max: int = 10
     # **성인 나이.** 이 나이부터 아이를 낳을 수 있고, 이 나이부터 소득을 받는다.
     # 그전에는 부모가 주는 돈이 전부다.
-    adult_age: int = 10
 
 
 @dataclass(frozen=True)

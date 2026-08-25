@@ -26,12 +26,16 @@ def _run(cfg, seed):
 
 def test_survival_numbers(cfg):
     lam, k = cfg.survival.lambda_base, cfg.survival.k
-    # 수명 2배 (lambda 8.26 → 16.52). **소통 왕복 하나에 두 턴이 든다** —
-    # 기대수명 8턴이면 왕복 4회가 생애 전부라 조율을 배울 시간이 구조적으로 없다.
-    assert survival.expected_life(lam, k) == pytest.approx(16.06, abs=0.02)
-    assert survival.survival(20, lam, k) == pytest.approx(0.0099, abs=0.001)
+    # **16.52 → 10.09** (8/25). 올렸던 근거는 「왕복 하나에 두 턴」 이었는데 순차
+    # 라운드로빈은 같은 해에 배달한다 — 그 근거가 낡았다. 세계 50해 ÷ 10해 = 다섯 세대.
+    assert survival.expected_life(lam, k) == pytest.approx(10.00, abs=0.02)
+    # k=8 은 꼬리가 짧다 — 수명의 1.2배를 넘길 확률이 2% 아래다
+    assert survival.survival(12, lam, k) == pytest.approx(0.018, abs=0.005)
+    assert survival.survival(15, lam, k) < 1e-4
     haz = [round(survival.hazard(a, lam, k), 2) for a in range(0, 20, 2)]
-    assert haz == [0.00, 0.00, 0.00, 0.00, 0.00, 0.02, 0.07, 0.18, 0.38, 0.66]
+    # λ 10.09 · k 8 (8/25) · 짝수 나이만. 앞쪽이 평평하고 뒤가 급하다 — k 가 8 이라
+    # 꼬리가 짧다. 나이 12 에서 이미 66%, 14 에서 97% 가 그 해에 죽는다.
+    assert haz == [0.00, 0.00, 0.00, 0.04, 0.22, 0.66, 0.97, 1.00, 1.00, 1.00]
 
 
 # ── 합격 기준 표 ─────────────────────────────────────────────────────────────
@@ -125,8 +129,10 @@ def test_death_count(cfg):
     counts = [run(cfg, random.Random(s), procreate_age=None).deaths for s in range(30)]
     per_turn = statistics.mean(counts) / cfg.world.total_turns
     n0 = cfg.world.agents_per_country * len(cfg.world.countries)
-    # 기대수명 ~16해이므로 9명이면 턴당 9/16 ≈ 0.56 명이 죽는다
-    assert 0.45 <= per_turn <= 0.65, (
+    # **기대수명을 10 으로 줄였다** (8/25) — 9명이면 턴당 9/10 = 0.90 명이 죽는다.
+    # 절대 수치를 박지 않고 수명에서 유도한다 — 수명을 바꿀 때 이 테스트가 낡지 않게.
+    exp = n0 / survival.expected_life(cfg.survival.lambda_base, cfg.survival.k)
+    assert exp * 0.8 <= per_turn <= exp * 1.2, (
         f"턴당 사망 {per_turn:.2f} (평균 {statistics.mean(counts):.1f} / "
         f"{cfg.world.total_turns}턴, 초기 {n0}명)")
 
@@ -142,8 +148,11 @@ def test_lifespan(cfg):
     ages = []
     for s in range(30):
         ages += run(cfg, random.Random(s), procreate_age=None).death_ages
-    assert max(ages) <= 24
-    assert 14.6 <= statistics.mean(ages) <= 15.5, f"평균 수명 {statistics.mean(ages):.2f}"
+    # **수명에서 유도한다** — 절대 수치를 박으면 λ 를 바꿀 때 이 테스트가 낡는다.
+    exp = survival.expected_life(cfg.survival.lambda_base, cfg.survival.k)
+    assert max(ages) <= exp * 1.6, max(ages)
+    # 사망 **나이** 기대값은 살아낸 해보다 1 작다 (Σ a·(S(a)−S(a+1)) vs Σ S(a))
+    assert exp - 1.6 <= statistics.mean(ages) <= exp, f"평균 수명 {statistics.mean(ages):.2f}"
 
 
 def test_a_natural_death_passes_the_budget_and_the_discount(cfg):

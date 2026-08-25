@@ -101,7 +101,7 @@ def main():
     print("=" * 84)
     print("학습 암묵효용 x 의 자 맞추기 — 산수. ③만 몬테카를로")
     print("=" * 84)
-    print(f"  확정   {T}턴 · 기대수명 {EL:.2f}턴 · adult_age {cfg.world.adult_age}")
+    print(f"  확정   {T}턴 · 기대수명 {EL:.2f}턴")
     print(f"         learn_base L = {L:.0f} (고정) · speedup +{cfg.costs.learn_speedup}/사유")
     print(f"         한 호출 진척 {cfg.costs.unit:.0f}×배수 · AP {cfg.ap.unit}/호출 · "
           f"한 해 AP {AP}")
@@ -111,8 +111,8 @@ def main():
     print("=" * 84)
     # 성인 진입 시점 소득으로 상한을 잡는다 — 학습은 어린 쪽의 투자다.
     income0 = 200.0 * a.mult
-    ceil_ = remaining_income(cfg.world.adult_age, cfg, lam, k, a.mult)
-    print(f"  x 측정 상한 ≈ 성인 진입({cfg.world.adult_age}세) 시점 잔여 기대소득 "
+    ceil_ = remaining_income(0, cfg, lam, k, a.mult)   # 태어난 시점 기준 (8/25)
+    print(f"  x 측정 상한 ≈ 태어난 시점의 잔여 기대용량 "
           f"= {ceil_:.0f}")
     print("  이보다 비싼 눈금은 저축이 생애 안에 끝나지 않아 x 를 놓칩니다.\n")
     print(f"{'눈금':<34}{'배수':>6}{'총지출':>8}{'저축해':>8}"
@@ -146,7 +146,7 @@ def main():
     dear, cheap = max(m[2] for m in marks), min(m[2] for m in marks)
     print(f"{'나이':>5}{'기대 잔여':>11}{'남은 소득':>11}"
           f"{'사유0 비중':>11}{'사유2 비중':>11}   판정")
-    for age in (0, cfg.world.adult_age, 8, 12, 16, 20):
+    for age in (0, 2, 4, 6, 8, 10):
         rem = expected_remaining(age, lam, k)
         earn = remaining_income(age, cfg, lam, k, a.mult)
         hi, lo = dear / earn, cheap / earn

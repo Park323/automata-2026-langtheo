@@ -35,7 +35,7 @@ def _with(**overrides) -> Config:
 
 def test_valid_config_loads():
     cfg = config.load(BASE)
-    assert cfg.thresholds.interceptor == 19375     # 행동력 용량 창의 0.30 지점 (8/25)
+    assert cfg.thresholds.interceptor == 16048     # 행동력 용량 창의 0.30 지점 (8/25)
     assert cfg.k == pytest.approx(0.3)          # eff 1.0 × success_prob 0.3
 
 
@@ -228,8 +228,9 @@ def test_the_world_section_rejects_keys_it_cannot_use():
     assert set(d["world"]) <= known, set(d["world"]) - known
 
     # 그리고 yaml 의 값이 **실제로 읽힌다**
-    cfg = _with(**{"world.adult_age": 7})
-    assert cfg.world.adult_age == 7
+    # `adult_age` 를 지운 뒤로 (8/25) 이 자리에 쓸 필드를 바꿨다
+    cfg = _with(**{"world.init_age_max": 6})
+    assert cfg.world.init_age_max == 6
 
     with pytest.raises(ConfigError, match="모르는 키"):
         _with(**{"world.zzz_unwired": 1})

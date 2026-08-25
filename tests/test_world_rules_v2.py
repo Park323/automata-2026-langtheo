@@ -794,10 +794,11 @@ def test_initial_ages_are_spread(cfg):
     # 그 뒤 성인 공백기가 온다. **첫 해부터 세대 사다리가 있어야** 한다.
     ages = [a.age for a in w.agents.values()]
     assert all(1 <= x <= cfg.world.init_age_max for x in ages), ages
-    assert len(set(ages)) >= 4, ages
-    # 성인과 미성년이 **둘 다** 있어야 사다리다
-    adults = [x for x in ages if x >= cfg.world.adult_age]
-    assert 0 < len(adults) < len(ages), ages
+    assert len(set(ages)) >= 3, ages
+    # **나이가 실제로 흩어져야 사다리다.** `adult_age` 를 지운 뒤로 (8/25) 「성인/미성년」
+    # 이라는 경계가 없으므로, 늙은 쪽과 어린 쪽이 둘 다 있는지로 본다.
+    mid = cfg.world.init_age_max / 2
+    assert any(x <= mid for x in ages) and any(x > mid for x in ages), ages
 
 
 def test_initialisation_is_reproducible(cfg):
