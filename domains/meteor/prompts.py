@@ -51,7 +51,7 @@ SYSTEM = {
 多くの人は {life:.0f} 歳ごろまでに亡くなります。
 年を取るほど収入は増えます。
 稼ぎも、一度に動かせる額も、人によって違います。他人の分は見えません。
-`ai` で送るときは必ず日本語で書いてください。`original` で送るときは、あなたが扱える言語のどれで書いてもかまいません。自国内も日本語です。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
+`ai` で送るときは必ず日本語で書いてください。`original` で送るときは、行き先ごとの案内にある言語で書いてください。自国内も日本語です。道具の項目名（interceptor, bunker, wellness など）は英語のまま使ってください。""",
     "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
 过去曾有巨大的陨石坠落，所有生命就此灭绝。
 存在三个国家，各有自己的语言。起初你只会本国的语言，学会别国的语言后就能读也能写。
@@ -66,7 +66,7 @@ SYSTEM = {
 多数人在 {life:.0f} 岁前后离世。
 年纪越大，收入越多。
 收入和一次能动用的金额，因人而异。别人的数值你看不到。
-用 `ai` 发送时必须写中文。用 `original` 发送时，可以用你掌握的任何一种语言来写。国内也用中文。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
+用 `ai` 发送时必须写中文。用 `original` 发送时，按各目的地的指引所写的语言来写。国内也用中文。工具的选项名（interceptor、bunker、wellness 等）请保持英文原样。""",
     "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
 Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
 Il existe trois nations, chacune avec sa propre langue. Au début vous ne maniez que celle de votre nation ; en apprendre une autre vous permet de la lire et de l'écrire.
@@ -81,10 +81,19 @@ Une nation qui n'a pas encore décidé quoi bâtir n'a rien où accumuler ; ce q
 La plupart des gens meurent vers {life:.0f} ans.
 Plus on vieillit, plus le revenu augmente.
 Ce qu'on gagne et ce qu'on peut déplacer d'un coup varient d'une personne à l'autre. Les valeurs des autres ne vous sont pas visibles.
-Quand vous envoyez par `ai`, écrivez en français. Quand vous envoyez en `original`, vous pouvez écrire dans n'importe quelle langue que vous maniez. Dans votre nation, c'est le français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
+Quand vous envoyez par `ai`, écrivez en français. Quand vous envoyez en `original`, écrivez dans la langue indiquée pour cette destination. Dans votre nation, c'est le français. Gardez les noms d'options des outils (interceptor, bunker, wellness…) tels quels, en anglais.""",
 }
 
 # 산문만 번역한다. 도구 토큰은 영어 그대로 둔다.
+# **언어 이름은 읽는 사람의 말로 적는다** (8/25 · #44). 나라별 안내가 「무슨 말로 쓰라」 를
+# 말하려면 그 말의 이름이 필요하고, 그 이름은 보는 사람의 언어여야 한다 — 일본어 화자에게
+# 「zh」 나 「中文」 이 아니라 「中国語」 다.
+LANG_NAME = {
+    "ja": {"ja": "日本語", "zh": "中国語", "fr": "フランス語"},
+    "zh": {"ja": "日语", "zh": "中文", "fr": "法语"},
+    "fr": {"ja": "japonais", "zh": "chinois", "fr": "français"},
+}
+
 T = {
     "ja": dict(
         you="あなたは {id}（{nation} の人）です。", read="扱える言語: {langs}",
@@ -108,8 +117,8 @@ T = {
         ap_hdr="行動力は毎年 1.0 に戻り、繰り越せません。何を諦めるかがここで決まります。",
         c_dom="  話す（自国内）", c_orig="  話す（国際・original）",
         c_orig_note="   費用は届かなくても請求される",
-        c_orig_sure="    {nation} へ — あなたがこの国の言語を扱えるので**必ず届く**",
-        c_orig_risk="    {nation} へ — 扱えないので、あなたの言語を読める相手にだけ届く",
+        c_orig_sure="    {nation} へ — この国の言語を扱えるので、**{lang}で書けば必ず届く**",
+        c_orig_risk="    {nation} へ — 扱えないので**日本語で書く**。あなたの言語を読める相手にだけ届く",
         c_ai="  話す（国際・ai）",
         c_learn="  {nation} の言語を学ぶ",
         c_learn_prog="   これまで {done:.0f} / {need:.0f}",
@@ -147,8 +156,6 @@ T = {
         in_from="  {frm} より{label}",
         lbl_direct=" ［通訳なしで通じた］",          # 하위 호환
         lbl_direct_read=" ［あなたがこの言葉を読めるので、そのまま通じました］",
-        lbl_direct_write=" ［あなたはこの言葉を扱えませんが、相手があなたの言語を"
-                         "扱えるので通じました］",
         lbl_ai=" ［送り主が AI に訳させたメッセージです］",
         died="  {who} が {age} 歳で亡くなり、{born} が生まれました。",
         borned="  {who} に子が生まれました — {born} です。",
@@ -193,8 +200,8 @@ T = {
         ap_hdr="行动力每年恢复为 1.0，不能结转。放弃什么，在这里决定。",
         c_dom="  说话（本国内）", c_orig="  说话（国际·original）",
         c_orig_note="   送不到也照收费用",
-        c_orig_sure="    发往 {nation} — 你会这个国家的语言，**一定送到**",
-        c_orig_risk="    发往 {nation} — 你不会，只能送到读得懂你的语言的人那里",
+        c_orig_sure="    发往 {nation} — 你会这个国家的语言，**用{lang}写就一定送到**",
+        c_orig_risk="    发往 {nation} — 你不会，**用中文写**。只能送到读得懂你的语言的人那里",
         c_ai="  说话（国际·ai）",
         c_learn="  学习 {nation} 的语言",
         c_learn_prog="   已投入 {done:.0f} / {need:.0f}",
@@ -231,7 +238,7 @@ T = {
         in_from="  来自 {frm}{label}",
         lbl_direct="［无需翻译就能听懂］",
         lbl_direct_read="［你读得懂这种话，所以原文就通了］",
-        lbl_direct_write="［你不会这种话，但对方会你的语言，所以还是通了］",
+
         lbl_ai="［这是发信人用 AI 译过来的消息］",
         died="  {who} 在 {age} 岁去世，{born} 出生了。",
         borned="  {who} 有了孩子 — {born}。",
@@ -279,8 +286,8 @@ T = {
         ap_hdr="L'action revient à 1.0 chaque année et ne se reporte pas. Ce que vous renoncez se décide ici.",
         c_dom="  parler (dans votre nation)", c_orig="  parler (international, original)",
         c_orig_note="   le coût est prélevé même s'il n'arrive pas",
-        c_orig_sure="    vers {nation} — vous maniez sa langue, **il arrive à coup sûr**",
-        c_orig_risk="    vers {nation} — vous ne la maniez pas ; il n'arrive qu'à qui lit la vôtre",
+        c_orig_sure="    vers {nation} — vous maniez sa langue : **écrivez en {lang}, il arrive à coup sûr**",
+        c_orig_risk="    vers {nation} — vous ne la maniez pas : **écrivez en français**. Il n'arrive qu'à qui lit la vôtre",
         c_ai="  parler (international, ai)",
         c_learn="  apprendre la langue de {nation}",
         c_learn_prog="   déjà versé {done:.0f} / {need:.0f}",
@@ -321,8 +328,6 @@ T = {
         in_from="  de {frm}{label}",
         lbl_direct=" [compris sans traduction]",
         lbl_direct_read=" [vous lisez cette langue, le texte passe tel quel]",
-        lbl_direct_write=" [vous ne maniez pas cette langue, mais votre "
-                         "interlocuteur manie la vôtre, et cela passe quand même]",
         lbl_ai=" [message que l'expéditeur a fait traduire par une IA]",
         died="  {who} est mort à {age} ans ; {born} est né.",
         borned="  {who} a eu un enfant — {born}.",
@@ -454,8 +459,15 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
     for c in world.countries.values():
         if c.id == agent.country:
             continue
+        # **무슨 말로 쓸지까지 적는다** (8/25 · #44). 「반드시 도착한다 / 읽는 사람에게만
+        # 도착한다」 까지만 말하고 그러니 무슨 말로 쓰라는 것을 안 말했다. 그 빈자리를
+        # SYS 의 「당신이 다루는 아무 언어나」 가 메우고 있었고, 그것이 **제3의 언어로 쓴
+        # 글**을 불렀다 — 아무도 못 읽는 글이 전달되고 라벨이 거짓 사유를 댔다.
+        #
+        # 나라마다 길이 하나씩만 열린다: 그 말을 알면 그 말로, 모르면 내 말로.
+        # 자기 언어 능력에서 나오는 사실이라 타국 사정을 흘리지 않는다.
         key = "c_orig_sure" if c.lang in agent.known_langs else "c_orig_risk"
-        lines.append(t[key].format(nation=c.id))
+        lines.append(t[key].format(nation=c.id, lang=LANG_NAME[agent.native_lang][c.lang]))
     lines += [
              row(t["c_ai"], knob_ai, cfg.ap.speak)]
     for c in world.countries.values():
@@ -656,7 +668,6 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
         # 하면 눈앞의 글자와 어긋나서, 읽는 쪽이 그 모순을 되묻는 데 한 해를 쓴다.
         raw = m.get("label")
         label = (t["lbl_direct_read"] if raw == "[direct:read]"
-                 else t["lbl_direct_write"] if raw == "[direct:write]"
                  else t["lbl_direct"] if raw == "[direct]"
                  else t["lbl_ai"] if raw == "[AI translation]"
                  else (f" {raw}" if raw else ""))

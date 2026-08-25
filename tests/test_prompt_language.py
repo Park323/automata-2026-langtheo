@@ -683,7 +683,10 @@ def test_the_route_decides_which_language_the_agent_may_write():
     d = next(t["function"]["parameters"]["properties"]["text"]["description"]
              for t in tools.TOOLS if t["function"]["name"] == "speak")
     assert "`ai`" in d and "`original`" in d
-    assert "own language" in d and "any language you can handle" in d
+    # **「아무 언어나」 를 없앴다** (8/25 · #44). 도구 설명은 정적이라 나라별 안내를
+    # 담을 수 없으므로(목록이 모듈 상수) 관측을 가리킨다.
+    assert "own language" in d and "the observation names for that destination" in d
+    assert "any language you can handle" not in d
 
 
 def test_the_fact_that_people_differ_is_stated_but_not_the_numbers():

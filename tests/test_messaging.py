@@ -120,21 +120,36 @@ def _intl(text="テスト", route="original"):
             "text": text, "route": route}
 
 
-def test_direct_lands_when_the_sender_knows_their_language(cfg):
-    """**보내는 쪽이 상대 말을 알아도 원문이 통한다.**
+def test_writing_in_their_language_lands(cfg):
+    """**아는 말의 나라에는 그 말로 쓰면 반드시 통한다.**
 
     전에는 "수신자가 발신 언어를 읽는가" 만 봤다. 그래서 초기화로 심은 이중언어자가
     **받는 데만 쓸모가 있었고**, 자기가 아는 말의 나라에 보낼 때도 24원짜리 AI 를
     타야 했다. 40턴 실측에서 Asla1(ja·zh)이 Ranoa 에 original 을 걸었다 실패했다.
 
-    구현은 어느 쪽이든 원문을 그대로 보낸다 — 모델이 multilingual 이라 그대로 이해한다.
-    발신자에게 상대 언어로 다시 쓰게 만들면 모국어 강제가 깨지고 지표 7 의 발신 언어
-    사전도 못 쓰게 된다.
+    8/17 은 그것을 「발신자가 수신 언어를 안다 → 통한다」 로 풀었다 — 본문은 모국어인
+    채로. 8/25 (#44) 부터는 **그 말로 쓰면** 통한다. 관측의 나라별 줄이 그렇게 안내한다.
     """
-    p = messaging.process_message(_intl(), {"zh"}, cfg, None, 24.0,
+    p = messaging.process_message(_intl(text="你好朋友"), {"zh"}, cfg, None, 24.0,
                                   sender_known_langs={"ja", "zh"})
     assert p["delivered"] is True
-    assert p["meta"]["direct_by"] == "writer" and p["meta"]["reader"] is False
+    assert p["meta"]["direct_by"] == "writer"
+    assert p["meta"]["delivered_lang"] == "zh"
+
+
+def test_writing_in_your_own_language_does_not_land_on_someone_who_cannot_read_it(cfg):
+    """**8/17 의 허구를 없앴다** (#44).
+
+    「내 말로 썼지만 상대가 내 말을 다루니 통했다」 는 근거가 「모델이 multilingual 이라
+    그대로 이해한다」 였다. 8/22 에 경로별 언어 규칙이 들어오면서 그 근거가 사라졌다 —
+    이제 아는 말의 나라에는 **그 말로 쓰라고 안내한다.** 어기면 통하지 않는다.
+
+    강제로 막지는 않는다. 어긴 사실이 로그에 남는 것이 관측이다.
+    """
+    p = messaging.process_message(_intl(text="こんにちは"), {"zh"}, cfg, None, 24.0,
+                                  sender_known_langs={"ja", "zh"})   # zh 를 아는데 ja 로 씀
+    assert p["delivered"] is False
+    assert p["sender_notice"]["reason"] == "unreadable"
 
 
 def test_direct_still_lands_when_the_recipient_reads_it(cfg):
@@ -211,9 +226,11 @@ def test_direct_ok_records_the_counterfactual(cfg):
     assert p["kind"] == "ai" and p["meta"]["direct_ok"] is True
     assert p["meta"]["direct_by"] == "reader"
 
+    # **`ai` 본문은 모국어다.** 그러니 수신자가 그 말을 못 읽으면 `original` 로도 못 닿았다
+    # — 아는 말로 **다시 썼다면** 닿았겠지만, 그건 이 메시지가 아니다 (#44).
     p = messaging.process_message(_intl(route="ai"), {"zh"}, cfg,
                                   _translator("译文"), 24.0, sender_known_langs={"ja", "zh"})
-    assert p["meta"]["direct_ok"] is True and p["meta"]["direct_by"] == "writer"
+    assert p["meta"]["direct_ok"] is False
 
 
 def test_both_labels_are_shown_in_the_recipient_language(cfg):
@@ -283,43 +300,6 @@ def test_a_missing_recipient_says_which_field_is_missing(cfg):
     assert a.ap == 1.0 and a.budget == 1000.0
 
 
-def test_the_two_direct_labels_say_different_things(cfg):
-    """**직통은 두 가지 다른 사실이고, 하나로 묶으면 거짓말이 된다.**
-
-    `writer` 덕으로 닿은 메시지는 **수신자가 못 읽는 언어 그대로** 온다 (그것이 8/17 의
-    설계다 — 발신자에게 수신 언어로 다시 쓰게 하면 프롬프트 언어 위생이 깨진다). 그런데
-    라벨이 「통역 없이 통했다」 하나뿐이어서, 못 읽는 글에 통했다는 표가 붙었다.
-
-    여섯 런에서 `writer` 덕 전달 **16건이 전부** 그랬고, 한 에이전트가 되물었다:
-
-        "あなたのメッセージが分かりません。日本語で説明してください。"
-
-    **정확한 반응이다.** 눈앞의 글자와 라벨이 어긋났으니 되물을 수밖에 없다. 그래서
-    쓰는 쪽 라벨은 **못 읽는다는 사실을 먼저 인정하고** 왜 그래도 통했는지를 말한다.
-    """
-    from domains.meteor import prompts
-
-    # 수신자는 발신 언어(zh)를 못 읽고, 발신자가 수신 언어(ja)를 안다
-    m = messaging.process_message(_sent(route="original"),
-                                  recipient_known_langs={"zh"},      # ja 를 못 읽는다
-                                  cfg=cfg, translator=None, knob_ai=48,
-                                  sender_known_langs={"ja", "zh"})   # 발신자가 zh 를 안다
-    assert m["delivered"] is True                      # 그래도 닿는다
-    assert m["meta"]["direct_by"] == "writer"
-    assert m["inbox"]["label"] == messaging.DIRECT_WRITE_LABEL
-
-    for lang in ("ja", "zh", "fr"):
-        t = prompts.T[lang]
-        read, write = t["lbl_direct_read"], t["lbl_direct_write"]
-        assert read != write, lang
-        # 쓰는 쪽 라벨이 **더 길다** — 못 읽는다는 사실과 그래도 통한 이유를 둘 다 담는다
-        assert len(write) > len(read), lang
-
-    rendered = prompts.render_inbox(
-        [{"from": "Miris1", "label": messaging.DIRECT_WRITE_LABEL, "text": "x"}], "ja")
-    assert "扱えません" in rendered                     # 못 읽는다는 사실이 먼저
-    assert "通訳なしで通じた" not in rendered            # 통했다고만 말하지 않는다
-
 
 def test_the_delivered_language_is_the_one_actually_written(cfg):
     """**발신자가 수신국 말로 쓸 수 있게 된 순간 `delivered_lang` 이 거짓이 됐다** (8/22).
@@ -345,30 +325,6 @@ def test_the_delivered_language_is_the_one_actually_written(cfg):
         sender_known_langs={"fr", "ja"})
     assert m2["meta"]["delivered_lang"] == "fr"
 
-
-def test_the_label_follows_the_language_not_the_reason(cfg):
-    """**어제 고친 거짓말이 방향만 바꿔 되살아날 뻔했다.**
-
-    8/21 에 라벨을 둘로 갈랐다 — 「쓰는 쪽 덕」 이면 「나는 못 읽지만 상대가 내 말을
-    다룬다」. 그런데 8/22 부터 그 발신자가 **내 말로 쓸 수도 있다.** 그러면 나는 읽을 수
-    있는데 「못 읽는다」 고 적힌다.
-
-    라벨은 `direct_by` 가 아니라 **도착한 글의 실제 언어**로 고른다.
-    """
-    common = dict(from_lang="fr", from_country="Miris", to="Asla1", to_country="Asla",
-                  to_lang="ja", route="original")
-    # 내 말로 써 줬다 → 읽었다
-    m = messaging.process_message(
-        _sent(**common, text="こんにちは"), recipient_known_langs={"ja"},
-        cfg=cfg, translator=None, knob_ai=48, sender_known_langs={"fr", "ja"})
-    assert m["meta"]["direct_by"] == "writer"          # 통한 이유는 쓰는 쪽 덕이지만
-    assert m["inbox"]["label"] == messaging.DIRECT_READ_LABEL   # 읽은 것은 사실이다
-
-    # 자기 말로 썼다 → 나는 못 읽지만 그래도 통했다
-    m2 = messaging.process_message(
-        _sent(**common, text="Bonjour"), recipient_known_langs={"ja"},
-        cfg=cfg, translator=None, knob_ai=48, sender_known_langs={"fr", "ja"})
-    assert m2["inbox"]["label"] == messaging.DIRECT_WRITE_LABEL
 
 
 def test_a_third_language_body_does_not_get_through(cfg):
@@ -408,27 +364,44 @@ def test_a_third_language_body_does_not_get_through(cfg):
     assert m["sender_notice"]["reason"] == "unreadable"
 
 
-def test_the_writer_fiction_survives_for_ones_own_language(cfg):
-    """**8/17 의 허구는 그대로 둔다** (#44).
-
-    내 말로 썼고 상대가 내 말을 다루면, 구현은 원문을 그대로 보내고 라벨이 「못 읽지만
-    그래도 통했다」 를 적는다 — 발신자에게 수신 언어로 다시 쓰게 만들면 프롬프트 언어
-    위생이 깨지고 지표 7 의 발신 언어 사전도 못 쓰게 되기 때문이다.
-
-    #44 가 막는 것은 **제3의 언어**뿐이다. 이 길은 살아 있어야 한다.
-    """
-    m = messaging.process_message(
-        _sent(from_lang="ja", from_country="Asla", to="Miris2", to_country="Miris",
-              to_lang="fr", route="original", text="こんにちは"),
-        recipient_known_langs={"fr"},              # ja 를 못 읽는다
-        cfg=cfg, translator=None, knob_ai=48,
-        sender_known_langs={"ja", "fr"})           # 발신자가 fr 을 안다
-    assert m["delivered"] is True and m["meta"]["direct_by"] == "writer"
-    assert m["inbox"]["label"] == messaging.DIRECT_WRITE_LABEL
-
 
 def test_tool_tokens_do_not_decide_the_language(cfg):
     """도구 토큰은 어느 말에서도 영어 그대로다. 언어 판정에서 빼야 fr 로 오판하지 않는다."""
     assert messaging.detect_lang("interceptor bunker wellness", "zh") == "zh"
     assert messaging.detect_lang("要建 interceptor", "fr") == "zh"
     assert messaging.detect_lang("", "ja") == "ja"
+
+
+def test_there_is_only_one_direct_label_now(cfg):
+    """**라벨이 하나로 줄었다** (8/25 · #44).
+
+    8/21 에 둘로 갈랐다 — 「읽었다」 와 「못 읽지만 상대가 내 말을 다뤄서 통했다」. 뒤쪽은
+    8/17 허구를 설명하는 자리였고, 여섯 런에서 그 덕에 닿은 16건이 **전부** 못 읽는 글로
+    도착해 한 에이전트가 되물었다: "あなたのメッセージが分かりません".
+
+    전달 판정이 「도착한 글을 읽는가」 하나가 되면서 그 상황은 일어날 수 없다. 절대 안 뜨는
+    문구를 세 언어에 남겨 두면 다음에 그것을 근거로 삼는다.
+    """
+    from domains.meteor import prompts
+    assert not hasattr(messaging, "DIRECT_WRITE_LABEL")
+    for lang in ("ja", "zh", "fr"):
+        assert "lbl_direct_write" not in prompts.T[lang], lang
+
+    # 전 언어 조합에서 전달된 것은 전부 읽을 수 있다
+    import itertools
+    TEXT = {"ja": "こんにちは", "zh": "你好朋友", "fr": "Bonjour tout"}
+    seen = set()
+    for f, t, body in itertools.product("ja zh fr".split(), repeat=3):
+        if f == t:
+            continue
+        for rk in ({t}, {t, f}, {t, body}):
+            m = messaging.process_message(
+                _sent(from_lang=f, from_country="Asla", to="B1", to_country="Miris",
+                      to_lang=t, route="original", text=TEXT[body]),
+                recipient_known_langs=rk, cfg=cfg, translator=None, knob_ai=48,
+                sender_known_langs={f, body})
+            if m["delivered"]:
+                assert m["inbox"]["label"] == messaging.DIRECT_READ_LABEL
+                assert m["meta"]["delivered_lang"] in rk
+                seen.add(m["meta"]["direct_by"])
+    assert seen == {"reader", "writer"}          # 두 갈래 다 여전히 일어난다
