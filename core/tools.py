@@ -39,11 +39,21 @@ def _fn(name: str, description: str, properties: dict, required: list[str],
 
 
 _ROUTE = {"type": "string", "enum": ["original", "ai"],
+          # **두 경로를 같은 깊이로 적는다** (8/25 · Eddie). enum 은 값이 둘인데
+          # `original` 만 설명하고 있었다 — `ai` 는 이름뿐이었고, 발신자가 그것에
+          # 대해 듣는 말은 「자기 말로 쓰라」(아래 `text`) 하나였다. 노브가 값을
+          # 매기는 대상이 진술되지 않으면 노브 효과가 「모르는 선택지를 피했다」 와
+          # 섞인다 — 단일 실험 변수가 오염된다.
+          #
+          # **기제만 적는다.** 「반드시 닿는다」 는 쓰지 않는다 — 기계가 번역한다는
+          # 사실에서 스스로 잇는다. 번역이 무엇을 잃는지는 여전히 말하지 않는다
+          # (그것이 「왜곡을 프롬프트로 주입하지 않는다」 의 내용이다).
           "description": "international only; ignored for a recipient in your own nation. "
                          "`original` sends your words untranslated. If you can handle the "
                          "recipient's national language it always lands, whatever they can "
                          "read. If you cannot, it lands only on someone who reads yours — "
-                         "and you are not told beforehand whether they do"}
+                         "and you are not told beforehand whether they do. "
+                         "`ai` sends it through a translation artificial intelligence"}
 # **경로가 언어를 정한다** (8/22).
 #
 #   ai        모국어로 써야 한다. **여기가 측정 채널이다** — 번역이 무엇을 잃는지 재려면

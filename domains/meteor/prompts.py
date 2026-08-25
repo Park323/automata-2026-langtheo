@@ -134,7 +134,8 @@ T = {
         ap_hdr="行動力は毎年 1.0 に戻り、繰り越せません。何を諦めるかがここで決まります。",
         c_dom="  話す（自国内）", c_orig="  話す（国際・original）",
         c_dom_note="   {cap}文字まで",
-        c_orig_note="   行動力は届かなくても使われる",
+        c_orig_note="   あなたの言葉をそのまま送ります",
+        c_ai_note="   翻訳の人工知能を使って送ります",
         c_orig_sure="    {nation} へ — この国の言語を扱えるので、**{lang}で書けば必ず届く**（{cap}文字まで）",
         c_orig_risk="    {nation} へ — 扱えないので**日本語で書く**。あなたの言語を読める相手にだけ届く（{cap}文字まで）",
         c_ai="  話す（国際・ai）",
@@ -212,7 +213,8 @@ T = {
         ap_hdr="行动力每年恢复为 1.0，不能结转。放弃什么，在这里决定。",
         c_dom="  说话（本国内）", c_orig="  说话（国际·original）",
         c_dom_note="   最多 {cap} 字",
-        c_orig_note="   即使没送到，行动力也会消耗",
+        c_orig_note="   原样送出你自己的话",
+        c_ai_note="   用翻译人工智能送出",
         c_orig_sure="    发往 {nation} — 你会这个国家的语言，**用{lang}写就一定送到**（最多 {cap} 字）",
         c_orig_risk="    发往 {nation} — 你不会，**用中文写**。只能送到读得懂你的语言的人那里（最多 {cap} 字）",
         c_ai="  说话（国际·ai）",
@@ -292,7 +294,8 @@ T = {
         ap_hdr="L'action revient à 1.0 chaque année et ne se reporte pas. Ce que vous renoncez se décide ici.",
         c_dom="  parler (dans votre nation)", c_orig="  parler (international, original)",
         c_dom_note="   {cap} caractères max",
-        c_orig_note="   l'action est dépensée même si rien n'arrive",
+        c_orig_note="   envoie vos mots tels quels",
+        c_ai_note="   envoyé par une intelligence artificielle de traduction",
         c_orig_sure="    vers {nation} — vous maniez sa langue : **écrivez en {lang}, il arrive à coup sûr** ({cap} caractères max)",
         c_orig_risk="    vers {nation} — vous ne la maniez pas : **écrivez en français**. Il n'arrive qu'à qui lit la vôtre ({cap} caractères max)",
         c_ai="  parler (international, ai)",
@@ -462,6 +465,21 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
              row(t["c_dom"], cfg.ap.speak,
                  t["c_dom_note"].format(cap=L[agent.native_lang])),
              row(t["c_orig"], cfg.ap.speak, t["c_orig_note"])]
+    # **두 경로를 같은 깊이로 적는다** (8/25 · Eddie). `original` 은 네 군데서 설명되고
+    # (`route` 설명 · 비고 · 나라별 줄 · SYS) `ai` 는 **이름과 가격뿐**이었다. 그러면
+    #
+    #   · 편향이 `original` 쪽으로 기운다 — 한쪽만 규칙을 받는다
+    #   · **노브가 값을 매기는 대상이 진술되지 않는다.** `ai` 의 가치는 「반드시 닿는다」
+    #     하나인데 그것을 안 알리면, 노브가 움직이는 것이 「비싼 신뢰성을 포기했다」 가
+    #     아니라 「모르는 선택지를 피했다」 일 수 있다. 단일 실험 변수가 오염된다
+    #   · 최저 눈금(= `ap.speak`)에서 두 줄의 값이 같아 **가격 신호가 0** 이 된다.
+    #     「AI 가 모국어만큼 싸서 아무도 안 배우는 세계」 를 재려고 넣은 눈금인데,
+    #     정작 그 세계에서 `ai` 를 고를 이유가 없다
+    #
+    # **기제만 적고 결론은 맡긴다.** 「반드시 닿는다」 를 쓰지 않는다 — 「그대로 보낸다」
+    # 와 「번역 인공지능으로 보낸다」 두 사실이면 스스로 잇는다. 「행동력은 전달되지
+    # 않아도 쓰인다」 는 뺐다: 실패를 미리 겁주는 것은 그 자체로 편향이다.
+    #
     # **나라별로 보장 여부를 적는다.** 규칙만 적었을 때 에이전트가 연결하지 못했다 —
     # 20턴 실측에서 자기가 아는 말의 나라에 24원짜리 ai 를 6번 썼다 (5원이면 확실했다).
     # 자기 언어 능력에서 나오는 사실이라 타국 사정을 흘리지 않는다.
@@ -489,7 +507,7 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
     # **노브가 여기 있다.** ai 발신의 AP 가 이번 런의 실험 변수다 (8/25).
     # `None` 이면 그 세계에 AI 가 없다 — 없는 도구를 설명하지 않는다.
     if knob_ai is not None:
-        lines.append(row(t["c_ai"], knob_ai))
+        lines.append(row(t["c_ai"], knob_ai, t["c_ai_note"]))
     for c in world.countries.values():
         # **이미 아는 말은 배울 표에 올리지 않는다.** 올려 두었더니 3해 실측에서 `learn`
         # 이 14번 거절당했고 (`you already read Ranoa's language`), 한 에이전트는 메모에
