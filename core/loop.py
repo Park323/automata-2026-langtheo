@@ -951,7 +951,10 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         # 값이 달라지고, 진척(`prog_up`)처럼 줄이 접히지 않는다. 그게 맞다 — 낸 액수가
         # 다르면 오른 폭도 다르다.
         _notify(world, "capital_change",
-                {"cap_up": True, "cap_gain": (now / before - 1) * 100},
+                # `cap_gain` 이번 차례 · `cap_total` 세계 시작부터의 누적.
+                # 둘 다 상태의 함수라 기간이 들어가지 않는다 (`multiplier` 는 자본만 본다).
+                {"cap_up": True, "cap_gain": (now / before - 1) * 100,
+                 "cap_total": (now - 1.0) * 100},
                 world.turn, nation=cid)
     # 메시지 — 번역 후 **같은 턴** 배달
     for sent in sink.messages:

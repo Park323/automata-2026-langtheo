@@ -441,15 +441,16 @@ def test_the_year_opens_before_anything_that_happened_in_it():
 
 
 def test_capital_notice_carries_the_gain_as_a_percentage():
-    """「기술력이 올랐다」 에 **이번 상승분**을 싣는다 (8/23).
+    """「기술력이 올랐다」 에 **이번 상승분과 누적을 나란히** 싣는다 (8/25 · Eddie).
 
-    배수(「1.174 배」)도 누적(「당초보다 17%」)도 아니다 — 사건 줄은 「방금 무슨 일이
-    있었나」 이고, 한 차례 상승분은 0.05~0.6% 라 소수 두 자리여야 값이 남는다.
+    이번 상승분만 있으면 계속 오르는 것처럼 읽힌다 — √ 라서 실제로는 1.77% → 0.14% 로
+    죽고, 33회째에는 시설에 직접 넣는 게 낫다. 두 숫자가 한 줄에 있으면 그 감쇠가 보인다.
 
-    전에는 값이 없는 사실이라 해마다 한 번으로 접었다. 이제 값이 있으므로 그 제한을
-    뗐고, 접는 일은 `render_inbox._add` 가 값으로 판단한다 — 진척과 같은 취급이다.
+    **주어는 技術力 이다.** 전에는 「同じ行動力で出せる進捗が N% 増えました」 였는데 같은
+    화면의 앞 두 줄이 「進捗が 44 進みました」 라, 세 번째가 「내 356 이 N% 늘었다」 로
+    읽혔다. **「はじめから」 도 「これまで」 를 피한 것이다** — 그건 학습 진척의 관용구다.
 
-    값이 없으면 「national 에 더 부을까 facility 에 부을까」 를 수치로 비교할 수 없다.
+    한 차례 상승분은 0.05~0.6% 라 소수 두 자리여야 값이 남는다.
     """
     cfg = _cfg(1)
     inv = assistant_msg(tool_call("invest", "i", target="national", reasoning="r"))
@@ -458,14 +459,21 @@ def test_capital_notice_carries_the_gain_as_a_percentage():
     res = _run(cfg, clients, seed=3, parallel=False, sequential=True)
     blob = "\n".join(m["content"] for m in res.world.agents["Asla2"].convo
                      if m["role"] == "user")
-    assert "技術力が上がり" in blob
+    assert "技術力が" in blob
     # 상승분은 0 보다 크고, 합치면 누적 배수와 맞아야 한다 (곱으로 쌓인다)
-    got = [float(x) for x in re.findall(r"進捗が ([\d.]+)% 増えました", blob)]
-    assert got and all(v > 0 for v in got), got
+    rows = re.findall(r"技術力が ([\d.]+)% 上がりました（はじめから ([\d.]+)%）", blob)
+    assert rows, blob
+    got = [float(a) for a, _ in rows]
+    assert all(v > 0 for v in got), got
     prod = 1.0
     for v in got:
         prod *= 1 + v / 100
-    assert prod == pytest.approx(res.world.countries["Asla"].multiplier(cfg), rel=1e-3)
+    mult = res.world.countries["Asla"].multiplier(cfg)
+    assert prod == pytest.approx(mult, rel=1e-3)
+    # **누적은 배수에서 바로 읽힌다** — 마지막 줄의 「はじめから」 가 그 값이다
+    assert float(rows[-1][1]) == pytest.approx((mult - 1) * 100, rel=1e-3)
+    # 진척 어휘와 겹치지 않는다 — 앞 두 줄이 「進捗が N 進みました」 다
+    assert "進捗が" not in blob.split("技術力が")[1].split("\n")[0]
 
 
 def test_identical_rows_inside_one_batch_collapse():
@@ -473,13 +481,14 @@ def test_identical_rows_inside_one_batch_collapse():
     cfg = _cfg(1)
     world = init_world(cfg, itertools.count(1))
     a = world.agents["Asla1"]
-    ev = prompts.render_events(a, [{"cap_up": True, "cap_gain": 0.23}] * 3)
-    assert ev.count("増えました") == 1
+    ev = prompts.render_events(
+        a, [{"cap_up": True, "cap_gain": 0.23, "cap_total": 1.5}] * 3)
+    assert ev.count("上がりました") == 1
     # **소수 두 자리에서 갈리면 다른 줄이다** — 낸 액수가 다르면 오른 폭도 다르고,
     # 그건 접어서 없앨 정보가 아니다 (진척 `prog_up` 과 같은 취급).
-    ev3 = prompts.render_events(a, [{"cap_up": True, "cap_gain": 0.23},
-                                    {"cap_up": True, "cap_gain": 0.07}])
-    assert ev3.count("増えました") == 2
+    ev3 = prompts.render_events(a, [{"cap_up": True, "cap_gain": 0.23, "cap_total": 1.5},
+                                    {"cap_up": True, "cap_gain": 0.07, "cap_total": 1.6}])
+    assert ev3.count("上がりました") == 2
     # 값이 다르면 접히지 않는다
     ev2 = prompts.render_events(a, [{"prog_up": 18, "now": 18},
                                     {"prog_up": 34, "now": 52}])

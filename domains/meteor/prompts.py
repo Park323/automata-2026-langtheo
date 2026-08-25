@@ -179,7 +179,7 @@ T = {
         fac_moved="  あなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
         fac_still="  あなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
         prog_up="  自国の進捗が {gain:.0f} 進んで {now:.0f} になりました。",
-        cap_up="  自国の技術力が上がり、同じ行動力で出せる進捗が {pct:.2f}% 増えました。",
+        cap_up="  自国の技術力が {pct:.2f}% 上がりました（はじめから {tot:.2f}%）。",
         ballot_kept="  採決の結果、建てるものは {land} のままです。",
         ballot_new="  採決の結果、建てるものは {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
         ballot_none="  採決では何も決まりませんでした。建てるものは {land} のままです。",
@@ -257,7 +257,7 @@ T = {
         fac_moved="  你投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
         fac_still="  你投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
         prog_up="  本国的进度前进了 {gain:.0f}，现在是 {now:.0f}。",
-        cap_up="  本国的技术水平提高，同样的行动力能产出的进度多了 {pct:.2f}%。",
+        cap_up="  本国的技术水平提高了 {pct:.2f}%（自开始累计 {tot:.2f}%）。",
         ballot_kept="  表决的结果，要建的设施仍是 {land}。",
         ballot_new="  表决的结果，要建的设施定为 {land}。此前的进度 {lost:.0f} 已失去。",
         ballot_none="  表决没有决定任何事。要建的设施仍是 {land}。",
@@ -339,7 +339,7 @@ T = {
         fac_moved="  Votre versement de {amt:.0f} a fait progresser {to}.",
         fac_still="  Votre versement de {amt:.0f} n'a fait progresser {to} en rien.",
         prog_up="  La progression de votre nation a avancé de {gain:.0f} ; elle est à {now:.0f}.",
-        cap_up="  Le niveau technique de votre nation s'élève : à action égale, la progression obtenue augmente de {pct:.2f}%.",
+        cap_up="  Le niveau technique de votre nation a augmenté de {pct:.2f}% ({tot:.2f}% depuis le début).",
         ballot_kept="  Au scrutin, ce qu'on bâtit reste {land}.",
         ballot_new="  Au scrutin, ce qu'on bâtit devient {land}. La progression acquise, {lost:.0f}, est perdue.",
         ballot_none="  Le scrutin n'a rien décidé. Ce qu'on bâtit reste {land}.",
@@ -649,13 +649,25 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
             _add(t["prog_up"].format(gain=m["prog_up"], now=m["now"]))
             continue
         if m.get("cap_up"):                    # 자국 기술력이 올랐다 (PUBLIC)
-            # **배수도 누적도 아니고 이번 상승분이다** (8/23). 「1.174 배」 는 들어도 얼마나
-            # 좋아진 것인지 안 잡히고, 「당초보다 17%」 는 사건 줄에 누적을 싣는 것이라
-            # 「방금 무슨 일이 있었나」 와 어긋난다.
+            # **둘을 나란히 적는다** (8/25 · Eddie). 「이번 상승분」 만 있으면 계속 오르는
+            # 것처럼 읽힌다 — √ 라서 실제로는 1.77% → 0.14% 로 죽는다. 두 숫자가 한 줄에
+            # 있으면 줄어드는 쪽이 보인다.
             #
-            # **한 줄로 끝낸다.** 무엇이 좋아지는지(수입·진척 전환·관측 정확도)는 비용표의
-            # `inv_natl` 이 이미 말한다 — 이 줄은 오를 때마다 대화에 쌓인다.
-            _add(t["cap_up"].format(pct=m["cap_gain"]))
+            #     회  1  이번 1.77%  はじめから  1.77%
+            #     회 33  이번 0.14%  はじめから 10.17%   ← 여기서 시설 직접 투자가 낫다
+            #
+            # **`%` 를 기술력에 붙인다** (8/23 지시를 어긴 자리). 전에는 「同じ行動力で
+            # 出せる進捗が 0.72% 増えました」 였는데, 같은 화면의 앞 두 줄이
+            # 「進捗が 44 進みました」 다 — 세 번째가 「내 356 이 0.72% 늘었다」 로 읽힌다.
+            # 주어를 技術力 으로 통일하면 진척 어휘와 겹치지 않는다.
+            #
+            # **「これまで」 가 아니라 「はじめから」 다.** 「これまで N%」 는 학습 진척의
+            # 관용구다 (「目前 0%」) — 같은 말을 쓰면 「무언가의 N% 까지 왔다」 로 읽히고,
+            # 임계값을 향한 진척으로 읽으면 치명적이다.
+            #
+            # 누적은 **나라의 값**이라 남이 낸 것도 들어 있다. 주어가 「自国の技術力」 이라
+            # 거짓이 되지 않는다 — 「당신이 올린 만큼」 이라고 쓰면 거짓이다.
+            _add(t["cap_up"].format(pct=m["cap_gain"], tot=m["cap_total"]))
             continue
         if m.get("ballot"):                    # 採決 결과 (PUBLIC)
             b = m["ballot"]
