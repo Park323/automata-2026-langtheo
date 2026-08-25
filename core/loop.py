@@ -437,11 +437,17 @@ def run(cfg, rng: random.Random, procreate_age: int | None = PROCREATE_AGE) -> R
 
 def _dequeue_inbox(world: World, aid: str) -> list[dict]:
     """이 턴 도착 메시지를 큐에서 꺼내 msg_id 를 붙인다.
-    수신 슬롯 점유자가 바뀌었으면(수신자 사망·교체) 폐기한다 (spec 4.2 경계)."""
+    수신 슬롯 점유자가 바뀌었으면(수신자 사망·교체) 폐기한다 (spec 4.2 경계).
+
+    **`<=` 다** (#46). `==` 였을 때 그 해가 끝날 무렵 `deliver_turn = world.turn` 으로
+    들어오는 세 사건(유언 · 선물 · 採決 결과)이 통째로 사라졌다 — 큐 수거는 턴을 여는
+    자리에서 이미 끝났고, 다음 해에는 `== turn` 에 안 걸려 바로 아래 필터가 버렸다.
+    순차 라운드로빈(`_dequeue_inbox_pop`)은 처음부터 `<=` 였다. **두 경로가 같은 부등호를
+    쓰는 것이 요점이다.**"""
     current = world.agents.get(aid)
     out = []
     for e in world.inbox_queue:
-        if e["deliver_turn"] == world.turn and e["to"] == aid:
+        if e["deliver_turn"] <= world.turn and e["to"] == aid:
             if current and e.get("to_uid") is not None and e["to_uid"] != current.uid:
                 continue                     # recipient_dead → 폐기
             out.append(e["msg"])

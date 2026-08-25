@@ -164,6 +164,8 @@ def test_the_agent_turn_also_only_swallows_declared_failures(cfg):
     world = loop.init_world(cfg, itertools.count(1), random.Random(1))
     world.turn = 1
     a = world.agents["Asla1"]
+    a.ap = cfg.turn.action_points          # 실제 루프의 1단계(소득·AP 리셋)를 대신한다.
+                                           # 0 이면 `can_act` 가 먼저 막아 API 를 안 부른다 (#47)
     obs = prompts.render_observation(world, a, cfg, 48.0)
 
     class _Api:

@@ -195,7 +195,10 @@ def test_a_delivery_failure_reaches_only_the_sender(cfg, world):
     sink.messages.append({          # Asla2 는 fr 을 모르고 Miris2 는 ja 를 모른다
         "kind": "speak", "from": "Asla2", "from_country": "Asla", "from_lang": "ja",
         "to": "Miris2", "to_country": "Miris", "to_lang": "fr", "route": "original",
-        "text": "NOT_DELIVERED", "translate_instruction": None})
+        # **본문이 실제로 일본어여야 한다** (#44). 전달 판정이 `from_lang` 이 아니라
+        # 도착한 글의 언어를 보므로, 라틴 문자뿐인 「NOT_DELIVERED」 는 fr 로 판정되어
+        # Miris2 가 읽어 버린다 — 그건 이 테스트가 재려는 것이 아니다.
+        "text": "これは届きません", "translate_instruction": None})
     loop._settle_step(world, cfg, random.Random(0), sink,
                       StubClient([{"role": "assistant", "content": "x", "tool_calls": []}] * 3),
                       48.0, itertools.count(900), loop.RunResult(world=world), {}, [])

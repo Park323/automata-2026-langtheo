@@ -23,7 +23,10 @@ AI_LABEL = "[AI translation]"
 # 라고 되물었다. 우리 라벨이 거짓말을 한 것이고, 그 되물음이 **정확한 반응**이었다.
 DIRECT_LABEL = "[direct]"                  # 하위 호환 — 읽는 쪽 덕
 DIRECT_READ_LABEL = "[direct:read]"        # 내가 그 말을 읽는다
-DIRECT_WRITE_LABEL = "[direct:write]"      # 나는 못 읽지만 상대가 내 말을 다룬다
+# **`[direct:write]` 를 없앴다** (8/25 · #44). 「나는 못 읽지만 상대가 내 말을 다뤄서
+# 통했다」 는 8/17 허구의 라벨이었다. 전달 판정이 **도착한 글을 읽는가** 하나로 정리되면서
+# (`direct_works`) 이 상황은 일어날 수 없다 — 전 언어 조합 288 가지를 돌려 0건을 확인했다.
+# 절대 안 뜨는 문구를 세 언어에 남겨 두면 다음에 그것을 근거로 삼는다.
 
 
 # ── 길이 절단 (spec 5.3) — 원문에, 발신 언어 상한으로, 번역 전에 ──────────────
@@ -92,25 +95,34 @@ def can_read(recipient_known_langs, from_lang: str) -> bool:
 
 
 def direct_works(sender_known_langs, recipient_known_langs,
-                 from_lang: str, to_lang: str) -> tuple[bool, str]:
+                 from_lang: str, to_lang: str, body_lang: str | None = None) -> tuple[bool, str]:
     """원문 직통이 통하는가, 그리고 **누구의 학습 덕인가**.
 
-    학습은 **읽기와 쓰기 둘 다**다 (8/17 개정). 그래서 길이 둘이다.
+    **판정은 오직 하나다 — 도착한 글을 수신자가 읽는가.** 그리고 그것이 누구 덕인지만
+    두 갈래로 갈린다 (학습은 읽기와 쓰기 둘 다이므로, 8/17 개정).
 
-        수신자가 발신 언어를 안다  →  받는 쪽이 원문을 읽는다      "reader"
-        발신자가 수신 언어를 안다  →  보내는 쪽이 그 말로 쓴다     "writer"
+        도착한 글이 수신자의 국어다  →  발신자가 배워서 그 말로 썼다   "writer"
+        그 외에 읽을 수 있다         →  수신자가 그 말을 배웠다        "reader"
 
-    구현은 어느 쪽이든 **원문을 그대로 전달**한다. 모델이 multilingual 이라 그대로
-    이해한다 — 발신자에게 수신 언어로 다시 쓰게 만들면 프롬프트 언어 위생(모국어 강제)이
-    깨지고, 지표 7 의 발신 언어 사전도 못 쓰게 된다.
+    **기준은 `body_lang`(실제로 쓰인 말)이다** (#44). `from_lang`(발신자 모국어)으로
+    보면 제3의 언어로 쓴 글이 「상대가 내 말을 읽으니까」 로 전달된다 — 정작 도착한 글은
+    아무도 못 읽는 말이다.
 
-    전에는 "reader" 만 통했다. 그래서 **초기화로 심은 이중언어자가 받는 데만 쓸모가
-    있었고**, 자기가 아는 말의 나라에 보낼 때도 24원짜리 AI 를 타야 했다.
+    ⚠ **「발신자가 수신 언어를 안다」 만으로는 통하지 않는다** (8/25). 그 규칙은 8/17 에
+      들어왔고 「모델이 multilingual 이라 그대로 이해한다」 를 근거로 삼았다 — 원문을
+      모국어로 보내면서 통했다고 적는 허구였다. 8/22 에 경로별 언어 규칙이 들어오면서
+      그 근거가 사라졌다: 이제 **아는 말의 나라에는 그 말로 쓰라고 안내한다**
+      (`render_costs` 의 나라별 줄). 안내대로 쓰면 첫 갈래로 통하고, 어기면 통하지 않는다.
+      어긴 사실이 로그에 남는 것이 관측이다 — 본문 언어를 강제로 검사하지는 않는다.
+
+    그 규칙이 있던 이유(「이중언어자가 받는 데만 쓸모가 있었다」)는 그대로 해결된다.
+    아는 말로 쓰면 상대의 모국어이므로 **반드시** 통한다.
     """
-    if from_lang in recipient_known_langs:
-        return True, "reader"
-    if to_lang in sender_known_langs:
-        return True, "writer"
+    body = body_lang or from_lang
+    if body in recipient_known_langs:
+        # 누구 덕인지는 **그 글이 무슨 말인지**가 정한다. 상대의 국어면 발신자가 배워서
+        # 그 말로 쓴 것이고(writer), 아니면 상대가 그 말을 배운 것이다(reader).
+        return True, ("writer" if body == to_lang and body != from_lang else "reader")
     return False, ""
 
 
@@ -134,8 +146,13 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     text_sent, chars_cut = truncate(sent["text"], from_lang, cfg)
     kind = classify(sent["from_country"], sent["to_country"], sent.get("route"))
     reader = can_read(recipient_known_langs, from_lang)
+    # **판정보다 먼저 「이 글이 무슨 말인가」 를 정한다** (#44). 전에는 전달 여부를
+    # `from_lang`(발신자 모국어)으로만 보고 본문이 실제 무슨 말인지 안 봤다 — `original`
+    # 이 「다룰 수 있는 아무 말」 을 허용하므로, 제3의 언어로 쓰면 아무도 못 읽는 글이
+    # 전달되고 라벨이 「상대가 당신 말을 다뤄서 통했다」 는 거짓 사유를 댔다.
+    body_lang = detect_lang(text_sent, from_lang)
     direct, direct_by = direct_works(sender_known_langs, recipient_known_langs,
-                                     from_lang, to_lang)
+                                     from_lang, to_lang, body_lang)
 
     # spec 6.1 스키마 전체. text_delivered 가 없으면 소실률·생성률을 아예 못 낸다.
     meta = {
@@ -154,7 +171,7 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         # 통째로 "소실" 로 잡힌다 (지표 7).
         # **실제로 쓰인 말**이다 (8/22). `original` 은 발신자가 수신국 말로 쓸 수 있으므로
         # `from_lang` 으로 적으면 거짓이 된다 — 지표 7 이 다른 언어 사전으로 센다.
-        "delivered_lang": detect_lang(text_sent, from_lang),
+        "delivered_lang": body_lang,
         "translate_prompt": None, "logprob_mean": None,
     }
 
@@ -171,17 +188,10 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         if direct:
             meta["text_delivered"] = text_sent      # 원문 그대로 (지표 4d)
             # **라벨은 도착한 글의 실제 언어로 고른다** (8/22).
-            #
-            # 전에는 `direct_by` 로 골랐다 — 「쓰는 쪽 덕」 이면 「나는 못 읽지만 상대가 내
-            # 말을 다룬다」 를 붙였다. 그런데 이제 그 발신자가 **내 말로 쓸 수도 있다.**
-            # 그러면 나는 읽을 수 있는데 「못 읽는다」 고 적히고, 어제 고친 그 거짓말이
-            # 방향만 바꿔 되살아난다.
-            #
-            # 읽을 수 있으면 읽었다고 적고, 못 읽으면 왜 그래도 통했는지를 적는다.
-            lbl = (DIRECT_READ_LABEL
-                   if meta["delivered_lang"] in recipient_known_langs
-                   else DIRECT_WRITE_LABEL)
-            inbox = {"from": sent["from"], "label": lbl, "text": text_sent,
+            # **전달됐다면 읽을 수 있다.** `direct_works` 가 도착한 글을 읽는지로만
+            # 판정하므로 라벨은 하나다 (8/25 · #44). 전에는 둘이었고, 「못 읽지만 통했다」
+            # 쪽이 8/17 허구를 설명하는 자리였다.
+            inbox = {"from": sent["from"], "label": DIRECT_READ_LABEL, "text": text_sent,
                      "original": None}
             return {"kind": kind, "delivered": True, "inbox": inbox,
                     "sender_notice": None, "meta": meta}

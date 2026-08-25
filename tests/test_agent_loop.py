@@ -64,7 +64,12 @@ def test_speaking_stops_when_the_year_runs_out(cfg, world):
     calls = [tool_call("speak", str(i), to="Asla2", text="x") for i in range(n + 1)]
     script = [assistant_msg(*calls), assistant_msg(tool_call("end_turn", "z"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
-    oks = [r for r in _results(client) if "ok" in r]
+    # **도구 결과를 에이전트의 대화에서 읽는다.** `_results` 는 마지막 chat 호출의
+    # 스냅샷을 보는데, 이 턴은 다섯 번 말하고 AP 가 0 이 되어 **거기서 끝난다** —
+    # `can_act` 가 정직해진 뒤로(#47) `end_turn` 을 시키려고 한 번 더 부르지 않는다.
+    oks = [json.loads(m["content"]) for m in agent.convo if m.get("role") == "tool"]
+    oks = [r for r in oks if "ok" in r]
+    assert log["ended_by"] == "exhausted"      # 자원 소진으로 끝난다 — 빈 호출 없이
     assert sum(1 for r in oks if r["ok"]) == n
     # 「not enough AP」 → 「not enough action」. **에이전트에게 AP 는 없는 말이다** —
     # 관측·비용표가 「行動力 / 行动力 / action」 이라고 부른다. 그리고 남은 값을 알려준다.

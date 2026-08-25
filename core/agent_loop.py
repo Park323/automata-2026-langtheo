@@ -770,7 +770,11 @@ def can_act(agent, cfg, knob_ai: float) -> bool:
     # 참」 이었는데, 단위가 고정된 뒤로도 그 말이 남아 있었다.
     if agent.budget >= cfg.costs.unit and _afford(agent.ap, cfg.ap.unit):
         return True
-    return _afford(agent.ap, min(cfg.ap.memory_write, cfg.ap.vote))
+    # **`min(memory_write, vote)` 이었다** (#47). `ap.memory_write = 0.0` 이라 값이 늘 0 이
+    # 되어 **AP 가 0 이어도 참**이었고, 종료 조건 ②가 통째로 죽어 있었다. 게다가
+    # `memory_write` 는 압박선 아래에서 도구 목록에 아예 없는데 그 값을 공짜 행동으로
+    # 세고 있었다 — 열려 있을 때는 위에서 이미 참을 돌려준다.
+    return _afford(agent.ap, cfg.ap.vote)
 
 
 # ── 에이전트 한 턴 ────────────────────────────────────────────────────────────

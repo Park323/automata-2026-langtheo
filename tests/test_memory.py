@@ -175,6 +175,29 @@ def test_free_actions_keep_can_act_true(cfg, world):
     assert can_act(a, cfg, 48.0) is True
 
 
+def test_can_act_is_false_when_nothing_is_affordable(cfg, world):
+    """**`can_act` 가 항상 참이었다** (#47).
+
+    마지막 줄이 `_afford(ap, min(ap.memory_write, ap.vote))` 였고 `ap.memory_write = 0.0`
+    이라 값이 늘 0 이 되어 **AP 가 0 이어도 참**이었다. 게다가 `memory_write` 는 압박선
+    아래에서 도구 목록에 아예 없는데 그 값을 「공짜 행동」 으로 세고 있었다.
+
+    종료 조건 ②(자원 소진)가 그렇게 죽어 있었고, 라운드로빈은 할 수 있는 것이 없는
+    사람을 한 번 더 깨워 `end_turn` 만 시켰다 — API 호출 하나가 그대로 나간다.
+
+    위의 `test_free_actions_keep_can_act_true` 와 짝이다: **열려 있으면 참, 닫혀 있고
+    자원이 없으면 거짓.**
+    """
+    a = world.agents["Asla1"]
+    a.memory_open = False                      # 압박선 아래 — 기억은 목록에 없다
+    a.budget, a.ap = 0.0, 0.0
+    assert can_act(a, cfg, 48.0) is False
+    a.budget = 10_000.0                        # 돈이 넘쳐도 AP 가 0 이면 못 한다
+    assert can_act(a, cfg, 48.0) is False
+    a.ap = cfg.ap.vote                         # 採決일이면 표는 던질 수 있다
+    assert can_act(a, cfg, 48.0) is True
+
+
 def test_no_max_steps_constant():
     """임의 상한은 없다. 폭주 보험만 남는다."""
     import core.agent_loop as al

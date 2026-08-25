@@ -918,15 +918,20 @@ def test_cost_table_says_which_nations_are_guaranteed(cfg, world):
     a = world.agents["Ranoa1"]                 # 초기화로 fr 을 안다
     assert "fr" in a.known_langs
     obs = prompts.render_observation(world, a, cfg, 48.0)
-    sure = prompts.T[a.native_lang]["c_orig_sure"].format(nation="Miris")
-    risk = prompts.T[a.native_lang]["c_orig_risk"].format(nation="Asla")
+    # **무슨 말로 쓸지까지 적는다** (8/25 · #44) — 나라마다 길이 하나씩만 열린다
+    nm = prompts.LANG_NAME[a.native_lang]
+    sure = prompts.T[a.native_lang]["c_orig_sure"].format(nation="Miris", lang=nm["fr"])
+    risk = prompts.T[a.native_lang]["c_orig_risk"].format(nation="Asla", lang=nm["ja"])
     assert sure in obs and risk in obs
 
     mono = world.agents["Ranoa2"]              # 자기 말만 안다
     obs2 = prompts.render_observation(world, mono, cfg, 48.0)
-    assert prompts.T[mono.native_lang]["c_orig_sure"].format(nation="Miris") not in obs2
-    for cid in ("Asla", "Miris"):
-        assert prompts.T[mono.native_lang]["c_orig_risk"].format(nation=cid) in obs2
+    nm2 = prompts.LANG_NAME[mono.native_lang]
+    assert prompts.T[mono.native_lang]["c_orig_sure"].format(
+        nation="Miris", lang=nm2["fr"]) not in obs2
+    for cid, lg in (("Asla", "ja"), ("Miris", "fr")):
+        assert prompts.T[mono.native_lang]["c_orig_risk"].format(
+            nation=cid, lang=nm2[lg]) in obs2
 
 
 def test_the_guarantee_line_leaks_nothing_about_others(cfg, world):
