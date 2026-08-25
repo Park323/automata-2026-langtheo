@@ -463,18 +463,21 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             "national_capital": round(world.countries[agent.country].national_capital, 1),
         })
         # 전부 내가 몰랐던 것이다. "당신만의 것" 은 도구 설명에 이미 있다.
-        # **오차의 이름이 대상을 말해야 한다** (8/25). `typical_error`(해) 와
-        # `typical_error_pct`(임계) 였는데, 어느 쪽이 무엇에 붙는지 아무것도 말하지
-        # 않았다 — 12.5 가 해인지 25.0 이 해인지 옆 키에서 짐작할 뿐이었다.
+        # **오차의 크기를 안 알려준다** (8/25 · Eddie). 「±25%」 는 사실이지만 **전략**이다 —
+        # 읽은 에이전트는 「한 번은 못 믿는다, 다시 재거나 국가 투자를 하라」 를 받는다.
         #
-        # 원래는 `interceptor_typical_error_pct` 로 대상이 이름에 있었고, `bunker_needs`
-        # 를 넣으면서 줄이다가 그 결합을 잃었다.
+        # 없애면 잡음을 발견하는 길이 **서로 대조하는 것**뿐이 된다. 관측은 사람마다 다른
+        # 뽑기라(5해 실측: 5,439 ~ 18,816) 두 사람이 값을 나누면 어긋남이 보이고, 그
+        # 나눔은 말을 해야 한다 — 우리가 재려는 기제다.
+        #
+        # 「정확하지 않다」 는 사실은 도구 설명에 남는다. 그것까지 지우면 `inv_natl` 의
+        # 「observe_risk 의 정확도가 좋아진다」 가 존재를 안 알린 양의 개선을 약속하게 된다.
+        #
+        # `threshold_sigma` 는 우리 로그에 그대로 남으므로 사후 분석은 그대로다.
         return {"ok": True,
                 "years_until_impact": seen,
-                "years_typical_error": round(err, 1),
                 # 두 임계를 나란히 돌려준다 — 하나만 주면 그 하나가 설계가 미는 길이 된다
                 "interceptor_needs": thr_seen, "bunker_needs": bnk_seen,
-                "needs_typical_error_pct": round(rel * 100, 1),
                 "ap_left": round(agent.ap, 1)}, None
 
     if name == "propose_vote":
