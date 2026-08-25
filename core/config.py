@@ -185,6 +185,16 @@ class LLM:
     # 프로바이더 라우팅. OpenRouter 는 같은 모델을 여러 업체가 서빙하고 **가격이
     # 다르다.** {"order": [...]} 로 우선순위를, {"only": [...]} 로 고정한다.
     provider: dict | None = None
+    # **번역기는 따로 고정한다** (8/26 · Eddie). 에이전트 클라이언트만 `provider` 를
+    # 받고 번역기는 안 받고 있었다 — 375콜이 DeepInfra 107 · Mistral 93 · Parasail 21
+    # 로 흩어졌고 429 154건이 났다. 그런데 **429 보다 심각한 것은 양자화다**:
+    #
+    #     DeepInfra  fp8   ·  Parasail  bf16  ·  Mistral  unknown
+    #
+    # 번역 왜곡이 이 실험의 **종속변수**다 (지표 4c·4d·7). 그 왜곡을 만드는 기계가 런
+    # 중간에 세 번 바뀌면 파일럿에서 「3언어 분산 최소」 로 이 모델을 고른 근거가 이
+    # 런에 적용되지 않는다. 에이전트 쪽에는 그 논리를 적용해 놓고 번역기만 빠졌다.
+    translate_provider: dict | None = None
 
 
 @dataclass(frozen=True)

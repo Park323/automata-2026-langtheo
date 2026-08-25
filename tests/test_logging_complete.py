@@ -351,3 +351,36 @@ def test_the_config_snapshot_records_the_model_that_actually_ran(tmp_path):
     src = (run_io.ROOT / "scripts" / "smoke_3turns.py").read_text(encoding="utf-8")
     for k in ("agent_model", "translate_model"):
         assert f'raw["llm"]["{k}"] = {k}' in src, f"{k} 가 raw 로 되쓰이지 않는다"
+
+
+def test_the_translator_gets_its_own_provider_pin():
+    """**번역기만 업체 고정이 없었다** (8/26 · Eddie).
+
+    에이전트 클라이언트는 `provider=cfg.llm.provider` 를 받는데 번역기는 안 받았다.
+    `260826-002-ai010` 의 번역 375콜이 이렇게 흩어졌다:
+
+        DeepInfra 107 (fp8) · Mistral 93 (unknown) · Parasail 21 (bf16)
+
+    429 가 154건 났고 재시도로 244통 중 221통을 회수했지만 23통(9.4%)이 죽었다.
+    그런데 **429 보다 양자화가 심각하다** — 번역 왜곡이 이 실험의 종속변수다
+    (지표 4c·4d·7). 그 왜곡을 만드는 기계가 런 중간에 세 번 바뀌면, 파일럿에서
+    「3언어 분산 최소」 로 이 모델을 고른 근거가 그 런에 적용되지 않는다.
+
+    에이전트 모델 provenance 와 같은 병이다 — **손잡이 하나가 조용히 빠졌다.**
+    그래서 여기서도 값이 아니라 **배선을 구조로** 본다.
+    """
+    from core import config as cfgmod, run_io
+
+    cfg = cfgmod.load(str(run_io.ROOT / "configs" / "base.yaml"))
+    assert cfg.llm.translate_provider, "번역기 업체 고정이 config 에 없다"
+    # 폴백은 켠 채로 둔다 — 끄면 그 업체가 막힌 날 번역이 통째로 죽고,
+    # 그건 `translate_failed` 로 세계에 구멍을 낸다.
+    assert cfg.llm.translate_provider.get("allow_fallbacks") is True
+
+    src = (run_io.ROOT / "scripts" / "smoke_3turns.py").read_text(encoding="utf-8")
+    assert "provider=cfg.llm.translate_provider" in src, \
+        "러너가 번역기에 provider 를 안 넘긴다"
+    # 에이전트 쪽 것을 잘못 넘기지 않는다 — 둘은 다른 모델이라 업체 목록도 다르다
+    tr = src[src.index("translator = CountingClient("):]
+    tr = tr[:tr.index('"translate")')]
+    assert "provider=cfg.llm.provider" not in tr, "번역기에 에이전트용 업체 목록이 갔다"

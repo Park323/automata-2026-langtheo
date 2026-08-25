@@ -367,6 +367,19 @@ llm:
   provider:
     order: [GMICloud, Novita, AtlasCloud]
     allow_fallbacks: true
+  # **번역기는 따로, 그리고 더 좁게 고정한다** (8/26 · Eddie). 안 넘기고 있었더니
+  # 375콜이 세 업체로 흩어졌고(DeepInfra 107 · Mistral 93 · Parasail 21) 429 가 154건
+  # 났다. 재시도로 244통 중 221통을 회수했지만 23통(9.4%)이 죽었다.
+  #
+  # **429 보다 양자화가 문제다** — DeepInfra fp8 · Parasail bf16 · Mistral unknown.
+  # 번역 왜곡이 종속변수이므로 그 생성기가 런 중간에 바뀌면 안 된다.
+  #
+  # 우선순위는 양자화가 같은 쪽부터다. `allow_fallbacks` 는 켠다 — 끄면 그 업체가
+  # 막힌 날 번역이 통째로 죽고, 그건 `translate_failed` 로 세계에 구멍을 낸다.
+  # 섞인 것이 로그에 남으므로(`response.provider`) 사후에 셀 수 있다.
+  translate_provider:
+    order: [DeepInfra, Parasail, Mistral]
+    allow_fallbacks: true
 
 run:
   seed: 1

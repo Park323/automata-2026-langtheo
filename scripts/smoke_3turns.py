@@ -239,6 +239,9 @@ def main() -> None:
         OpenRouterClient(translate_model, api_key=key,
                          temperature=0.0 if det else 0.2,
                          max_tokens=cfg.llm.max_tokens,
+                         # **번역기도 업체를 고정한다** (8/26). 안 넘기면 매 호출 다른
+                         # 업체로 가고 양자화가 섞인다 — `core/config.py` 주석 참조.
+                         provider=cfg.llm.translate_provider,
                          seed=args.seed if det else None), "translate")
     if det:
         print("  [결정론] temperature 0 · seed 고정 — 버그 재현용입니다")
