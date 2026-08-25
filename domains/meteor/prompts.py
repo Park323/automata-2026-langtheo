@@ -136,8 +136,6 @@ T = {
                  "             observe_risk の精度も良くなる。国民全員に及ぶ",
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n"
                 "             （省くと自国）",
-        inv_build="  自国の interceptor に 100 を出すと、平均 {v:.0f} の進捗になります。\n"
-                  "  この量は国ごとに違います。",
         cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
         rtt="送ったメッセージは翌年に届きます。返事が来るのはさらにその翌年です。",
         rtt_same="送ったメッセージは、相手が次に動くときに届きます。同じ年のうちに返事が来ることもあります。",
@@ -213,8 +211,6 @@ T = {
         inv_natl="  national   提高本国的技术水平。投入设施时变成进度的效率、\n"
                  "             observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
-        inv_build="  给本国的 interceptor 投 100，平均会变成 {v:.0f} 的进度。\n"
-                  "  这个量因国而异。",
         cap="消息最多送达 {cap} 个字，超出部分不会送达。",
         rtt="你发出的消息在第二年送达。对方的回信要再过一年才会到。",
         rtt_same="你发出的消息，会在对方下次行动时送达。回信也可能在同一年内到来。",
@@ -296,8 +292,6 @@ T = {
                           "             s'améliorent, pour tous ses habitants",
         inv_fac="  facility   contribue à la progression d'une installation ; `to` nomme la nation —\n"
                           "             la vôtre ou une autre (sans `to`, la vôtre)",
-        inv_build="  Verser 100 à l'interceptor de votre nation donne en moyenne {v:.0f} de progression.\n"
-                  "  Cette quantité varie selon les nations.",
         cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
         rtt="Un message part et arrive l'année suivante ; une réponse n'arrive que l'année d'après.",
         rtt_same="Votre message arrive quand le destinataire agit la fois suivante ; une réponse peut venir dans la même année.",
@@ -791,14 +785,10 @@ def render_observation(world, agent, cfg, knob_ai: float,
         t["inv_well"], t["inv_natl"], t["inv_fac"],
         # **자국의 요격기 속도.** 나라마다 다르고 남의 것은 안 보인다 — 물어봐야 안다.
         # 이것이 「어디에 몰아줄 것인가」 를 대화로만 풀 수 있게 만든다.
-        # **100원당 기대 진척으로 적는다.** 「기준보다 +30%」 로 적어 봤더니 평균인 나라가
-        # 「+0%」 를 받았고, 무엇보다 보이지 않는 「기준」 을 알아야 읽히는 문장이었다.
-        # 100 당 몇인지는 그 자체로 뜻이 있고, 말로 옮기면 그대로 비교된다.
-        #
-        # 국가 기술력도 함께 담긴다 — 이 수는 자국의 **지금** 속도다.
-        t["inv_build"].format(
-            v=100 * cfg.facility.eff * world.countries[agent.country].multiplier(cfg)
-            * world.countries[agent.country].build_mult * cfg.world.success_prob),
+        # **자국 전환율 안내를 걷었다** (8/25 · Eddie). 「100 을 내면 평균 30」 을
+        # 적고 있었는데, 얼마씩 오르는지를 미리 알려줄 이유가 없다. 그 값은 **결과로**
+        # 온다: `fac_gain`(내 출자가 얼마를 올렸나) · `prog_up`(누적이 얼마가 됐나) ·
+        # `cap_up`(같은 행동력으로 몇 % 더 나오게 됐나). 해 보고 알아내는 것이 관측이다.
         # **한 나라에 한 해 들어갈 수 있는 액수에는 상한이 있다** (#45). 집행은 되는데
         # (`loop._settle_step` · `facility.cap_per_turn`) 프롬프트 어디에도 없었다.
         # 한 해에 한 나라로 들어올 수 있는 최대는 9명 × 5회 × 40 × 1.6 = 2,880 이라
