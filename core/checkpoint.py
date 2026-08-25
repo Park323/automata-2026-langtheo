@@ -24,7 +24,12 @@ from pathlib import Path
 
 from core.state import Agent, Country, World
 
-VERSION = 2   # 8/18: Agent.facility_invested 추가
+VERSION = 3   # 8/25: 돈 삭제 · Country.build_mult · Agent.income_mult 흡수
+#
+# **버전을 올려야 조용히 틀리지 않는다.** `Country(**v)` 는 없는 키를 기본값으로
+# 떨어뜨리므로, 8/23 이전 체크포인트를 이어받으면 `build_mult` 가 전부 1.0 이 되어
+# **국가 효율 순열이 사라진다** — 세계가 달라진 것을 아무도 모른다. `Agent` 쪽은
+# 지운 키(budget 등)가 남아 있어 TypeError 로 시끄럽게 죽지만, Country 는 아니었다.
 
 
 def _agent_to_json(a: Agent) -> dict:

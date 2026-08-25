@@ -7,6 +7,8 @@ condition is ambiguous).
 """
 from __future__ import annotations
 
+import copy
+
 
 def _fn(name: str, description: str, properties: dict, required: list[str],
         reasoning: bool = True) -> dict:
@@ -184,12 +186,53 @@ TOOLS_NO_MEM = _drop_memory(TOOLS)
 TOOLS_NO_REASONING_NO_MEM = _drop_memory(TOOLS_NO_REASONING)
 
 
-def tools_for(cfg, memory: bool = True) -> list[dict]:
+# ── AI 번역이 없는 세계 ───────────────────────────────────────────────────────
+#
+# **기준 조건이다** (8/25). 가설은 「AI 번역 비용이 **내려가면**」 이므로, 내려가기 전의
+# 세계가 있어야 그 변화를 잴 수 있다. 노브를 아주 비싸게 두는 것과는 다르다 — 비싸면
+# 에이전트가 그 선택지를 보고 값을 재지만, 없으면 **길이 둘뿐**이다: 배우거나, 내 말로
+# 보내고 상대가 읽어주길 걸거나.
+#
+# 노브 값을 한 해 AP 위로 올려 흉내내지 않는다. `asserts` 가 그것을 막고 있고, 막는 이유가
+# 「비싼 것과 없는 것이 구분되지 않는다」 다.
+def _drop_ai(tools: list[dict]) -> list[dict]:
+    """`speak` 의 route 에서 `ai` 를 뺀다. 없는 선택지는 설명도 하지 않는다."""
+    out = []
+    for t in tools:
+        t = copy.deepcopy(t)
+        if t["function"]["name"] == "speak":
+            pr = t["function"]["parameters"]["properties"]["route"]
+            pr["enum"] = [r for r in pr["enum"] if r != "ai"]
+            pr["description"] = (
+                "international only; ignored for a recipient in your own nation. "
+                "`original` sends your words untranslated. If you can handle the "
+                "recipient's national language it always lands, whatever they can "
+                "read. If you cannot, it lands only on someone who reads yours — "
+                "and you are not told beforehand whether they do")
+        out.append(t)
+    return out
+
+
+TOOLS_NO_AI = _drop_ai(TOOLS)
+TOOLS_NO_AI_NO_MEM = _drop_memory(TOOLS_NO_AI)
+TOOLS_NO_REASONING_NO_AI = _drop_ai(TOOLS_NO_REASONING)
+TOOLS_NO_REASONING_NO_AI_NO_MEM = _drop_memory(TOOLS_NO_REASONING_NO_AI)
+
+
+def tools_for(cfg, memory: bool = True, ai: bool = True) -> list[dict]:
     """모델에게 실어 보낼 도구 목록.
 
     `memory` 는 「기억을 쓸 수 있는 상태인가」 다 — 호출부가 `under_pressure()` 로 정한다.
+    `ai`   는 「이 세계에 AI 번역이 있는가」 다 — `knob_ai is not None` 이 그 뜻이다.
+
+    **여덟 벌을 미리 만들어 둔다.** 토큰 회계가 `id()` 로 캐시하므로 (`_TOOL_TOKENS_BY_ID`)
+    호출마다 새 리스트를 만들면 조회가 빗나가고 문맥 예산이 조용히 샌다.
     """
     reasoning = getattr(cfg.llm, "tool_reasoning", True)
     if reasoning:
-        return TOOLS if memory else TOOLS_NO_MEM
-    return TOOLS_NO_REASONING if memory else TOOLS_NO_REASONING_NO_MEM
+        if ai:
+            return TOOLS if memory else TOOLS_NO_MEM
+        return TOOLS_NO_AI if memory else TOOLS_NO_AI_NO_MEM
+    if ai:
+        return TOOLS_NO_REASONING if memory else TOOLS_NO_REASONING_NO_MEM
+    return TOOLS_NO_REASONING_NO_AI if memory else TOOLS_NO_REASONING_NO_AI_NO_MEM

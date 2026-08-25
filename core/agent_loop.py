@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 
 from core import messaging
 from core.llm import LLMCallError
+from core import tools as tools_mod
 from core.tools import (TOOLS, TOOL_NAMES, TOOLS_NO_MEM, TOOLS_NO_REASONING,
                         TOOLS_NO_REASONING_NO_MEM, tools_for)
 
@@ -405,6 +406,11 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": "you cannot send a message to yourself"}, None
         recipient = world.agents[to]
         kind = messaging.classify(agent.country, recipient.country, args.get("route"))
+        # **AI 가 없는 세계에서는 그 경로를 거부한다** (8/25). 목록에서 뺐지만 모델이
+        # 스키마를 어길 수 있고, 그때 `ap_cost` 가 None 을 곱해 죽거나 공짜가 된다.
+        if kind == "ai" and knob_ai is None:
+            return {"ok": False, "error":
+                    "there is no AI translation in this world; use `original`"}, None
         ap_cost = messaging.ap_cost(kind, cfg, knob_ai)   # ai 는 노브에 따라 오른다 (8/25)
         if not _afford(agent.ap, ap_cost):
             return {"ok": False, "error": f"not enough action; speak needs {ap_cost}, have {agent.ap:.2f}"}, None
@@ -570,11 +576,12 @@ _TOOL_TOKENS = tool_schema_tokens(TOOLS)
 _TOOL_TOKENS_NR = tool_schema_tokens(TOOLS_NO_REASONING)
 # **기억을 뺀 목록은 스키마도 작다.** `evict` 가 이 값으로 자리를 계산하므로, 큰 값을
 # 그대로 쓰면 있지도 않은 도구의 몫만큼 대화를 더 버린다.
-_TOOL_TOKENS_BY_ID = {id(TOOLS): _TOOL_TOKENS,
-                      id(TOOLS_NO_REASONING): _TOOL_TOKENS_NR,
-                      id(TOOLS_NO_MEM): tool_schema_tokens(TOOLS_NO_MEM),
-                      id(TOOLS_NO_REASONING_NO_MEM):
-                          tool_schema_tokens(TOOLS_NO_REASONING_NO_MEM)}
+# **여덟 벌을 다 등록한다** (8/25). AI 없는 세계가 생기면서 변종이 배가 됐다 — 하나라도
+# 빠지면 상수 폴백으로 떨어지고 문맥 예산이 조용히 샌다 (`fixed_tokens` 가 여기 기댄다).
+_TOOL_TOKENS_BY_ID = {id(t): tool_schema_tokens(t) for t in (
+    TOOLS, TOOLS_NO_REASONING, TOOLS_NO_MEM, TOOLS_NO_REASONING_NO_MEM,
+    tools_mod.TOOLS_NO_AI, tools_mod.TOOLS_NO_AI_NO_MEM,
+    tools_mod.TOOLS_NO_REASONING_NO_AI, tools_mod.TOOLS_NO_REASONING_NO_AI_NO_MEM)}
 
 
 def _wants_tool_reasoning(cfg) -> bool:
@@ -931,7 +938,7 @@ def run_agent_step(world, agent, cfg, client, sink: Sink, knob_ai: float,
     # **기억은 자리가 좁아진 뒤에만 목록에 오른다.** 압박 경고가 뜨는 그때 도구도 함께
     # 나타나므로, 경고가 곧 안내가 된다 (30해 실측에서 압박 전에 206번 불렸다).
     agent.memory_open = st.pressured        # 목록과 실행부가 같은 값을 본다
-    tool_list = tools_for(cfg, memory=agent.memory_open)
+    tool_list = tools_for(cfg, memory=agent.memory_open, ai=knob_ai is not None)
     tool_tokens = _tool_tokens(tool_list)
     return _agent_one_call(world, agent, cfg, client, sink, knob_ai,
                            system_prompt, tool_list, tool_tokens, st)
@@ -967,7 +974,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
     # 그 대신 **모델 자신의 사고를 reasonings 스트림에 넣는다** — 안 그러면
     # 지표 4(2단계 판정)가 읽을 근거가 통째로 사라진다.
     agent.memory_open = pressured
-    tool_list = tools_for(cfg, memory=agent.memory_open)
+    tool_list = tools_for(cfg, memory=agent.memory_open, ai=knob_ai is not None)
     tool_tokens = _tool_tokens(tool_list)
     error = None
     evicted = 0

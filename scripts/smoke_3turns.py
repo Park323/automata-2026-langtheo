@@ -95,6 +95,11 @@ def main() -> None:
                     help="**시뮬 길이**. 운석이 떨어지는 해(config 의 total_turns)와 다르다")
     ap.add_argument("--knob", type=float, default=None,
                     help="ai 발신의 AP (comm_intl_ai_ap 의 한 값). 기본: 최고값")
+    # **기준 조건** (8/25). 가설은 「AI 번역 비용이 **내려가면**」 이므로 내려가기 전의
+    # 세계가 있어야 그 변화를 잰다. 노브를 아주 비싸게 두는 것과 다르다 — 비싸면 그
+    # 선택지를 보고 값을 재지만, 없으면 길이 둘뿐이다: 배우거나, 내 말로 걸거나.
+    ap.add_argument("--no-ai", action="store_true",
+                    help="AI 번역이 없는 세계. route 에서 ai 를 빼고 비용표·SYS 에서도 지운다")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--agent-model", default=None)
     # **직접 부르기.** OpenRouter 를 거치지 않고 그 회사 엔드포인트로 간다.
@@ -174,7 +179,9 @@ def main() -> None:
     agent_key = key if args.backend == "openrouter" else key_for(args.backend)
     agent_model = args.agent_model or cfg.llm.agent_model
     translate_model = args.translate_model or cfg.llm.translate_model
-    knob = args.knob if args.knob is not None else max(cfg.knob.comm_intl_ai_ap)
+    knob = (None if args.no_ai
+            else args.knob if args.knob is not None
+            else max(cfg.knob.comm_intl_ai_ap))
     if args.reasoning_effort:                      # 실측 비교용 상단 우선
         raw["llm"]["reasoning"] = {"effort": args.reasoning_effort}
     if args.tool_reasoning:

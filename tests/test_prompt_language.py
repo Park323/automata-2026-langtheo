@@ -671,7 +671,9 @@ def test_the_route_decides_which_language_the_agent_may_write():
             "ja": ("日本語", "`ai`", "`original`"),
             "zh": ("中文", "`ai`", "`original`"),
             "fr": ("français", "`ai`", "`original`")}.items():
-        sysmsg = prompts.SYSTEM[lang]
+        # **경로 문장은 SYSTEM 본문에서 빠졌다** (8/25) — AI 유무로 갈리는 유일한 줄이라
+        # `{route_lang}` 로 두고 렌더 때 끼운다. 그러니 렌더한 뒤를 봐야 한다.
+        sysmsg = prompts.SYSTEM[lang].format(life=10, route_lang=prompts.ROUTE_LANG[lang])
         assert route_ai in sysmsg and route_orig in sysmsg, lang
         assert own in sysmsg, lang
         # **두 경로가 같은 문장 안에서 갈린다** — 한쪽만 적으면 갈렸다고 할 수 없다
@@ -683,6 +685,16 @@ def test_the_route_decides_which_language_the_agent_may_write():
     d = next(t["function"]["parameters"]["properties"]["text"]["description"]
              for t in tools.TOOLS if t["function"]["name"] == "speak")
     assert "`ai`" in d and "`original`" in d
+    # **AI 가 없는 세계** (8/25) — 경로가 하나뿐이고 그 사실이 SYS 와 스키마 둘 다에 있다
+    from core import tools as _t
+    for lang in ("ja", "zh", "fr"):
+        no_ai = prompts.SYSTEM[lang].format(life=10, route_lang=prompts.ROUTE_LANG_NO_AI[lang])
+        assert "`ai`" not in no_ai, lang
+        assert "`original`" in no_ai, lang
+    from core import config as _c
+    sp = next(x for x in _t.tools_for(_c.load("configs/base.yaml"), ai=False)
+              if x["function"]["name"] == "speak")
+    assert sp["function"]["parameters"]["properties"]["route"]["enum"] == ["original"]
     # **「아무 언어나」 를 없앴다** (8/25 · #44). 도구 설명은 정적이라 나라별 안내를
     # 담을 수 없으므로(목록이 모듈 상수) 관측을 가리킨다.
     assert "own language" in d and "the observation names for that destination" in d

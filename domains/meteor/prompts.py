@@ -50,7 +50,7 @@ SYSTEM = {
 何を建てるかがまだ決まっていない国には積むものがありません。そこへ出した分は進捗になりません。
 多くの人は {life:.0f} 歳ごろまでに亡くなります。
 一度に動かせる量は人によって違います。
-`ai` で送るときは必ず日本語で書いてください。`original` で送るときは、行き先ごとの案内にある言語で書いてください。自国内も日本語です。""",
+{route_lang}""",
     "zh": """你是即将经历以下事件的一个人。这颗行星上有国家，也有其他和你一样的人。
 过去曾有巨大的陨石坠落，所有生命就此灭绝。
 存在三个国家，各有自己的语言。起初你只会本国的语言，学会别国的语言后就能读也能写。
@@ -64,7 +64,7 @@ SYSTEM = {
 还没决定要建什么的国家没有可积累的东西。投到那里的钱不会变成进度。
 多数人在 {life:.0f} 岁前后离世。
 一次能动用的量因人而异。
-用 `ai` 发送时必须写中文。用 `original` 发送时，按各目的地的指引所写的语言来写。国内也用中文。""",
+{route_lang}""",
     "fr": """Vous êtes une personne qui vit ce qui suit. Sur cette planète il y a des nations, et d'autres personnes comme vous.
 Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
 Il existe trois nations, chacune avec sa propre langue. Au début vous ne maniez que celle de votre nation ; en apprendre une autre vous permet de la lire et de l'écrire.
@@ -78,7 +78,7 @@ Par exemple, si l'interceptor de la nation A est à moitié fait et celui de la 
 Une nation qui n'a pas encore décidé quoi bâtir n'a rien où accumuler ; ce qu'on y verse ne devient pas de la progression.
 La plupart des gens meurent vers {life:.0f} ans.
 La quantité qu'on déplace d'un coup varie d'une personne à l'autre.
-Quand vous envoyez par `ai`, écrivez en français. Quand vous envoyez en `original`, écrivez dans la langue indiquée pour cette destination. Dans votre nation, c'est le français.""",
+{route_lang}""",
 }
 
 # 산문만 번역한다. 도구 토큰은 영어 그대로 둔다.
@@ -89,6 +89,27 @@ LANG_NAME = {
     "ja": {"ja": "日本語", "zh": "中国語", "fr": "フランス語"},
     "zh": {"ja": "日语", "zh": "中文", "fr": "法语"},
     "fr": {"ja": "japonais", "zh": "chinois", "fr": "français"},
+}
+
+# **경로가 언어를 정한다** — 그리고 AI 가 없는 세계에서는 경로가 하나다 (8/25).
+#
+# SYSTEM 본문에서 빼낸 이유는 이 한 줄만 조건에 따라 갈리기 때문이다. 본문을 두 벌로
+# 두면 나머지가 갈라져 조용히 어긋난다 — 이 프로젝트에서 이미 겪은 부류다.
+ROUTE_LANG = {
+    "ja": "`ai` で送るときは必ず日本語で書いてください。`original` で送るときは、"
+          "行き先ごとの案内にある言語で書いてください。自国内も日本語です。",
+    "zh": "用 `ai` 发送时必须写中文。用 `original` 发送时，按各目的地的指引所写的语言来写。"
+          "国内也用中文。",
+    "fr": "Quand vous envoyez par `ai`, écrivez en français. Quand vous envoyez en "
+          "`original`, écrivez dans la langue indiquée pour cette destination. "
+          "Dans votre nation, c'est le français.",
+}
+ROUTE_LANG_NO_AI = {
+    "ja": "国際のメッセージは `original` だけです — 行き先ごとの案内にある言語で"
+          "書いてください。自国内も日本語です。",
+    "zh": "国际消息只有 `original` — 按各目的地的指引所写的语言来写。国内也用中文。",
+    "fr": "Les messages internationaux n'ont que `original` — écrivez dans la langue "
+          "indiquée pour cette destination. Dans votre nation, c'est le français.",
 }
 
 T = {
@@ -363,10 +384,14 @@ def system_for(agent, world=None, cfg=None, knob_ai: float | None = None,
     if cfg is None:
         raise TypeError("system_for 에는 cfg 가 필요합니다 — 규칙이 기대 수명을 적습니다 "
                         "(typical_lifespan). 값의 출처는 config 하나여야 합니다.")
-    txt = SYSTEM[agent.native_lang].format(life=typical_lifespan(cfg))
+    # **AI 가 없으면 경로가 하나다** (8/25). `knob_ai is None` 이 그 뜻이다.
+    rl = (ROUTE_LANG if knob_ai is not None else ROUTE_LANG_NO_AI)[agent.native_lang]
+    txt = SYSTEM[agent.native_lang].format(life=typical_lifespan(cfg), route_lang=rl)
     if world is None:
         return txt
-    return txt + "\n\n" + render_observation(world, agent, cfg, knob_ai or 0.0,
+    # **`or 0.0` 을 쓰지 않는다** (8/25). None 은 「AI 가 없다」 이고 0.0 은 「공짜」 다 —
+    # 뭉개면 관측이 「ai 발신 0.00 AP」 로 찍혀 없는 선택지를 공짜로 광고한다.
+    return txt + "\n\n" + render_observation(world, agent, cfg, knob_ai,
                                              same_year=same_year)
 
 
@@ -444,9 +469,10 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
         # 자기 언어 능력에서 나오는 사실이라 타국 사정을 흘리지 않는다.
         key = "c_orig_sure" if c.lang in agent.known_langs else "c_orig_risk"
         lines.append(t[key].format(nation=c.id, lang=LANG_NAME[agent.native_lang][c.lang]))
-    lines += [
-             # **노브가 여기 있다.** ai 발신의 AP 가 이번 런의 실험 변수다 (8/25).
-             row(t["c_ai"], knob_ai)]
+    # **노브가 여기 있다.** ai 발신의 AP 가 이번 런의 실험 변수다 (8/25).
+    # `None` 이면 그 세계에 AI 가 없다 — 없는 도구를 설명하지 않는다.
+    if knob_ai is not None:
+        lines.append(row(t["c_ai"], knob_ai))
     for c in world.countries.values():
         # **이미 아는 말은 배울 표에 올리지 않는다.** 올려 두었더니 3해 실측에서 `learn`
         # 이 14번 거절당했고 (`you already read Ranoa's language`), 한 에이전트는 메모에
