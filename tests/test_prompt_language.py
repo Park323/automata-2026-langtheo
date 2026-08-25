@@ -6,9 +6,14 @@
      이 세계에 한국어는 존재하지 않는다. 개발 언어가 새어 들어가면
      에이전트가 한국어로 답하기 시작하고(실측된 적 있다) 채점이 통째로 깨진다.
 
-  ② 에이전트의 산문은 **자기 모국어 하나**로만 되어 있어야 한다.
+  ② **프롬프트의** 산문은 그 에이전트의 모국어 하나로만 되어 있어야 한다.
      ja 프롬프트에 가나가 없으면 그건 일본어가 아니라 한자만 쓴 것이고,
      zh 프롬프트에 가나가 있으면 일본어가 섞인 것이다.
+
+     **에이전트가 쓰는 말은 경로가 정한다** (8/22). `ai` 는 모국어여야 하고 — 거기가
+     번역 손실을 재는 채널이라 입력 언어가 흔들리면 지표 7 이 죽는다 — `original` 은
+     아는 말 아무거나 된다. 번역이 없으니 잴 손실도 없고, 「발신자가 수신 언어를 안다 →
+     통한다」 가 비로소 사실이 된다.
 
 도구 이름·인자 토큰(interceptor, wellness …)과 도구 스키마·도구 결과는 영어다.
 그건 기계 표면이라 의도된 혼용이며, 산문 언어와 구분해서 검사한다.
@@ -101,7 +106,7 @@ def test_tool_tokens_stay_english(world_cfg):
         a = world.agents[aid]
         obs = prompts.render_observation(world, a, cfg, 48.0, [])
         for token in ("wellness", "national", "facility", "propose_vote",
-                      "invest", "procreate"):
+                      "invest", "give"):
             assert token in obs, f"{a.native_lang} 관측에 토큰 '{token}' 이 없다"
 
 
@@ -255,15 +260,17 @@ def test_no_line_claims_wellness_is_free_or_flat(cfg=None):
 def test_the_cost_table_shows_learning_as_something_you_pay_into():
     """**진척 줄이 `done > 0` 일 때만 나와서 표가 일시불처럼 보였다.**
 
-        Ranoa の言語を学ぶ    600   1        ← 600 과 「한 해」
+        Ranoa の言語を学ぶ    600   1        ← 총액과 「한 해」
 
     분할 납부는 도구 설명에만 있었다. 그런데 에이전트가 먼저 읽는 것은 표다 — 예산 100 을
     든 사람이 저 줄을 보면 **손도 못 댈 값**으로 읽는다. 실측에서 학습 시도가 거의 0 이었다.
 
     두 곳을 고쳤다.
-      ① 진척 줄을 **언제나** 적는다. 「0 / 600」 이면 쌓인다는 것이 숫자의 모양으로 보인다.
-      ② AP 를 `額÷600` 으로 적는다 — invest 와 같은 꼴. 전에는 눈금을 끝까지 내는 AP 라
-         그냥 `1` 이었고, 100 을 넣으려는 사람이 그것을 「한 해를 통째로」 로 읽는다.
+      ① 진척 줄을 **언제나** 적는다. 「0 / 200」 이면 쌓인다는 것이 숫자의 모양으로 보인다.
+      ② 비용 칸은 **한 번의 값**(20 · 0.1)이다. 총액은 진척 줄이 말한다.
+
+    **정가·할인가를 여기 적지 않는다** — 8/20 에 L 을 600 에서 200 으로 내리고 할인을
+    정액으로 바꿨을 때, 박아 둔 600·300 이 다섯 파일에서 같이 깨졌다.
     """
     import itertools
     import random
@@ -271,28 +278,30 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
     from core import config, loop
     from domains.meteor import prompts
     cfg = config.load("configs/base.yaml")
+    L = cfg.costs.learn_base
     world = loop.init_world(cfg, itertools.count(1), random.Random(1))
     world.turn = 1
-    for aid, marks in (("Asla2", ("0 / 300", "0 / 600")),
-                       ("Ranoa1", ("0 / 600",)),
-                       ("Miris1", ("0 / 600",))):
+    # **필요액은 어느 말이든 같다** (8/22) — 다른 것은 회당 수확이다.
+    for aid, marks in (("Asla2", (f"0 / {L:.0f}",)),
+                       ("Ranoa1", (f"0 / {L:.0f}",)),
+                       ("Miris1", (f"0 / {L:.0f}",))):
         agent = world.agents[aid]
         agent.lang_progress = {}
         obs = prompts.system_for(agent, world, cfg, 48.0)
         for m in marks:
             assert m in obs, (aid, m)
-        # **비용 칸은 한 번의 값이다.** 총액(600)이 비용 칸에 있으면 「한 번에 600 이
-        # 나간다」 로 읽힌다 — 그 숫자는 바로 아래 진척 줄이 말한다.
+        # **비용 칸은 한 번의 값이다.** 총액이 비용 칸에 있으면 「한 번에 그만큼 나간다」
+        # 로 읽힌다 — 그 숫자는 바로 아래 진척 줄이 말한다.
         learn_lines = [l for l in obs.splitlines()
                        if any(k in l for k in ("の言語を学ぶ", "学习 ", "apprendre la langue de"))]
         assert learn_lines
         for l in learn_lines:
-            assert f"{cfg.costs.unit:g}" in l and "600" not in l, l
+            assert f"{cfg.costs.unit:g}" in l and f"{L:.0f}" not in l, l
 
     # 낸 것이 있으면 그대로 보인다
     a = world.agents["Asla2"]
-    a.lang_progress = {"zh": 150.0}
-    assert "150 / 300" in prompts.system_for(a, world, cfg, 48.0)
+    a.lang_progress = {"zh": 100.0}
+    assert f"100 / {L:.0f}" in prompts.system_for(a, world, cfg, 48.0)
 
 
 def test_the_observation_says_money_carries_over():
@@ -311,28 +320,38 @@ def test_the_observation_says_money_carries_over():
 
 
 def test_learn_and_invest_share_one_unit():
-    """learn 도 invest 도 **한 번에 같은 돈·같은 AP** 다. 규칙이 여럿이면 문구가 갈리고,
-    실제로 「wellness は無料」 라는 거짓이 그렇게 남았다."""
+    """learn 도 invest 도 **한 번에 같은 AP** 다. 규칙이 여럿이면 문구가 갈리고, 실제로
+    「wellness は無料」 라는 거짓이 그렇게 남았다.
+
+    **돈은 8/22 부터 갈린다.** invest 액수가 사람마다 다르고(`invest_mult`), 학습은 그
+    배수를 안 탄다 — 학습 눈금은 `x̂` 를 재는 자이므로 사람마다 달라지면 그 자가 흔들린다.
+    그래서 「같은 AP · 같은 규칙」 은 그대로고, 액수만 개체에 따라 다르다.
+    """
     import itertools
     import random
 
     from core import config, loop
     from domains.meteor import prompts
     c = config.load("configs/base.yaml")
-    # 금액별 AP 를 계산하던 값들은 없어졌다
     for gone in ("learn_full", "invest_wellness", "unit_ap"):
         assert not hasattr(c.ap, gone) or gone == "unit_ap"
     assert not hasattr(c.facility, "invest_per_ap")
 
     world = loop.init_world(c, itertools.count(1), random.Random(1))
     world.turn = 1
-    obs = prompts.system_for(world.agents["Asla2"], world, c, 48.0)
+    a = world.agents["Asla2"]
+    obs = prompts.system_for(a, world, c, 48.0)
     rows = [l for l in obs.splitlines()
             if "の言語を学ぶ" in l or l.startswith("  invest ")]   # 헤더는 들여쓰기가 없다
     assert len(rows) == 3                       # 학습 둘 + invest 하나
-    for l in rows:                              # 셋이 같은 값을 적는다
-        assert f"{c.costs.unit:g}" in l and f"{c.ap.unit:g}" in l
-
+    for l in rows:                              # 셋이 같은 AP 를 쓴다
+        assert f"{c.ap.unit:g}" in l, l
+    # 학습은 정가, invest 는 내 배수
+    learn_rows = [l for l in rows if "の言語を学ぶ" in l]
+    inv_row = next(l for l in rows if l.startswith("  invest "))
+    for l in learn_rows:
+        assert f"{c.costs.unit:g}" in l, l
+    assert f"{c.costs.unit * a.invest_mult:g}" in inv_row, inv_row
 
 def test_the_observation_states_no_message_cap():
     """**「메시지는 1년에 3건까지」 는 규칙이 아니었고, 참도 아니었다.**
@@ -406,9 +425,13 @@ def test_system_states_the_typical_lifespan():
 
     from core import loop
     world = loop.init_world(c, itertools.count(1), random.Random(1))
-    marks = {"ja": f"だいたい {life:.0f} 年ほど生きます",
-             "zh": f"大体活 {life:.0f} 年左右",
-             "fr": f"en général environ {life:.0f} ans"}
+    # **「16 년 더」 로 읽히면 안 된다** (8/21). 「だいたい 16 年ほど生きます」 를 모델들이
+    # 남은 수명으로 읽었다 — 16세 에이전트가 "私の寿命はあと60年ほど" 라고 계산하고,
+    # 「죽을 때가 가까워지면 procreate 하겠다」 는 조건이 영원히 충족되지 않았다.
+    # 30해에 procreate 가 1건이었던 이유다. **나이에 붙여 적는다.**
+    marks = {"ja": f"{life:.0f} 歳ごろまでに亡くなります",
+             "zh": f"{life:.0f} 岁前后离世",
+             "fr": f"meurent vers {life:.0f} ans"}
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
         txt = prompts.system_for(a, None, c)
@@ -465,7 +488,9 @@ def test_no_error_message_says_turn():
     c = config.load("configs/base.yaml")
     world = loop.init_world(c, itertools.count(1), random.Random(1))
     world.turn = 10
-    world.countries["Ranoa"].proposal = {"by": "Ranoa1", "opened_turn": 10, "vote_turn": 14}
+    ballot = 10 + loop.VOTE_DELAY
+    world.countries["Ranoa"].proposal = {"by": "Ranoa1", "opened_turn": 10,
+                                         "vote_turn": ballot}
 
     a = world.agents["Ranoa2"]; a.ap, a.budget = 1.0, 100.0
     for name, args in (("propose_vote", {"reasoning": "r"}),
@@ -473,7 +498,7 @@ def test_no_error_message_says_turn():
         r, _ = execute_tool(name, args, world, a, c, Sink(), 48.0)
         assert not r["ok"], name
         assert "turn" not in r["error"], (name, r["error"])
-        assert str(FIRST_YEAR + 14 - 1) in r["error"], (name, r["error"])
+        assert str(FIRST_YEAR + ballot - 1) in r["error"], (name, r["error"])
 
     # 그물을 넓힌다 — 소스의 error 문자열에 「turn」 이 다시 들어오면 잡는다
     src = pathlib.Path("core/agent_loop.py").read_text(encoding="utf-8")
@@ -507,3 +532,160 @@ def test_the_inbox_shows_no_message_ids():
         assert "MARK" in out and "Ranoa1" in out
         for n in ("[7]", "[8]", "[9]", "7", "8", "9"):
             assert n not in out, (lang, n, out)
+
+
+def test_nothing_tells_the_agent_to_repeat_an_action():
+    """**「더 넣고 싶으면 같은 행동을 다시 하라」 는 적지 않는다.**
+
+    invest·learn 은 금액을 인자로 받지 않고 한 번에 20 씩 나간다. 더 넣는 방법은 도구를
+    또 부르는 것뿐인데, 그 말을 프롬프트에 적으면 **사실이 아니라 지시**가 된다 —
+    「반복하라」 를 읽은 에이전트는 반복이 최적인지 따지지 않고 반복한다.
+
+    적지 않아도 표의 모양이 말한다: 비용 칸은 `20 · 0.1`, 바로 아래는 `0 / 200`. 열 배
+    차이가 「한 번으로는 안 된다」 를 숫자로 말한다. 3해 실측에서 **27 에이전트-해 중
+    22 건**이 같은 도구를 그 해에 두 번 이상 불렀다 — 아무도 알려주지 않았다.
+
+    남기는 말은 하나뿐이다: 「예산과 행동력이 허락하는 한 여러 행동을 할 수 있다」.
+    그건 반복이 아니라 **한 해에 여러 번 움직일 수 있다는 사실**이다.
+    """
+    from core import config, tools
+    from domains.meteor import prompts
+    cfg = config.load("configs/base.yaml")
+    STALE = ("繰り返", "もう一度", "何度でも", "反复", "重复", "再来一次",
+             "répétez", "à nouveau", "autant de fois")
+    blobs = [b for t in prompts.T.values() for b in (str(v) for v in t.values())]
+    blobs += list(prompts.SYSTEM.values())
+    blobs += [t["function"]["description"] for t in tools.TOOLS]
+    for b in blobs:
+        for w in STALE:
+            assert w not in b, (w, b[:120])
+
+    # 비용 칸(한 번)과 총액이 **둘 다** 보여야 한다 — 그 차이가 함의를 만든다
+    import itertools
+    import random
+    from core import loop
+    world = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    world.turn = 1
+    obs = prompts.system_for(world.agents["Miris1"], world, cfg, 48.0)
+    lines = obs.splitlines()
+    i = next(n for n, l in enumerate(lines) if "apprendre la langue de" in l)
+    assert f"{cfg.costs.unit:g}" in lines[i]                     # 한 번의 값
+    assert f"/ {cfg.costs.learn_base:.0f}" in lines[i + 1]       # 총액
+
+
+def test_the_year_and_the_steps_inside_it_are_explained():
+    """**한 해와 그 안의 手番을 모델들이 섞고 있었다.**
+
+    순차 라운드로빈은 **스텝 단위**로 돈다 (`run_turn_roundrobin`): 한 사람이 한 응답을
+    내면 다음 사람으로 넘어가고, AP 가 남은 사람끼리 다시 돈다. 그러니
+
+        한 응답에 여러 도구  →  그 전부가 남들보다 먼저 일어난다
+        나눠서 부르면        →  그 사이에 남들이 움직이고, 그 결과가 내 다음 차례에 보인다
+
+    이 구조가 프롬프트에 **한 줄도 없었다.** 그 결과 실측에서
+      · 매 스텝 AP 산수를 처음부터 다시 했고 (gemma 는 그 재계산이 상한을 먹어 30% 잘림)
+      · 採決일과 스텝 사이에 도착한 메시지를 놓쳤다
+
+    **사실만 적는다.** 한 응답에 몰아 넣는 것이 유리한지 나눠 부르는 것이 유리한지는
+    적지 않는다 — 그건 전략이고, 적으면 지시가 된다.
+    """
+    from core import config
+    from domains.meteor import prompts
+    cfg = config.load("configs/base.yaml")
+
+    for lang in ("ja", "zh", "fr"):
+        s = prompts.T[lang]["steps"]
+        assert s and "\n" in s, lang                      # 세 사실을 줄로 나눈다
+        assert len(s.splitlines()) >= 3, lang
+
+    # **유리·불리를 말하지 않는다.** 이런 말이 들어오면 사실이 아니라 조언이 된다.
+    ADVICE = ("有利", "不利", "べきです", "したほうが", "应该", "最好", "建议",
+              "vous devriez", "il vaut mieux", "conseill")
+    for lang in ("ja", "zh", "fr"):
+        s = prompts.T[lang]["steps"]
+        for w in ADVICE:
+            assert w not in s, (lang, w)
+
+    # 그리고 실제로 관측에 실린다
+    import itertools
+    import random
+    from core import loop
+    world = loop.init_world(cfg, itertools.count(1), random.Random(1))
+    world.turn = 1
+    for aid, mark in (("Asla1", "行動力が残っている間"),
+                      ("Ranoa1", "只要还有行动力"),
+                      ("Miris1", "l'année n'est pas terminée")):
+        obs = prompts.system_for(world.agents[aid], world, cfg, 48.0)
+        assert mark in obs, aid
+
+
+def test_the_route_decides_which_language_the_agent_may_write():
+    """**경로가 언어를 정한다** (8/22).
+
+    실측에서 zh 에이전트가 `ai` 로 **일본어**를 보냈다. 번역기에 이미 도착 언어를 넣는
+    셈이라, `src_lang → dst_lang` 손실을 재는 지표 7 이 무의미해진다.
+
+        ai        모국어로 써야 한다 — 여기가 측정 채널이다
+        original  아는 말 아무거나 — 번역이 없으니 잴 손실이 없고, 그래야
+                  `direct_works()` 의 「발신자가 수신 언어를 안다 → 통한다」 가 사실이 된다
+
+    SYSTEM 이 그 둘을 **갈라서** 말해야 한다. 「반드시 모국어」 만 적으면 `original` 에서
+    상대국 말을 쓸 수 있다는 것이 전달되지 않고, 아무 말도 안 적으면 `ai` 가 오염된다.
+    """
+    from domains.meteor import prompts
+    for lang, (own, route_ai, route_orig) in {
+            "ja": ("日本語", "`ai`", "`original`"),
+            "zh": ("中文", "`ai`", "`original`"),
+            "fr": ("français", "`ai`", "`original`")}.items():
+        sysmsg = prompts.SYSTEM[lang]
+        assert route_ai in sysmsg and route_orig in sysmsg, lang
+        assert own in sysmsg, lang
+        # **두 경로가 같은 문장 안에서 갈린다** — 한쪽만 적으면 갈렸다고 할 수 없다
+        line = next(l for l in sysmsg.splitlines() if "`ai`" in l)
+        assert "`original`" in line, lang
+
+    # 도구 설명도 같은 것을 말한다 (관측과 스키마가 어긋나면 무엇을 믿을지 알 수 없다)
+    from core import tools
+    d = next(t["function"]["parameters"]["properties"]["text"]["description"]
+             for t in tools.TOOLS if t["function"]["name"] == "speak")
+    assert "`ai`" in d and "`original`" in d
+    assert "own language" in d and "any language you can handle" in d
+
+
+def test_the_fact_that_people_differ_is_stated_but_not_the_numbers():
+    """**안 적으면 이 기제가 죽는다.**
+
+    남의 소득·처리량은 관측에 없고, 물어보려면 「다를 수 있다」 를 먼저 의심해야 한다.
+    근거가 없으면 「모두 나와 같겠지」 가 합리적 기본값이고, 그러면 대화가 시작되지 않는다.
+
+    이 프로젝트에서 같은 부류를 여러 번 겪었다 — 진척 합산 불가는 예시를 못 박고 나서야
+    붙었고, 경로별 보장 여부는 나라별로 적어야 했고(자기가 아는 말의 나라에 24원짜리
+    `ai` 를 6번 썼다), `give` 는 도구가 있는데 0건이었다.
+
+    **사실만 적는다.** 단계값·평균·「그러니 교환하라」 는 적지 않는다 — 그건 전략이고,
+    적으면 지시가 된다.
+    """
+    from core import config
+    from domains.meteor import prompts
+    cfg = config.load("configs/base.yaml")
+    marks = {"ja": ("人によって違います", "他人の分は見えません"),
+             "zh": ("因人而异", "别人的数值你看不到"),
+             "fr": ("varient d'une personne à l'autre", "ne vous sont pas visibles")}
+    for lang, (differ, hidden) in marks.items():
+        sysmsg = prompts.SYSTEM[lang]
+        assert differ in sysmsg, lang        # 다르다는 사실
+        assert hidden in sysmsg, lang        # 남의 것은 안 보인다는 사실
+
+    # **숫자는 적지 않는다** — 단계값도, 평균도
+    for lang in ("ja", "zh", "fr"):
+        blob = prompts.SYSTEM[lang]
+        for v in cfg.income.spread:
+            if v != 1.0:
+                assert f"{v}" not in blob, (lang, v)
+
+    # **「그러니 ~하라」 도 적지 않는다**
+    ADVICE = ("交換", "訊いて", "聞いて", "べきです", "交换", "应该", "问一问",
+              "échangez", "demandez", "vous devriez")
+    for lang in ("ja", "zh", "fr"):
+        for w in ADVICE:
+            assert w not in prompts.SYSTEM[lang], (lang, w)

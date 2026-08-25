@@ -15,6 +15,17 @@ from core.llm import StubClient, assistant_msg, tool_call
 from domains.meteor import prompts
 
 
+# **인구가 늘어난다** (8/21). `bear_child` 는 부모를 죽이지 않으므로 초기 9명 말고도
+# 사람이 생긴다 — 초기 id 로만 만든 클라이언트 사전은 새 사람에게서 KeyError 를 낸다.
+# 없는 id 는 즉시 끝내는 스텁으로 채운다.
+def _client_for(clients, script_end):
+    def get(aid):
+        if aid not in clients:
+            clients[aid] = StubClient([script_end] * 4)
+        return clients[aid]
+    return get
+
+
 @pytest.fixture
 def cfg():
     return config.load("configs/base.yaml")
@@ -32,7 +43,7 @@ def _run_with_writer(cfg, tmp_path, turns=2):
                for a in ids}
     tr = StubClient([{"role": "assistant", "content": "陨石", "tool_calls": []}] * 40,
                     recorder=w.recorder(kind="translate"))
-    res = loop.run_agentic(cfg, random.Random(1), lambda a: clients[a], tr, 48.0,
+    res = loop.run_agentic(cfg, random.Random(1), _client_for(clients, assistant_msg(tool_call("end_turn", "z", reasoning="r"))), tr, 48.0,
                            prompts.render_turn_open, prompts.system_for,
                            parallel=False, on_turn_end=w.on_turn_end)
     w.close({"final": res.final, "deaths": res.deaths})

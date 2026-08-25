@@ -26,3 +26,6 @@ scratch/
 *.scratch
 logs/
 runs/
+
+# 8/21 에 1.1MB 짜리 Archive.zip 이 실수로 커밋에 실려 스택 전체를 타고 왔다 (2f49bfd).
+*.zip

@@ -4,6 +4,7 @@ from __future__ import annotations
 import itertools
 import json
 import random
+import re
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,17 @@ from domains.meteor import prompts
 
 BASE = Path(__file__).resolve().parent.parent / "configs" / "base.yaml"
 IDS = [f"{n}{i}" for n in ("Asla", "Ranoa", "Miris") for i in (1, 2, 3)]
+
+
+# **인구가 늘어난다** (8/21). `bear_child` 는 부모를 죽이지 않으므로 초기 9명 말고도
+# 사람이 생긴다 — 초기 id 로만 만든 클라이언트 사전은 새 사람에게서 KeyError 를 낸다.
+# 없는 id 는 즉시 끝내는 스텁으로 채운다.
+def _client_for(clients, script_end):
+    def get(aid):
+        if aid not in clients:
+            clients[aid] = StubClient([script_end] * 4)
+        return clients[aid]
+    return get
 
 
 def _cfg(turns=2):
@@ -43,7 +55,8 @@ def _run(cfg, clients, translator=None, knob_ai=48, seed=1, parallel=True, seque
 
     return run_agentic(cfg, random.Random(seed), client_for, translator, knob_ai,
                        prompts.render_turn_open, prompts.system_for, parallel=parallel,
-                       sequential=sequential)
+                       sequential=sequential, render_events=prompts.render_events,
+                       render_arrivals=prompts.render_arrivals)
 
 
 # ── #5 도착 지연 ─────────────────────────────────────────────────────────────
@@ -165,7 +178,7 @@ def test_roundrobin_same_turn_delivery():
         "text": "HELLO_SAME_TURN", "translate_instruction": None})
     _settle_step(world, cfg, random.Random(1), sink,
                  StubClient([{"role": "assistant", "content": "x", "tool_calls": []}] * 5),
-                 48, itertools.count(1000), RunResult(world=world), {}, [], [])
+                 48, itertools.count(1000), RunResult(world=world), {}, [])
     got = _dequeue_inbox_pop(world, "Asla2")
     assert "HELLO_SAME_TURN" in str(got)                    # 같은 턴에 도착
     assert _dequeue_inbox_pop(world, "Asla2") == []         # 두 번 안 옴 (제거됨)
@@ -181,7 +194,7 @@ def test_state_lives_in_system_and_never_piles_up_in_the_conversation():
     end = assistant_msg(tool_call("end_turn", "e", reasoning="r"))
     ids = [f"{c}{i}" for c in ("Asla", "Ranoa", "Miris") for i in (1, 2, 3)]
     clients = {a: StubClient([end] * 4) for a in ids}
-    res = run_agentic(cfg, random.Random(1), lambda a: clients[a],
+    res = run_agentic(cfg, random.Random(1), _client_for(clients, assistant_msg(tool_call("end_turn", "z", reasoning="r"))),
                       StubClient([{"role": "assistant", "content": "t",
                                    "tool_calls": []}] * 30),
                       48.0, prompts.render_turn_open, prompts.system_for,
@@ -207,7 +220,7 @@ def test_arrived_messages_stay_in_the_conversation():
     a = world.agents["Asla1"]
     box = [{"msg_id": 7, "from": "Ranoa1", "label": "[AI translation]",
             "text": "MARK_ARRIVED", "original": None}]
-    txt = prompts.render_turn_open(world, a, cfg, 48.0, box)
+    txt = prompts.render_arrivals(a, box)
     assert "MARK_ARRIVED" in txt and "Ranoa1" in txt
     # 그리고 관측(system)에는 없다 — 두 군데 있으면 어긋날 수 있다
     assert "MARK_ARRIVED" not in prompts.system_for(a, world, cfg, 48.0)
@@ -231,14 +244,15 @@ def test_an_empty_inbox_says_nothing_at_all():
     world = init_world(cfg, itertools.count(1))
     world.turn = 3
     a = world.agents["Asla1"]
+    # **오프닝은 이제 도착분을 담지 않는다** — 각 채널이 자기 자리를 갖는다
     empty = prompts.render_turn_open(world, a, cfg, 48.0, [])
     assert empty.count("\n") == 1                     # 소득·예산 한 줄 + 집행 한 줄
+    assert prompts.render_arrivals(a, []) == ""        # 온 것이 없으면 빈 문자열
     for none_word in ("なし", "没有", "aucun", "Aucun"):
         assert none_word not in empty
-    got = prompts.render_turn_open(world, a, cfg, 48.0,
-                                   [{"msg_id": 1, "from": "Ranoa1", "label": None,
-                                     "text": "MARK", "original": None}])
-    assert "MARK" in got and got.startswith(empty)    # 머리말은 같다
+    got = prompts.render_arrivals(a, [{"msg_id": 1, "from": "Ranoa1", "label": None,
+                                       "text": "MARK", "original": None}])
+    assert "MARK" in got
 
 
 def test_income_is_stated_once_a_year_not_recomputed_each_call():
@@ -272,7 +286,7 @@ def test_income_is_stated_once_a_year_not_recomputed_each_call():
 def test_growing_older_accumulates_in_the_conversation():
     """**나이가 관측에 있으면 매 콜 덮여서 나이 드는 것이 느껴지지 않는다.**
 
-    해가 열릴 때 적으면 대화에 6살 · 7살 · 8살이 차례로 남는다. 그것이 `procreate` 를
+    해가 열릴 때 적으면 대화에 6살 · 7살 · 8살이 차례로 남는다. 그것이 `bear_child` 를
     고를 시점을 가늠하는 유일한 재료다 — 수명 곡선은 비공개이고(4.1), 부고에 찍힌 나이와
     자기 나이의 흐름만이 단서다. 세 런 21명이 전부 자연사한 뒤에 붙인 것이 부고의
     나이였고, 이건 그 짝이다.
@@ -285,8 +299,15 @@ def test_growing_older_accumulates_in_the_conversation():
         world.turn, a.age = t, age
         seen.append(prompts.render_turn_open(world, a, cfg, 48.0, []))
     assert ["6 歳" in seen[0], "7 歳" in seen[1], "8 歳" in seen[2]] == [True] * 3
+    # 관측에는 자기 나이가 없다 — **다만 비용표의 「10 歳から」 는 규칙 상수다** (8/21).
+    # 그것까지 막으면 아이 낳기의 조건을 적을 수 없다.
+    #
     # 관측에는 없다 — 그리고 죽은 문구도 남기지 않는다
-    assert "歳" not in prompts.render_observation(world, a, cfg, 48.0)
+    obs = prompts.render_observation(world, a, cfg, 48.0)
+    assert f"{a.age} 歳" not in obs                 # 내 나이는 없다
+    for line in obs.splitlines():
+        if "歳" in line:                            # 남는 것은 규칙 상수 한 줄뿐이다
+            assert f"{cfg.world.adult_age} 歳" in line and "bear_child" in line, line
     assert "age" not in prompts.T["ja"]
 
 
@@ -313,15 +334,12 @@ def test_a_mid_year_arrival_does_not_reopen_the_year():
 
     first = prompts.render_turn_open(world, a, cfg, 48.0, box, opening=True)
     later = prompts.render_turn_open(world, a, cfg, 48.0, box, opening=False)
+    arrived = prompts.render_arrivals(a, box)
 
-    assert "になりました" in first and "MARK" in first
-    assert "になりました" not in later and "MARK" in later      # 해를 다시 열지 않는다
-    assert "100" not in later                                 # 소득·예산도 다시 말하지 않는다
-
-    # 재방문에 온 것이 없으면 아무 말도 하지 않는다 (루프가 부르지도 않는다)
-    assert prompts.render_turn_open(world, a, cfg, 48.0, [], opening=False) == ""
-    # 병렬 경로는 한 해에 한 번뿐이므로 기본값이 True 여야 한다
-    assert "になりました" in prompts.render_turn_open(world, a, cfg, 48.0, box)
+    assert "になりました" in first and "MARK" not in first     # 오프닝은 오프닝만
+    assert later == ""                                        # 재방문엔 해를 열지 않는다
+    assert "MARK" in arrived and "になりました" not in arrived
+    assert "100" not in arrived                               # 소득·예산도 없다
 
 
 def test_an_ended_agent_wakes_when_mail_arrives():
@@ -331,14 +349,23 @@ def test_an_ended_agent_wakes_when_mail_arrives():
     판단의 근거를 무너뜨리는 새 정보**다 — 누가 협력을 청했는데 이미 끝냈다고 그 해가
     통째로 지나가면, 같은 해 왕복 대화라는 순차 라운드로빈의 취지가 절반만 산다.
 
-    시드 3 은 **수신자(Asla2, 0번째)가 발신자(Asla1, 3번째)보다 먼저** 온다. Asla2 가
-    먼저 끝내고, 그 뒤 Asla1 이 말을 보내고, 그래서 Asla2 가 다시 불린다.
+    필요한 것은 **수신자가 발신자보다 먼저 오는 순서**다. Asla2 가 먼저 끝내고, 그 뒤
+    Asla1 이 말을 보내고, 그래서 Asla2 가 다시 불린다.
+
+    **시드를 박아 두지 않는다.** 전에는 「시드 3」 이라고 적어 두었는데, 초기화가 rng 를
+    쓰는 방식이 바뀌자(나이 범위·개체 배수 추첨) 그 시드의 순서가 달라져 테스트가 조용히
+    다른 것을 재게 됐다. 필요한 순서가 나오는 시드를 **찾는다.**
     """
-    cfg = _cfg(1)
     end = assistant_msg(tool_call("end_turn", "e", reasoning="r"))
     speak = assistant_msg(tool_call("speak", "s", to="Asla2", text="WAKE_UP", reasoning="r"))
-    clients = _clients({"Asla1": [speak, end], "Asla2": [end, end]})
-    res = _run(cfg, clients, seed=3, parallel=False, sequential=True)
+    for seed in range(40):
+        cfg = _cfg(1)
+        clients = _clients({"Asla1": [speak, end], "Asla2": [end, end]})
+        res = _run(cfg, clients, seed=seed, parallel=False, sequential=True)
+        if len(clients["Asla2"].calls) == 2:
+            break
+    else:
+        raise AssertionError("수신자가 먼저 오는 시드를 40개 안에서 못 찾았다")
 
     # 깨어나 두 번 불렸다 (한 번은 처음, 한 번은 도착 뒤)
     assert len(clients["Asla2"].calls) == 2
@@ -347,6 +374,7 @@ def test_an_ended_agent_wakes_when_mail_arrives():
     # 깨어난 뒤 붙은 것은 도착분만 — 해를 다시 열지 않는다
     users = [m["content"] for m in res.world.agents["Asla2"].convo if m["role"] == "user"]
     assert len(users) == 2 and "になりました" not in users[1]
+    assert all(u for u in users)                      # 빈 항목이 없다
 
 
 def test_a_stopped_agent_is_not_woken_when_it_cannot_act():
@@ -395,18 +423,14 @@ def test_world_events_get_their_own_context_entry():
            {"from": "Ranoa1", "label": None, "text": "SAID", "original": None}]
 
     ev = prompts.render_events(a, box)
-    open_ = prompts.render_turn_open(world, a, cfg, 48.0, box, opening=True)
+    arrived = prompts.render_arrivals(a, box)
 
     assert "Asla1" in ev and "61" in ev and "SAID" not in ev
     assert "起きたこと" in ev and "になりました" not in ev      # 해를 열지 않는다
-    assert "SAID" in open_ and "Asla1" not in open_           # 사건은 여기 없다
+    assert "SAID" in arrived and "Asla1" not in arrived       # 사건은 여기 없다
     assert prompts.T["ja"]["in_hdr"] not in ev                # 머리말이 다르다
-
-    # 사건만 있으면 오프닝에는 도착분이 안 붙는다
-    only_ev = prompts.render_turn_open(world, a, cfg, 48.0, box[:2], opening=True)
-    assert "になりました" in only_ev and prompts.T["ja"]["in_hdr"] not in only_ev
-    # 재방문에 사건만 왔으면 오프닝은 빈 문자열 — 루프가 사건만 붙인다
-    assert prompts.render_turn_open(world, a, cfg, 48.0, box[:2], opening=False) == ""
+    # 사건만 왔으면 도착분은 빈 문자열 — 루프가 붙이지 않는다
+    assert prompts.render_arrivals(a, box[:2]) == ""
 
 
 def test_the_event_entry_lands_before_the_year_opens():
@@ -427,3 +451,75 @@ def test_the_event_entry_lands_before_the_year_opens():
     # 렌더러를 안 주면 아무 일도 하지 않는다 (옛 경로 호환)
     _push_events(a, [{"died": "Z"}], None)
     assert len(a.convo) == 1
+
+
+def test_the_year_opens_before_anything_that_happened_in_it():
+    """**나중에 차례가 온 사람이 이런 대화를 받고 있었다.**
+
+        user: 起きたこと: 自国の技術力が上がりました。
+        user: 42 年になりました。…
+
+    그 기술력 상승은 42년에 일어난 일이다. **해는 모두에게 같은 때 밝는다** — 소득도 AP 도
+    턴 시작에 한꺼번에 주어진다. 먼저 행동한 사람의 결과가 남의 새해보다 앞에 놓이면
+    시간이 거꾸로 읽힌다.
+    """
+    cfg = _cfg(1)
+    inv = assistant_msg(tool_call("invest", "i", target="national", reasoning="r"))
+    end = assistant_msg(tool_call("end_turn", "e", reasoning="r"))
+    clients = _clients({aid: [inv, end] for aid in IDS})
+    res = _run(cfg, clients, seed=3, parallel=False, sequential=True)
+    opens = {"ja": "になりました", "zh": "到了", "fr": "est arrivé"}
+    for aid in IDS:
+        agent = res.world.agents[aid]
+        users = [m["content"] for m in agent.convo if m["role"] == "user"]
+        assert users and opens[agent.native_lang] in users[0], aid   # 해가 먼저 밝는다
+        assert all(u for u in users), aid                            # 빈 항목이 없다
+        # **받은 소득 그대로.** 렌더 때 다시 계산하면 나중에 차례가 온 사람은 남들이
+        # national 에 넣은 뒤의 값(+102)을 보게 된다 — 실제로 받은 것은 100 이다.
+        assert f"+{agent.income_this_year:.0f}" in users[0], aid
+
+
+def test_capital_notice_carries_the_gain_as_a_percentage():
+    """「기술력이 올랐다」 에 **이번 상승분**을 싣는다 (8/23).
+
+    배수(「1.174 배」)도 누적(「당초보다 17%」)도 아니다 — 사건 줄은 「방금 무슨 일이
+    있었나」 이고, 한 차례 상승분은 0.05~0.6% 라 소수 두 자리여야 값이 남는다.
+
+    전에는 값이 없는 사실이라 해마다 한 번으로 접었다. 이제 값이 있으므로 그 제한을
+    뗐고, 접는 일은 `render_inbox._add` 가 값으로 판단한다 — 진척과 같은 취급이다.
+
+    값이 없으면 「national 에 더 부을까 facility 에 부을까」 를 수치로 비교할 수 없다.
+    """
+    cfg = _cfg(1)
+    inv = assistant_msg(tool_call("invest", "i", target="national", reasoning="r"))
+    end = assistant_msg(tool_call("end_turn", "e", reasoning="r"))
+    clients = _clients({aid: [inv, inv, end] for aid in IDS})
+    res = _run(cfg, clients, seed=3, parallel=False, sequential=True)
+    blob = "\n".join(m["content"] for m in res.world.agents["Asla2"].convo
+                     if m["role"] == "user")
+    assert "技術力が" in blob
+    # 상승분은 0 보다 크고, 합치면 누적 배수와 맞아야 한다 (곱으로 쌓인다)
+    got = [float(x) for x in re.findall(r"技術力が ([\d.]+)% 上がりました", blob)]
+    assert got and all(v > 0 for v in got), got
+    prod = 1.0
+    for v in got:
+        prod *= 1 + v / 100
+    assert prod == pytest.approx(res.world.countries["Asla"].multiplier(cfg), rel=1e-3)
+
+
+def test_identical_rows_inside_one_batch_collapse():
+    """한 묶음 안에서도 같은 줄은 한 번만. 실측에서 세 줄이 나란히 붙은 적이 있다."""
+    cfg = _cfg(1)
+    world = init_world(cfg, itertools.count(1))
+    a = world.agents["Asla1"]
+    ev = prompts.render_events(a, [{"cap_up": True, "cap_gain": 0.23}] * 3)
+    assert ev.count("上がりました") == 1
+    # **소수 두 자리에서 갈리면 다른 줄이다** — 낸 액수가 다르면 오른 폭도 다르고,
+    # 그건 접어서 없앨 정보가 아니다 (진척 `prog_up` 과 같은 취급).
+    ev3 = prompts.render_events(a, [{"cap_up": True, "cap_gain": 0.23},
+                                    {"cap_up": True, "cap_gain": 0.07}])
+    assert ev3.count("上がりました") == 2
+    # 값이 다르면 접히지 않는다
+    ev2 = prompts.render_events(a, [{"prog_up": 18, "now": 18},
+                                    {"prog_up": 34, "now": 52}])
+    assert ev2.count("進捗が") == 2

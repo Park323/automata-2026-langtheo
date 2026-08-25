@@ -22,7 +22,12 @@ def window(cfg) -> tuple[float, float, float, float]:
     ⚠ E 는 양변에 같은 정책계수(0.6)를 쓴다. 전력 기준으로 걸면 하한이
       (T−E)/T × C 가 되어 상한 C×0.6 을 넘고 **창이 닫힌다.**
     """
-    per_turn = cfg.income.per_turn
+    # **나이 배수를 창에 반영한다** (8/22). 소득이 나이와 함께 오르므로 「한 나라의 전
+    # 기간 총소득」 이 `per_turn × n × total` 보다 크다 — 그 값을 그대로 쓰면 창이 실제보다
+    # 좁아지고, 임계가 「도달 가능」 쪽에 붙는다.
+    #
+    # 배수는 **정상 연령분포**에서 잡는다: 나이 a 에 살아 있을 확률 ∝ S(a).
+    per_turn = cfg.income.per_turn * mean_age_multiplier(cfg)
     n = cfg.world.agents_per_country
     total = cfg.world.total_turns
     epoch = cfg.world.epoch_turns
@@ -31,15 +36,50 @@ def window(cfg) -> tuple[float, float, float, float]:
     nation_all = per_turn * n * total          # 한 나라의 전 기간 총소득
     nation_epoch = per_turn * n * epoch        # 한 나라의 한 주기 소득
 
+    # **가장 효율 좋은 나라를 기준으로 잡는다** (8/23). 나라마다 요격기 진척 속도가
+    # 다르므로(`facility.build_spread`), 네 조건이 모두 「최선의 나라에 몰아줬을 때」 로
+    # 걸려야 한다.
+    #
+    #   ★B 가 결정적이다 — 「한 나라가 혼자서는 못 한다」 는 **가장 잘 짓는 나라**가
+    #   혼자서도 못 해야 성립한다. 평균으로 잡으면 운 좋은 나라가 단독으로 해내고
+    #   조율 강제가 무너진다.
+    #
+    #   ★C 도 같은 기준이어야 한다 — 「세 나라가 모으면 가능」 은 그들이 최선의 나라를
+    #   고를 때의 얘기다. 네 조건이 같은 배수로 곱해지므로 창은 통째로 평행이동한다.
+    best = max(cfg.facility.build_spread)
+
     def to_progress(income_amount: float) -> float:
-        # 진척 단위 = 소득 × facility.eff × success_prob = 소득 × cfg.k
-        return income_amount * cfg.k
+        # 진척 단위 = 소득 × facility.eff × success_prob × 최선 국가 효율
+        return income_amount * cfg.k * best
 
     a = to_progress(3 * nation_epoch)                      # 마지막 한 주기 3국 전력
     b = to_progress(nation_all)                            # 한 나라의 전 기간 총력
     c = to_progress(3 * nation_all)                        # 세 나라의 전 기간 총력
     e = to_progress(3 * (nation_all - nation_epoch)) * 0.6  # 한 주기를 통째로 쉬면
     return (a, b, c, e)
+
+
+def mean_age_multiplier(cfg) -> float:
+    """정상 연령분포에서 본 소득 나이 배수의 평균.
+
+    나이 a 에 살아 있을 확률은 생존함수 S(a) 에 비례한다. 소득이 성인 나이 이후 한 해마다
+    `age_growth` 씩 오르므로, 한 사람이 평균적으로 받는 배수는 그 가중평균이다.
+
+        age_growth 0.20 → 평균 1.22   (나이 16 은 2.20, 나이 20 은 3.00)
+
+    **손으로 적지 않는다.** `age_growth` 나 수명을 바꾸면 이 값이 따라 움직여야 하고,
+    그러지 않으면 임계값 창이 조용히 어긋난다.
+    """
+    from core import survival as _s
+    g = cfg.income.age_growth
+    if g <= 0:
+        return 1.0
+    lam, k = cfg.survival.lambda_base, cfg.survival.k
+    horizon = int(lam * 3) + 1
+    w = [_s.survival(a, lam, k) for a in range(horizon)]
+    tot = sum(w) or 1.0
+    return sum(w[a] * (1 + g * max(0, a - cfg.world.adult_age))
+               for a in range(horizon)) / tot
 
 
 def check_all(cfg) -> list[str]:
@@ -79,9 +119,24 @@ def check_all(cfg) -> list[str]:
             f"thresholds.interceptor 를 올려라."
         )
 
-    # 벙커 깊이 창
-    nation_all = cfg.income.per_turn * cfg.world.agents_per_country * cfg.world.total_turns
-    nation_epoch = cfg.income.per_turn * cfg.world.agents_per_country * cfg.world.epoch_turns
+    # 국가 효율 — 평균이 1.0 이 아니면 창이 어긋난다 (순열 배정이라 정확히 1.0 이어야)
+    bs = list(cfg.facility.build_spread)
+    if abs(sum(bs) / len(bs) - 1.0) > 1e-9:
+        fails.append(
+            f"국가 효율: facility.build_spread({bs}) 의 평균이 {sum(bs)/len(bs):.4f} 다. "
+            f"정확히 1.0 이어야 한다 — 창이 `per_turn × n × total` 에서 나오므로 "
+            f"평균이 1 이 아니면 임계 전체를 재계산해야 한다."
+        )
+    if len(bs) != len(cfg.world.countries):
+        fails.append(
+            f"국가 효율: facility.build_spread 가 {len(bs)}개인데 나라는 "
+            f"{len(cfg.world.countries)}개다. 순열 배정이므로 같아야 한다."
+        )
+
+    # 벙커 깊이 창 — **국가 효율이 안 걸린다** (요격기 전용). 여기는 cfg.k 그대로다.
+    eff = cfg.income.per_turn * mean_age_multiplier(cfg)
+    nation_all = eff * cfg.world.agents_per_country * cfg.world.total_turns
+    nation_epoch = eff * cfg.world.agents_per_country * cfg.world.epoch_turns
     bunker_lo = nation_epoch * cfg.k     # 한 주기 전력 진척
     bunker_hi = nation_all * cfg.k       # 전 기간 진척
     if not (bunker >= bunker_lo):

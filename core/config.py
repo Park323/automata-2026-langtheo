@@ -5,6 +5,7 @@ YAML 을 중첩 dataclass 로 표현한다. frozen=True 로 두는 이유 —
 """
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,11 +25,14 @@ class Knob:
 class Costs:
     comm_domestic: float
     comm_intl_learner: float
-    ask_clarification: float
     learn_base: float
     propose_vote: float
     observe_risk: float = 20.0
     unit: float = 20.0             # 한 번의 invest·learn 이 나가는 돈 (4.4)
+    # **할인이 아니라 가속이다** (8/22). 필요액을 깎으면 **목표가 움직인다** — 반쯤 낸
+    # 학습이 갑자기 완성되는 경로가 생긴다. 이제 필요액은 고정이고 회당 수확이 오른다.
+    # 사유 하나마다 `+learn_speedup` 배 (곱이 아니라 합 — ×1.5 를 두 번 곱하면 2.25 다).
+    learn_speedup: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,19 @@ class Thresholds:
 class Income:
     per_turn: float
     initial_budget: float
+    # **나이가 들면 더 번다** (8/22). 성인 나이 이후 한 해마다 `per_turn × 이 값` 씩.
+    # 말년에 **소비가 못 따라가게** 하는 것이 목적이다 — 한 해에 쓸 수 있는 돈은 행동력이
+    # 묶으므로(invest 40원·0.2AP → 상한 200), 나이 16 을 넘기면 잉여가 강제로 쌓인다.
+    # 그 잉여의 용처가 `give` 다 — 재생산 행위를 없앤 뒤로 **유일한** 용처다.
+    age_growth: float = 0.0
+    # **사람마다 다르게 번다** (8/22). 태어날 때 이 단계들에서 하나를 뽑는다.
+    #
+    # **평균이 1.0 이어야 한다** — 임계값 창이 `per_turn × n × total` 에서 나오므로,
+    # 평균이 1 이 아니면 창이 어긋난다 (`tests/test_config.py` 가 본다).
+    #
+    # 이산인 이유는 **말로 전할 수 있기 때문**이다. 「나는 한 번에 56 옮긴다」 가 메시지가
+    # 되고 그걸 실제로 말하는지 채점할 수 있다 — 연속 분포로는 안 된다.
+    spread: tuple = (1.0,)
 
 
 @dataclass(frozen=True)
@@ -51,15 +68,17 @@ class TurnCfg:
 @dataclass(frozen=True)
 class AP:
     speak: float
-    ask: float
     propose_vote: float
     memory_write: float
-    procreate: float
-    observe_risk: float = 0.3
-    vote: float = 0.05             # 採決과 제안은 무게가 다르다 (4.4)
+    # **기본값을 두지 않는다.** 넷 다 기본값이 있었고 셋이 yaml 과 달랐다
+    # (give 0.2/0.1 · observe_risk 0.3/0.5 · unit 0.1/0.2). 「숫자를 두 군데 적으면
+    # 하나가 낡는다」 — yaml 이 유일한 출처다.
+    give: float
+    observe_risk: float
+    vote: float                    # 採決과 제안은 무게가 다르다 (4.4)
     # **한 번의 invest·learn 이 먹는 AP.** 금액은 costs.unit 으로 고정이라 금액별 계산이
     # 없다 — learn_full·invest_wellness·invest_per_ap 를 그래서 없앴다 (4.4).
-    unit: float = 0.1
+    unit: float
 
 
 @dataclass(frozen=True)
@@ -94,6 +113,22 @@ class Facility:
     cap_per_turn: float
     transition_requires_vote: bool
     transition_forfeits_progress: bool
+    # 개체별 「한 번에 옮기는 액수」 배수를 뽑는 단계들. 소득 배수와 **독립**이다.
+    # 평균이 1.0 이어야 한다 — 국가의 돈→진척 전환 능력이 여기 걸린다.
+    #
+    # **기본값 있는 필드는 맨 뒤로.** 이 프로젝트에서 네 번째로 밟은 자리다 —
+    # dataclass 는 기본값 뒤에 기본값 없는 필드를 두면 거절한다.
+    throughput_spread: tuple = (1.0,)
+    # **나라마다 요격기를 짓는 속도가 다르다** (8/23). 같은 돈이 나라에 따라 다른
+    # 진척이 된다 — 개체별 `throughput_spread` 의 국가판이다. 국가 단위 비교우위를
+    # 만들어 「어디에 몰아줄 것인가」 를 진짜 문제로 만든다.
+    #
+    # 나라 수만큼의 **순열**로 배정한다 — 독립 추출이면 평균이 1.0 에서 흔들리고,
+    # 그러면 임계 창이 어긋난다.
+    #
+    # **벙커에는 안 걸린다.** 요격기에만 걸어야 「최고 효율 나라가 벙커를 골랐다」 가
+    # 진짜 손실이 되고, 함정이 더 날카로워진다.
+    build_spread: tuple = (1.0,)
 
 
 @dataclass(frozen=True)
@@ -111,15 +146,26 @@ class World:
     success_prob: float
     # 초기 나이를 1..이 값에서 뽑는다. 전원 0살이면 한꺼번에 죽어 세계가 백지가 된다.
     init_age_max: int = 10
+    # **성인 나이.** 이 나이부터 아이를 낳을 수 있고, 이 나이부터 소득을 받는다.
+    # 그전에는 부모가 주는 돈이 전부다.
+    adult_age: int = 10
 
 
 @dataclass(frozen=True)
 class Inheritance:
-    testament_max_chars: int
-    testament_carry: int
-    # 반쯤 배운 언어를 아이가 얼마나 물려받는가. 1.0 이면 능력이 사실상 상속돼
-    # "능력은 상속되지 않는다"(3.3)가 무너진다. 감쇠가 곧 구전 감쇠의 정량판이다.
-    lang_progress_carry: float = 0.5
+    """**유언과 언어 진척 상속을 없앴다** (8/21).
+
+    부모가 살아 있으므로 세대 간 전달은 `speak` 로 한다 — 기존 메시지 채널로 관측되고
+    여러 해에 걸쳐 반복할 수도 있다. 그리고 부모가 살아 있는 것 자체가 국내 구사자이므로
+    아이의 학습이 이미 두 겹으로 싸다 (부모 −50 × 국내 −50). 진척 절반까지 얹으면 능력이
+    사실상 상속된다.
+
+    남는 것은 **부모 할인 자격**뿐이다.
+    """
+
+    # **필드가 없다.** 남는 것은 부모 할인 자격(`parent_langs`)뿐이고 그것은
+    # `_bear_child` 가 직접 넘긴다 — 켜고 끄는 설정이 아니다. `parent_discount: true` 를
+    # 두었다가 지웠다: **코드가 읽지 않는 설정은 있으면 거짓말을 한다.**
 
 
 @dataclass(frozen=True)
@@ -192,28 +238,46 @@ class Config:
         return self.facility.eff * self.world.success_prob
 
 
+def _world_from(d: dict) -> World:
+    """`world` 절을 통째로 넘긴다. **모르는 키는 거절한다.**
+
+    전에는 다섯 필드만 골라 넘겼다. 그래서 `adult_age`·`init_age_spread`·`init_age_max` 가
+    **YAML 에서 읽히지 않았고**, 기본값과 우연히 같아서 드러나지 않았다 — config 를 고쳐도
+    아무 일이 안 일어나는 상태다. 조용한 무시가 가장 나쁜 실패다.
+
+    이제 dataclass 필드와 대조한다. 새 키를 yaml 에만 넣고 배선을 잊으면 **로드가 실패**한다.
+    """
+    known = {f.name for f in dataclasses.fields(World)}
+    unknown = set(d) - known
+    if unknown:
+        raise ConfigError(
+            f"world 절에 모르는 키: {sorted(unknown)}. "
+            f"`World` 에 필드를 추가하거나 yaml 에서 지우세요 — "
+            f"조용히 무시되면 config 를 고쳐도 아무 일이 안 일어납니다.")
+    kw = dict(d)
+    kw["countries"] = tuple(CountryDef(**c) for c in d["countries"])
+    return World(**kw)
+
+
 def from_dict(d: dict) -> Config:
     """assert 없이 dict 를 Config 로 만든다. (break 테스트가 이걸로 변형본을 만든다)"""
     return Config(
         knob=Knob(comm_intl_ai=tuple(d["knob"]["comm_intl_ai"])),
         costs=Costs(**d["costs"]),
         thresholds=Thresholds(**d["thresholds"]),
-        income=Income(**d["income"]),
+        income=Income(**{**d["income"],
+                        "spread": tuple(d["income"].get("spread", (1.0,)))}),
         turn=TurnCfg(**d["turn"]),
         ap=AP(**d["ap"]),
         growth=Growth(**d["growth"]),
         survival=SurvivalCfg(**d["survival"]),
         wellness=Wellness(**d["wellness"]),
         risk=Risk(**(d.get("risk") or {})),
-        facility=Facility(**d["facility"]),
-        world=World(
-            countries=tuple(CountryDef(**c) for c in d["world"]["countries"]),
-            agents_per_country=d["world"]["agents_per_country"],
-            total_turns=d["world"]["total_turns"],
-            epoch_turns=d["world"]["epoch_turns"],
-            success_prob=d["world"]["success_prob"],
-        ),
-        inheritance=Inheritance(**d["inheritance"]),
+        facility=Facility(**{**d["facility"], "throughput_spread":
+                             tuple(d["facility"].get("throughput_spread", (1.0,)))}),
+        world=_world_from(d["world"]),
+        # `inheritance` 절은 없앴다 — 남은 것이 코드에 있고 설정할 것이 없다
+        inheritance=Inheritance(),
         length=Length(**d["length"]),
         llm=LLM(**d["llm"]),
         run=Run(**d["run"]),

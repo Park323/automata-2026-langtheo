@@ -84,7 +84,9 @@ def test_original_success_when_can_read(cfg):
     # **통역 없이 닿았다는 표시가 붙는다.** 전에는 라벨이 없어 국내 메시지와 같은
     # 모양이었고, 수신자는 라벨의 **부재**로만 직통을 추론해야 했다.
     # `[AI translation]` 이 "기계가 꼈다" 를 알리는 것과 짝이다.
-    assert m["inbox"]["label"] == messaging.DIRECT_LABEL
+    #
+    # **읽는 쪽 덕과 쓰는 쪽 덕을 가른다** (8/21). 여기는 수신자가 zh 를 읽는 경우다.
+    assert m["inbox"]["label"] == messaging.DIRECT_READ_LABEL
 
 
 # ── 원문 병기 폐지 (spec 5.1 개정) ────────────────────────────────────────────
@@ -239,3 +241,138 @@ def test_both_labels_are_shown_in_the_recipient_language(cfg):
         assert direct in out and ai in out, lang
         assert "[AI translation]" not in out      # 영어가 새지 않는다
         assert out.count(direct) == 1             # 국내 메시지에는 안 붙는다
+
+
+def test_a_missing_recipient_says_which_field_is_missing(cfg):
+    """**빠뜨린 것과 틀린 것이 같은 말을 하고 있었다.**
+
+    둘 다 `unknown recipient: None` 이었다. 그 문구는 「내가 부른 사람이 없다」 로 읽히지
+    「`to` 를 안 적었다」 로 읽히지 않는다. 그래서 모델이 고칠 데를 찾지 못했다.
+
+    20턴 런의 앞 8턴에서 **speak 50건 중 18건(36%)** 이 이것이었고 **17건이 한
+    사람(Miris1)** 이다 — 매 해 두 번씩 여덟 해 내리. 받는 사람을 본문 안에서 부르고
+    있었다 (`"Bonjour Ranoa1 ! …"`). 사람에게는 그게 편지의 자연스러운 모양이라, 문구가
+    그 오해를 직접 집어야 한다.
+
+    실패한 호출과 오류는 대화에 남으므로, 문구가 고칠 데를 말하지 않으면 그 오답이 다음
+    호출의 본보기가 된다. `repeat_guard` 는 못 막는다 — 본문이 매번 달라 (도구, 인자) 가
+    같지 않다.
+    """
+    import itertools
+    import random
+
+    from core.agent_loop import Sink, execute_tool
+    from core.loop import init_world
+    world = init_world(cfg, itertools.count(1), random.Random(1))
+    a = world.agents["Miris1"]
+    a.ap, a.budget = 1.0, 1000.0
+
+    r, _ = execute_tool("speak", {"route": "ai", "text": "Bonjour Ranoa1 !"},
+                        world, a, cfg, Sink(), 48.0)
+    assert not r["ok"]
+    assert "`to`" in r["error"]                       # 어느 칸인지 말한다
+    assert "inside the text does not send it" in r["error"]   # 오해를 집는다
+    assert "unknown recipient" not in r["error"]      # 다른 실패와 섞이지 않는다
+
+    r, _ = execute_tool("speak", {"to": "Ranoa9", "text": "x"},
+                        world, a, cfg, Sink(), 48.0)
+    assert not r["ok"] and "unknown recipient: Ranoa9" in r["error"]
+    assert "list of people" in r["error"]             # 어디를 보라고 말한다
+
+    # 둘 다 **돈도 AP 도 물리지 않는다** — 검증이 과금보다 먼저다
+    assert a.ap == 1.0 and a.budget == 1000.0
+
+
+def test_the_two_direct_labels_say_different_things(cfg):
+    """**직통은 두 가지 다른 사실이고, 하나로 묶으면 거짓말이 된다.**
+
+    `writer` 덕으로 닿은 메시지는 **수신자가 못 읽는 언어 그대로** 온다 (그것이 8/17 의
+    설계다 — 발신자에게 수신 언어로 다시 쓰게 하면 프롬프트 언어 위생이 깨진다). 그런데
+    라벨이 「통역 없이 통했다」 하나뿐이어서, 못 읽는 글에 통했다는 표가 붙었다.
+
+    여섯 런에서 `writer` 덕 전달 **16건이 전부** 그랬고, 한 에이전트가 되물었다:
+
+        "あなたのメッセージが分かりません。日本語で説明してください。"
+
+    **정확한 반응이다.** 눈앞의 글자와 라벨이 어긋났으니 되물을 수밖에 없다. 그래서
+    쓰는 쪽 라벨은 **못 읽는다는 사실을 먼저 인정하고** 왜 그래도 통했는지를 말한다.
+    """
+    from domains.meteor import prompts
+
+    # 수신자는 발신 언어(zh)를 못 읽고, 발신자가 수신 언어(ja)를 안다
+    m = messaging.process_message(_sent(route="original"),
+                                  recipient_known_langs={"zh"},      # ja 를 못 읽는다
+                                  cfg=cfg, translator=None, knob_ai=48,
+                                  sender_known_langs={"ja", "zh"})   # 발신자가 zh 를 안다
+    assert m["delivered"] is True                      # 그래도 닿는다
+    assert m["meta"]["direct_by"] == "writer"
+    assert m["inbox"]["label"] == messaging.DIRECT_WRITE_LABEL
+
+    for lang in ("ja", "zh", "fr"):
+        t = prompts.T[lang]
+        read, write = t["lbl_direct_read"], t["lbl_direct_write"]
+        assert read != write, lang
+        # 쓰는 쪽 라벨이 **더 길다** — 못 읽는다는 사실과 그래도 통한 이유를 둘 다 담는다
+        assert len(write) > len(read), lang
+
+    rendered = prompts.render_inbox(
+        [{"from": "Miris1", "label": messaging.DIRECT_WRITE_LABEL, "text": "x"}], "ja")
+    assert "扱えません" in rendered                     # 못 읽는다는 사실이 먼저
+    assert "通訳なしで通じた" not in rendered            # 통했다고만 말하지 않는다
+
+
+def test_the_delivered_language_is_the_one_actually_written(cfg):
+    """**발신자가 수신국 말로 쓸 수 있게 된 순간 `delivered_lang` 이 거짓이 됐다** (8/22).
+
+    `from_lang` 으로 무조건 적고 있었다. 일본어로 쓴 글을 프랑스어 사전으로 세게 되고,
+    지표 7(화용 표지 소실)이 통째로 거짓이 된다 — 같은 글을 다른 언어로 채점하면 표지가
+    전부 「소실」 로 잡힌다.
+    """
+    # fr 발신자가 ja 로 썼다 (`original` 이므로 허용된다)
+    m = messaging.process_message(
+        _sent(from_lang="fr", from_country="Miris", to="Asla1", to_country="Asla",
+              to_lang="ja", route="original", text="こんにちは、協力しましょう"),
+        recipient_known_langs={"ja"}, cfg=cfg, translator=None, knob_ai=48,
+        sender_known_langs={"fr", "ja"})
+    assert m["delivered"] is True
+    assert m["meta"]["delivered_lang"] == "ja", m["meta"]["delivered_lang"]
+
+    # 자기 말로 썼으면 그대로다
+    m2 = messaging.process_message(
+        _sent(from_lang="fr", from_country="Miris", to="Asla1", to_country="Asla",
+              to_lang="ja", route="original", text="Bonjour, coopérons"),
+        recipient_known_langs={"ja"}, cfg=cfg, translator=None, knob_ai=48,
+        sender_known_langs={"fr", "ja"})
+    assert m2["meta"]["delivered_lang"] == "fr"
+
+
+def test_the_label_follows_the_language_not_the_reason(cfg):
+    """**어제 고친 거짓말이 방향만 바꿔 되살아날 뻔했다.**
+
+    8/21 에 라벨을 둘로 갈랐다 — 「쓰는 쪽 덕」 이면 「나는 못 읽지만 상대가 내 말을
+    다룬다」. 그런데 8/22 부터 그 발신자가 **내 말로 쓸 수도 있다.** 그러면 나는 읽을 수
+    있는데 「못 읽는다」 고 적힌다.
+
+    라벨은 `direct_by` 가 아니라 **도착한 글의 실제 언어**로 고른다.
+    """
+    common = dict(from_lang="fr", from_country="Miris", to="Asla1", to_country="Asla",
+                  to_lang="ja", route="original")
+    # 내 말로 써 줬다 → 읽었다
+    m = messaging.process_message(
+        _sent(**common, text="こんにちは"), recipient_known_langs={"ja"},
+        cfg=cfg, translator=None, knob_ai=48, sender_known_langs={"fr", "ja"})
+    assert m["meta"]["direct_by"] == "writer"          # 통한 이유는 쓰는 쪽 덕이지만
+    assert m["inbox"]["label"] == messaging.DIRECT_READ_LABEL   # 읽은 것은 사실이다
+
+    # 자기 말로 썼다 → 나는 못 읽지만 그래도 통했다
+    m2 = messaging.process_message(
+        _sent(**common, text="Bonjour"), recipient_known_langs={"ja"},
+        cfg=cfg, translator=None, knob_ai=48, sender_known_langs={"fr", "ja"})
+    assert m2["inbox"]["label"] == messaging.DIRECT_WRITE_LABEL
+
+
+def test_tool_tokens_do_not_decide_the_language(cfg):
+    """도구 토큰은 어느 말에서도 영어 그대로다. 언어 판정에서 빼야 fr 로 오판하지 않는다."""
+    assert messaging.detect_lang("interceptor bunker wellness", "zh") == "zh"
+    assert messaging.detect_lang("要建 interceptor", "fr") == "zh"
+    assert messaging.detect_lang("", "ja") == "ja"

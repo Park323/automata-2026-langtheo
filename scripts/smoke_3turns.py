@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import random
 import threading
@@ -24,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # PYTHONPATH 없이 실행
 
 from core import config, run_io
-from core.llm import OpenRouterClient, load_key
+from core.llm import BACKENDS, OpenRouterClient, key_for
 from core.loop import run_agentic
 from domains.meteor import prompts
 
@@ -54,8 +55,21 @@ class CountingClient:
         return resp
 
 
-def check_model(model_id: str, key: str) -> None:
-    """OpenRouter /models 에서 tools 지원·가격을 확인한다 (자주 틀리는 곳 8·9)."""
+def check_model(model_id: str, key: str, backend: str = "openrouter") -> None:
+    """tools 지원·가격을 미리 확인한다 (자주 틀리는 곳 8·9).
+
+    **OpenRouter 에만 목록 API 가 있다.** Gemini 는 `/models` 의 모양이 달라 가격이
+    안 실리므로, 이름이 있는지만 보고 넘어간다 — 없는 이름이면 첫 호출에서 404 다.
+    """
+    if backend == "gemini":
+        url = "https://generativelanguage.googleapis.com/v1beta/models"
+        req = urllib.request.Request(url, headers={"x-goog-api-key": key})
+        names = [m["name"].split("/")[-1]
+                 for m in json.load(urllib.request.urlopen(req, timeout=60))["models"]]
+        print(f"  {model_id}")
+        print(f"    Gemini 목록에 {'[OK] 있음' if model_id in names else '[NO] 없음'}"
+              f"  (가격은 목록에 없어 확인 불가 — 호출 응답의 usage 로 잰다)")
+        return
     req = urllib.request.Request("https://openrouter.ai/api/v1/models",
                                  headers={"Authorization": f"Bearer {key}"})
     data = json.load(urllib.request.urlopen(req, timeout=60))["data"]
@@ -82,6 +96,10 @@ def main() -> None:
     ap.add_argument("--knob", type=float, default=None, help="comm_intl_ai 값 (기본: config 최고값)")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--agent-model", default=None)
+    # **직접 부르기.** OpenRouter 를 거치지 않고 그 회사 엔드포인트로 간다.
+    # 열쇠는 백엔드마다 다르다 (`core.llm.KEY_ENV`).
+    ap.add_argument("--backend", default="openrouter", choices=sorted(BACKENDS),
+                    help="에이전트 모델을 어디로 부를지 (번역기는 항상 openrouter)")
     ap.add_argument("--translate-model", default=None)
     ap.add_argument("--price-out", type=float, default=None,
                     help="에이전트 모델 출력 1M당 $ (비용 추정용, 선택)")
@@ -89,9 +107,37 @@ def main() -> None:
     ap.add_argument("--sequential", action="store_true",
                     help="순차 라운드로빈 (issue #20 — 한 턴 안에서 서로 반영·대화). "
                          "기본은 병렬·1회정산.")
+    # `minimal` 은 **사고를 0 토큰으로** 만든다. gemini-3.6-flash 실측:
+    #   minimal → 사고 0 · 생성 34 · $0.00021    low → 사고 158 · 생성 192 · $0.00080
+    # 그리고 그 모델은 `reasoning.enabled: false` 를 **거절한다**
+    #   HTTP 400 "Reasoning is mandatory for this endpoint and cannot be disabled."
+    # 즉 config 의 기본값(enabled:false)으로는 한 콜도 못 간다 — 반드시 이 손잡이를 쓴다.
     ap.add_argument("--reasoning-effort", default=None,
-                    choices=["low", "medium", "high"],
-                    help="사고 강도 (config 의 reasoning.max_tokens 를 대신함)")
+                    choices=["minimal", "low", "medium", "high"],
+                    help="사고 강도 (config 의 reasoning 를 통째로 대신함). "
+                         "사고를 못 끄는 모델은 minimal 을 쓴다")
+    # spec 12.1 — 사고형 모델에서는 도구마다 reasoning 을 또 받지 않는다.
+    #
+    # ⚠ **effort=minimal 과 함께 쓰면 근거가 아무것도 안 남는다.** 사고 토큰이 0 이라
+    #   `api_reasoning` 도 비고, 도구 reasoning 도 없으므로 지표 4(의도 실패율)의 ①이
+    #   읽을 것이 사라진다. 그걸 알고 고르는 손잡이다.
+    ap.add_argument("--tool-reasoning", default=None, choices=["on", "off"],
+                    help="도구마다 reasoning 인자를 받을지 (기본: config)")
+    # **프로바이더를 못으로 박는다.** 같은 모델을 18곳이 서빙하는데 `reasoning` 지원
+    # 표기는 전부 True 인데도 **실제로 먹는 곳은 일부뿐이다.** gemma-4-31b-it 실측:
+    #
+    #   OpenInference  effort=high → 사고 222      Friendli → 485
+    #   Venice · DeepInfra · CoreWeave · Novita   → 사고 0 (다섯 조합 전부)
+    #
+    # 그래서 폴백을 반드시 끈다 — 켜 두면 런 중간에 다른 곳으로 떨어져 **사고가 조용히
+    # 꺼진다.** 조건이 바뀐 것을 로그만 보고는 알아채기 어렵다.
+    ap.add_argument("--provider", default=None,
+                    help="이 프로바이더만 쓴다 (폴백 끔). 예: OpenInference")
+    # **사고를 켜면 2048 로는 모자란다.** config 의 2048 은 「사고를 껐으므로 넉넉하다」
+    # 는 근거로 정한 값인데, 사고를 켜면 사고가 그 자리를 먹고 도구 호출에 닿지 못한다.
+    # gemma-4-31b-it · low 실측에서 37콜 중 11건이 잘렸다.
+    ap.add_argument("--max-tokens", type=int, default=None,
+                    help="응답 상한. 사고를 켤 때는 사고량 + 여유로 올려야 한다")
     ap.add_argument("--deterministic", action="store_true",
                     help="temperature 0 + 샘플링 시드 고정. **버그 재현용** — "
                          "본실험은 0.7 로 두어야 행동의 분산이 데이터가 된다")
@@ -114,18 +160,34 @@ def main() -> None:
     import yaml
     raw = yaml.safe_load(open(args.config, encoding="utf-8"))
     cfg = config.from_dict(raw)
-    key = load_key()
+    key = key_for("openrouter")
+    # **번역기는 openrouter 에 둔다.** 파일럿으로 확정한 모델이고 (spec 12.2) 백엔드를
+    # 바꾸면 그 파일럿의 근거가 이 런에 적용되지 않는다.
+    agent_key = key if args.backend == "openrouter" else key_for(args.backend)
     agent_model = args.agent_model or cfg.llm.agent_model
     translate_model = args.translate_model or cfg.llm.translate_model
     knob = args.knob if args.knob is not None else max(cfg.knob.comm_intl_ai)
     if args.reasoning_effort:                      # 실측 비교용 상단 우선
         raw["llm"]["reasoning"] = {"effort": args.reasoning_effort}
+    if args.tool_reasoning:
+        raw["llm"]["tool_reasoning"] = args.tool_reasoning == "on"
+    if args.provider:
+        raw["llm"]["provider"] = {"only": [args.provider], "allow_fallbacks": False}
+    if args.max_tokens:
+        raw["llm"]["max_tokens"] = args.max_tokens
+    if args.reasoning_effort or args.tool_reasoning or args.provider or args.max_tokens:
         cfg = config.from_dict(raw)
+    if args.provider:
+        print(f"  [프로바이더] {args.provider} 고정 · 폴백 끔 — "
+              f"조건이 런 중간에 바뀌지 않게")
+    if args.reasoning_effort == "minimal" and cfg.llm.tool_reasoning is False:
+        print("  [경고] 사고 minimal + 도구 reasoning off — **근거가 아무것도 안 남습니다.**")
+        print("         지표 4(의도 실패율)의 ①이 읽을 것이 사라집니다.")
 
     print("=" * 64)
     print(f"모델 검증  (agent={agent_model}, translate={translate_model})")
     print("=" * 64)
-    check_model(agent_model, key)
+    check_model(agent_model, agent_key, args.backend)
     check_model(translate_model, key)
     if args.check:
         return
@@ -138,12 +200,13 @@ def main() -> None:
     #   본실험의 신뢰구간은 그 분산에서 나오므로 기본은 0.7 이다.
     det = args.deterministic
     agent_client = CountingClient(
-        OpenRouterClient(agent_model, api_key=key,
+        OpenRouterClient(agent_model, api_key=agent_key,
                          temperature=0.0 if det else cfg.llm.temperature,
                          max_tokens=cfg.llm.max_tokens,
                          reasoning=cfg.llm.reasoning,
                          provider=cfg.llm.provider,
-                         seed=args.seed if det else None), "agent")
+                         seed=args.seed if det else None,
+                         backend=args.backend), "agent")
     translator = CountingClient(
         OpenRouterClient(translate_model, api_key=key,
                          temperature=0.0 if det else 0.2,
@@ -181,6 +244,9 @@ def main() -> None:
                           client_for=lambda aid: agent_client, translator=translator,
                           knob_ai=knob, render_obs=prompts.render_turn_open,
                           render_events=prompts.render_events,
+                          render_arrivals=prompts.render_arrivals,
+                          # `same_year` 는 **루프가 정한다** (`core.loop._system`) — 러너가
+                          # 기억해야 하는 진실은 다른 경로에서 조용히 거짓이 된다
                           system_prompt=prompts.system_for, sequential=args.sequential,
                           on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)),
                           sim_turns=args.turns,

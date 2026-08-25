@@ -42,7 +42,18 @@ _ROUTE = {"type": "string", "enum": ["original", "ai"],
                          "recipient's national language it always lands, whatever they can "
                          "read. If you cannot, it lands only on someone who reads yours — "
                          "and you are not told beforehand whether they do"}
-_TEXT = {"type": "string", "description": "the message body, written in your own language"}
+# **경로가 언어를 정한다** (8/22).
+#
+#   ai        모국어로 써야 한다. **여기가 측정 채널이다** — 번역이 무엇을 잃는지 재려면
+#             입력 언어가 흔들리면 안 된다. 실측에서 zh 에이전트가 `ai` 로 **일본어**를
+#             보냈고, 그러면 번역기에 이미 도착 언어를 넣는 셈이라 지표 7 이 죽는다.
+#   original  아는 말 아무거나. 번역이 없으니 잴 손실도 없고, `direct_works()` 의
+#             「발신자가 수신 언어를 안다 → 통한다」 가 **비로소 사실이 된다** — 전에는
+#             모국어 원문을 그대로 보내면서 통했다고 적었다 (8/21 라벨 수정의 원인).
+_TEXT = {"type": "string",
+         "description": "the message body. With `ai`, write it in your own language. "
+                        "With `original`, you may write it in any language you can "
+                        "handle — including the recipient's"}
 _TR_INSTR = {"type": "string",
              "description": "an instruction for the translator; leave empty for a neutral default"}
 # spec 4.2 의 reasoning. **모든** 도구의 필수 인자다 (_fn 이 자동 주입).
@@ -56,9 +67,9 @@ def _build(reasoning_arg: bool) -> list[dict]:
       return _fn(name, desc, props, req, reasoning and reasoning_arg)
   return [
     fn("speak",
-        "Send a message to one recipient. It arrives the next year, and a reply "
-        "can only arrive the year after that — a round trip takes two years. "
-        "Sending the same thing again before then does not make it arrive sooner.",
+        "Send a message to one recipient. It arrives when that person next acts, and "
+        "their reply reaches you when you next act after that. Sending the same thing "
+        "again before then does not make it arrive sooner.",
         {"to": {"type": "string", "description": "recipient id (e.g. Ranoa2)"},
          "route": _ROUTE, "text": _TEXT,
          "translate_instruction": _TR_INSTR},
@@ -66,7 +77,10 @@ def _build(reasoning_arg: bool) -> list[dict]:
 
     fn("invest",
         "Put one fixed amount into a resource; the observation shows how much money and "
-        "how much action it takes. "
+        "how much action it takes. **The money is not a fee — it is the investment "
+        "itself.** How much one call moves differs from person to person; how much "
+        "progress a given sum buys differs from nation to nation. The two are set "
+        "separately. That amount is yours; you cannot see anyone else's, so ask them. "
         "`national` raises your nation's technical level, which "
         "lifts income, how much progress a facility gets out of what is put into it, and "
         "the precision of observe_risk — for everyone in that nation. "
@@ -74,7 +88,8 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "own or another; leaving `to` out puts it into your own nation's. "
         "Money you put into a facility goes into whatever that nation is currently "
         "building — which may not be what you think it is, and a nation that has not "
-        "settled its territory has nothing to build, so the money buys no progress. "
+        "yet decided what to build has nothing to put it into, so the money buys "
+        "no progress. "
         "Only that nation knows which it is.",
         {"target": {"type": "string", "enum": ["wellness", "national", "facility"]},
          "to": {"type": "string", "description": "facility only: any nation id, yours or another's. "
@@ -104,9 +119,10 @@ def _build(reasoning_arg: bool) -> list[dict]:
 
     fn("propose_vote",
         "Call a ballot on what your nation should build. Your nation only. You do not "
-        "say what to build — the ballot itself decides that. Nothing changes yet: three "
-        "years pass so people can talk it over, and in the fourth year everyone casts a "
-        "choice. **Only people of your own nation may vote** — a foreigner cannot, no "
+        "say what to build — the ballot itself decides that. Nothing changes yet: time "
+        "passes so people can talk it over, and then everyone casts a choice; your "
+        "observation tells you which year that is. **Only people of your own nation may "
+        "vote** — a foreigner cannot, no "
         "matter what they say. If a ballot is already called, calling again does nothing. "
         "It costs no money — poverty must never decide what a nation builds — but it "
         "takes more than half of your action points for the year.",
@@ -122,14 +138,20 @@ def _build(reasoning_arg: bool) -> list[dict]:
         {"choice": {"type": "string", "enum": ["interceptor", "bunker", "abstain"]}},
         ["choice"]),
 
-    fn("procreate",
-        "Leave a child and die. Calling it ends your year at once. "
-        "The child inherits your remaining budget and your testament, half of whatever "
-        "you had put toward learning a language, and a discount on learning any language "
-        "you could read. The child does NOT inherit the languages themselves, nor your "
-        "memory of this life.",
-        {"testament": {"type": "string", "description": "one sentence passed to the child"}},
-        ["testament"]),
+    # **금액을 인자로 받는 유일한 도구다.**
+    #
+    # `invest`·`learn` 에서 금액을 뺀 이유는 비용표가 `600 · 額÷300` 처럼 두 숫자를 읽게
+    # 만들었기 때문이다. 주는 것은 다르다 — 크기가 **드는 수고를 바꾸지 않는다.** 한 번에
+    # 40 씩만 옮길 수 있으면 435 를 넘기는 데 열한 해가 걸리고, 그러면 잉여의 용처라는
+    # 이 도구의 존재 이유가 사라진다.
+    fn("give",
+        "Give money to one person. Any amount you have, in one go. It can be someone in "
+        "your nation or another. They are told who gave it and how much. "
+        "A child has no income of its own until it is old enough, so what someone gives "
+        "it is all it has.",
+        {"to": {"type": "string", "description": "recipient id (e.g. Ranoa2)"},
+         "amount": {"type": "number", "description": "how much to hand over"}},
+        ["to", "amount"]),
 
     fn("memory_write",
         "Overwrite your notes. They stay with you next year; nobody else sees them.",
@@ -149,5 +171,34 @@ TOOLS_NO_REASONING = _build(False)
 TOOL_NAMES = {t["function"]["name"] for t in TOOLS}
 
 
-def tools_for(cfg) -> list[dict]:
-    return TOOLS if getattr(cfg.llm, "tool_reasoning", True) else TOOLS_NO_REASONING
+# ── 기억은 자리가 좁아진 뒤에만 ───────────────────────────────────────────────
+#
+# `memory_write` 는 **잃을 것이 생긴 뒤에** 뜻이 있는 도구다. 대화가 아직 짧으면 적어 둘
+# 이유가 없는데, 30해 실측에서 **206번** 불렸다 — 압박이 걸리기 한참 전부터다.
+#
+# 그 값이 공짜(돈 0 · AP 0)라 무엇도 막지 않고, 순차 라운드로빈은 스텝 단위로 도므로
+# 한 번 부르면 그만큼 남들이 먼저 움직인다. 즉 **공짜가 아니라 차례를 쓴다.**
+#
+# 그래서 압박선(`context_limit × warn_ratio`) 아래에서는 **목록에서 빼고 비용표에서도
+# 숨긴다.** 없는 도구를 설명하지 않는 것이 「사실만 적는다」 에 맞고, 압박 경고가 뜨는
+# 그때 도구도 함께 나타나므로 **경고가 곧 안내**가 된다.
+_NO_MEM = {"memory_write"}
+
+
+def _drop_memory(tools: list[dict]) -> list[dict]:
+    return [t for t in tools if t["function"]["name"] not in _NO_MEM]
+
+
+TOOLS_NO_MEM = _drop_memory(TOOLS)
+TOOLS_NO_REASONING_NO_MEM = _drop_memory(TOOLS_NO_REASONING)
+
+
+def tools_for(cfg, memory: bool = True) -> list[dict]:
+    """모델에게 실어 보낼 도구 목록.
+
+    `memory` 는 「기억을 쓸 수 있는 상태인가」 다 — 호출부가 `under_pressure()` 로 정한다.
+    """
+    reasoning = getattr(cfg.llm, "tool_reasoning", True)
+    if reasoning:
+        return TOOLS if memory else TOOLS_NO_MEM
+    return TOOLS_NO_REASONING if memory else TOOLS_NO_REASONING_NO_MEM

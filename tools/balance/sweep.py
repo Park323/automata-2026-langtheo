@@ -43,6 +43,15 @@ class Cfg:
     bunker: float
     facility_eff: float
     agents: int = 3
+    # **나이가 들면 더 번다** (8/22). 창은 「한 나라의 전 기간 총소득」 에서 나오므로,
+    # 나이 배수를 안 넣으면 창이 실제보다 좁아지고 임계가 「도달 가능」 쪽에 붙는다.
+    age_growth: float = 0.0
+    adult_age: int = 10
+    # **가장 잘 짓는 나라의 효율** (8/23). 나라마다 요격기 진척 속도가 다르므로
+    # (`facility.build_spread`) 네 조건이 「최선의 나라에 몰아줬을 때」 로 걸려야 한다.
+    # ★B 가 결정적이다 — 혼자 해내면 안 되는 것은 **가장 잘 짓는 나라**다.
+    # 벙커에는 안 걸린다 (요격기 전용).
+    build_best: float = 1.0
 
 
 # ── 수명 ───────────────────────────────────────────────────────────
@@ -59,6 +68,23 @@ def expected_life(lam: float, k: float, tmax: int = 60) -> float:
 
 
 # ── 창 (spec 7장) ──────────────────────────────────────────────────
+def mean_age_multiplier(c: "Cfg") -> float:
+    """정상 연령분포에서 본 소득 나이 배수의 평균.
+
+    나이 a 에 살아 있을 확률은 S(a) 에 비례한다. `core.asserts.mean_age_multiplier` 와
+    **같은 식**이다 — 두 곳에 두는 것은 이 파일이 config 를 안 읽고 자기 Cfg 로만 도는
+    독립 검산이기 때문이다 (그게 이 자의 요점이다). 식이 갈리면 검산이 아니게 되므로
+    `tests/test_balance_config.py` 가 두 값을 맞춰 본다.
+    """
+    if c.age_growth <= 0:
+        return 1.0
+    horizon = int(c.surv_lambda * 3) + 1
+    w = [math.exp(-((a / c.surv_lambda) ** c.surv_k)) for a in range(horizon)]
+    tot = sum(w) or 1.0
+    return sum(w[a] * (1 + c.age_growth * max(0, a - c.adult_age))
+               for a in range(horizon)) / tot
+
+
 def bounds(c: Cfg):
     """요격기 임계가 놓여야 할 창. 전부 **진척 단위**.
 
@@ -70,8 +96,9 @@ def bounds(c: Cfg):
     성장은 유도에서 뺀다. 성장은 국가 투자의 결과이고 그 돈은 요격기와 경쟁하므로,
     성장을 전제로 임계를 잡으면 "국가 투자를 안 하면 구조적으로 도달 불가" 가 된다.
     """
-    k = c.facility_eff * c.success_prob
-    per_turn_country = c.income * c.agents
+    k = c.facility_eff * c.success_prob * c.build_best
+    # 실효 소득 — 나이 배수의 평균을 곱한다 (`core.asserts.mean_age_multiplier` 와 같은 식)
+    per_turn_country = c.income * mean_age_multiplier(c) * c.agents
     whole = per_turn_country * c.total_turns
     epoch = per_turn_country * c.epoch_turns
     A = 3 * epoch * k
@@ -83,9 +110,13 @@ def bounds(c: Cfg):
 
 def passes_asserts(c: Cfg):
     A, B, C, E = bounds(c)
+    # **벙커에는 `build_best` 를 안 곱한다** — 국가 효율은 요격기 전용이다 (8/23).
     k = c.facility_eff * c.success_prob
-    epoch_progress = c.income * c.agents * c.epoch_turns * k
-    whole_progress = c.income * c.agents * c.total_turns * k
+    # **실효 소득으로 잰다** (8/22) — `bounds()` 와 같은 식이다. 여기만 안 곱하면 벙커 창이
+    # 창보다 좁아져서 「전 기간을 부어도 의미 없다」 가 거짓으로 걸린다.
+    eff = c.income * mean_age_multiplier(c)
+    epoch_progress = eff * c.agents * c.epoch_turns * k
+    whole_progress = eff * c.agents * c.total_turns * k
     if not c.interceptor > A:
         return False, "A 미루기 방지 위반"
     if not c.interceptor > B:
@@ -172,7 +203,10 @@ def simulate(c: Cfg, policy, coord: float, rng: random.Random):
                 for tgt, amt in ((i, own), (host, to_host)):
                     if amt <= 0:
                         continue
-                    n = int(amt * eff)
+                    # **받는 나라의 요격기 효율** (8/23). 조율이 완벽하다는 것은 부지를
+                    # 하나로 모은다는 뜻이고, 합리적인 조율자는 **가장 잘 짓는 나라**를
+                    # 고른다 — 그래서 host 는 `build_best` 다. 자국 투자는 나라 평균(1.0).
+                    n = int(amt * eff * (c.build_best if tgt == host else 1.0))
                     prog[tgt] += sum(1 for _ in range(n)
                                      if rng.random() < c.success_prob)
         # 턴 끝 — 개인별 생존 판정. 죽으면 그 자리에 0 상태 신규

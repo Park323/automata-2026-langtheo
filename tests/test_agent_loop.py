@@ -23,7 +23,12 @@ def cfg():
 
 @pytest.fixture()
 def world(cfg):
-    return init_world(cfg, itertools.count(1))
+    w = init_world(cfg, itertools.count(1))
+    # **개체 차이를 1.0 으로 눕힌다** (8/22) — 다른 기제를 재는 테스트가 사람마다 다른
+    # 액수에 흔들리지 않게. 차이 자체는 test_world_rules_v2 의 전용 테스트가 본다.
+    for a in w.agents.values():
+        a.income_mult = a.invest_mult = 1.0
+    return w
 
 
 def _run(world, cfg, agent_id, script, knob_ai=48, budget=None):
@@ -48,22 +53,23 @@ def _results(client):
 
 # ── #2 AP 상한 ───────────────────────────────────────────────────────────────
 
-def test_ap_cap_fourth_speak_fails(cfg, world):
-    """speak 4번째가 ok:False (AP 0.3 × 3 = 0.9, 4번째는 1.2 > 1.0)."""
-    script = [assistant_msg(
-        tool_call("speak", "1", to="Asla2", text="a"),
-        tool_call("speak", "2", to="Asla2", text="b"),
-        tool_call("speak", "3", to="Asla2", text="c"),
-        tool_call("speak", "4", to="Asla2", text="d"),
-    ), assistant_msg(tool_call("end_turn", "5"))]
+def test_speaking_stops_when_the_year_runs_out(cfg, world):
+    """**말할 수 있는 횟수는 `ap.speak` 이 정한다.** 8/22 에 0.3 → 0.2 로 내려 한 해에
+    다섯 번이 됐다 — 실측에서 AP 가 병목이고 돈이 남았다 (턴 끝 예산 중앙 74 → 435,
+    남은 AP 중앙 0.0). 세 번이면 대화가 거기서 끊긴다.
+
+    **횟수를 여기 적지 않는다** — 상수에서 유도한다.
+    """
+    n = int(cfg.turn.action_points / cfg.ap.speak)
+    calls = [tool_call("speak", str(i), to="Asla2", text="x") for i in range(n + 1)]
+    script = [assistant_msg(*calls), assistant_msg(tool_call("end_turn", "z"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
-    results = _results(client)
-    oks = [r for r in results if "ok" in r]
-    assert sum(1 for r in oks if r["ok"]) == 3          # 앞 3건 성공
+    oks = [r for r in _results(client) if "ok" in r]
+    assert sum(1 for r in oks if r["ok"]) == n
     # 「not enough AP」 → 「not enough action」. **에이전트에게 AP 는 없는 말이다** —
     # 관측·비용표가 「行動力 / 行动力 / action」 이라고 부른다. 그리고 남은 값을 알려준다.
     fail = next(r for r in oks if not r["ok"])
-    assert "not enough action" in fail["error"] and "have 0.10" in fail["error"]
+    assert "not enough action" in fail["error"] and "have 0.00" in fail["error"]
 
 
 # ── #3 예산 고갈 ─────────────────────────────────────────────────────────────
@@ -72,9 +78,12 @@ def test_budget_never_negative(cfg, world):
     world.countries["Asla"].land = "interceptor"   # 투표 전에는 애초에 투자가 막힌다
     inv = assistant_msg(tool_call("invest", "1", target="facility"))
     script = [inv, inv, assistant_msg(tool_call("end_turn", "2"))]
-    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=30)
+    # **한 번의 값에서 예산을 잡는다** — 40 으로 올렸을 때 30 이 낡았다 (8/22).
+    # 한 번은 되고 두 번은 안 되는 액수: unit × 1.5
+    agent, sink, client, log = _run(world, cfg, "Asla1", script,
+                                    budget=cfg.costs.unit * 1.5)
     results = _results(client)
-    # 30 원으로 20 원짜리를 두 번 — 두 번째가 거절된다
+    # 한 번의 값 1.5배로 두 번 — 두 번째가 거절된다
     assert any((not r["ok"]) and "budget" in r.get("error", "") for r in results)
     assert agent.budget >= 0                            # 음수 안 됨
     assert len(sink.facility) == 1                      # 실패한 것은 sink 에 안 들어감
@@ -136,33 +145,41 @@ def test_speak_text_coerced_to_str(cfg, world):
     assert sink.messages[0]["text"] == "123"    # str 강제
 
 
-def test_procreate_ends_turn(cfg, world):
-    """procreate 뒤의 tool_call 은 실행되지 않는다."""
-    script = [assistant_msg(
-        tool_call("procreate", "1", testament="믿지 마라"),
-        tool_call("invest", "2", target="facility", amount=10),   # 버려져야 함
-    )]
-    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
-    assert len(sink.procreations) == 1
-    assert sink.facility == []                          # procreate 뒤 invest 무시
 
 
 # ── #10 학습 할인 ────────────────────────────────────────────────────────────
 
-def test_learn_discount_levels(cfg, world):
-    """국내 구사자 없음/있음/부모까지 → 600 / 300 / 150 (L · L/2 · L/4)."""
-    a1 = world.agents["Asla1"]           # 국가 A, ja
-    # 아무 할인 없음
-    cost, _ = learn_cost(a1, "Ranoa", world, cfg)       # B = zh
-    assert cost == 600
-    # 국내 구사자: A2 가 zh 를 앎
-    world.agents["Asla2"].known_langs.add("zh")
-    cost, reason = learn_cost(a1, "Ranoa", world, cfg)
-    assert cost == 300 and "nation" in reason
-    # 부모까지: a1 의 부모가 zh
-    a1.parent_langs.add("zh")
-    cost, reason = learn_cost(a1, "Ranoa", world, cfg)
-    assert cost == 150
+def test_help_makes_learning_faster_not_cheaper(cfg, world):
+    """**필요액은 고정이고 속도가 오른다** (8/22).
+
+    전에는 필요액을 깎았다 (200 → 150 → 100). 그러면 **목표가 움직인다** — 반쯤 낸 학습이
+    구사자가 생기는 순간 갑자기 완성되는 경로가 생기고, 그 주변에서 이미 버그를 잡았다.
+
+    이제 회당 수확이 오른다. 사유 하나마다 `+learn_speedup`, **곱이 아니라 합**이다 —
+    ×1.5 를 두 번 곱하면 2.25 배라 정가와 너무 벌어진다.
+
+        사유 없음   회당 40   →  5회 · 200원 · AP 1.0
+        하나        회당 60   →  4회 · 160원 · AP 0.8
+        둘          회당 80   →  3회 · 120원 · AP 0.6
+    """
+    from core.agent_loop import learn_speed
+    up = cfg.costs.learn_speedup
+    base = cfg.costs.learn_base
+    a1 = world.agents["Asla1"]
+
+    m, why = learn_speed(a1, "Ranoa", world, cfg)
+    assert m == 1.0 and "no help" in why
+    assert learn_cost(a1, "Ranoa", world, cfg)[0] == base
+
+    world.agents["Asla2"].known_langs.add("zh")          # 국내 구사자
+    m, why = learn_speed(a1, "Ranoa", world, cfg)
+    assert m == 1.0 + up and "nation" in why
+    assert learn_cost(a1, "Ranoa", world, cfg)[0] == base
+
+    a1.parent_langs.add("zh")                            # 부모까지
+    m, why = learn_speed(a1, "Ranoa", world, cfg)
+    assert m == 1.0 + 2 * up and "parent" in why
+    assert learn_cost(a1, "Ranoa", world, cfg)[0] == base
 
 
 def test_learn_self_not_counted(cfg, world):
@@ -170,27 +187,30 @@ def test_learn_self_not_counted(cfg, world):
     a1 = world.agents["Asla1"]
     a1.known_langs.add("zh")          # 자기가 zh 를 알아도
     cost, _ = learn_cost(a1, "Ranoa", world, cfg)
-    assert cost == 600                # 할인 안 됨
+    assert cost == cfg.costs.learn_base       # 필요액은 언제나 고정이다 (8/22)
 
 
 def test_learn_is_paid_in_instalments(cfg, world):
     """**한 번에 다 낼 필요가 없다.** 낸 만큼 쌓이고 다 차야 읽을 수 있다.
 
-    Asla2 가 Miris(fr) 를 배운다 — Asla 에는 fr 구사자가 없어 정가 600 이다.
+    Asla2 가 Miris(fr) 를 배운다 — Asla 에는 fr 구사자가 없어 정가다.
     """
+    L = cfg.costs.learn_base
     learn = assistant_msg(tool_call("learn", "1", country="Miris"))
     script = [learn, learn, assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla2", script, budget=10000)
-    # 한 번에 20. **정가 600 은 30번이라 AP 3.0** — 최소 3해가 든다.
+    # 한 번에 20. 정가는 L/20 번이고, 그 횟수 × 0.1 이 드는 AP 다.
     assert agent.budget == 10000 - 2 * cfg.costs.unit
     assert [r["charged"] for r in sink.learns] == [cfg.costs.unit] * 2
     assert [r["progress_before"] for r in sink.learns] == [0.0, cfg.costs.unit]
     (rec,) = sink.learns[:1]
-    assert rec["required"] == 600 and rec["rung"] == 1.0
+    assert rec["required"] == L
     # **응답은 내가 몰랐던 것만 담는다** — 요청한 국가·액수는 되돌려주지 않는다.
     res = [r for r in _results(client) if "progress" in r]
-    assert [r["progress"] for r in res] == [20.0, 40.0]     # 같은 해에도 쌓인다
-    assert res[-1]["remaining"] == 560.0
+    # **회당 수확은 `costs.unit × 배율`** — Asla2 → Miris 는 도움이 없어 정가다
+    u = cfg.costs.unit
+    assert [r["progress"] for r in res] == [u, 2 * u]   # 같은 해에도 쌓인다
+    assert res[-1]["remaining"] == L - 2 * u
     assert res[-1]["complete"] is False   # 일정이 아니라 사실만
     assert "toward" not in res[0]         # 요청한 국가를 되돌려주지 않는다
 
@@ -199,11 +219,12 @@ def test_learn_never_takes_more_than_needed(cfg, world):
     """**마지막 한 번은 남은 만큼만 받는다** — 남는 돈이 조용히 사라지면 안 된다."""
     from core.agent_loop import Sink, execute_tool
     a = world.agents["Asla2"]; a.ap, a.budget = 1.0, 10_000.0
-    a.lang_progress = {"fr": 595.0}                  # 정가 600 에 5 만 남았다
+    L = cfg.costs.learn_base
+    a.lang_progress = {"fr": L - 5.0}                # 정가에 5 만 남았다
     sink = Sink()
     r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
                         world, a, cfg, sink, 48.0)
-    assert r["ok"] and r["progress"] == 600.0 and r["complete"] is True
+    assert r["ok"] and r["progress"] == L and r["complete"] is True
     assert a.budget == 10_000.0 - 5                  # 20 이 아니라 5 만 나간다
     assert sink.learns[0]["charged"] == 5
 
@@ -220,7 +241,8 @@ def test_learn_rejects_a_language_already_read(cfg, world):
 
 def test_learn_uses_less_than_a_whole_turn(cfg, world):
     """한 번의 납부는 한 해의 십분의 일이다 — 열 번이면 AP 를 다 쓴다."""
-    assert cfg.ap.unit * 10 == cfg.turn.action_points
+    # 정가 학습이 딱 한 해분의 행동력이다
+    assert (cfg.costs.learn_base / cfg.costs.unit) * cfg.ap.unit == cfg.turn.action_points
     script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=100)),
               assistant_msg(tool_call("speak", "2", to="Asla3", text="x")),
               assistant_msg(tool_call("end_turn", "3"))]
@@ -229,24 +251,34 @@ def test_learn_uses_less_than_a_whole_turn(cfg, world):
 
 
 def test_learn_action_points_scale_with_the_amount(cfg, world):
-    """**분할이 손해면 안 된다.** 정액 0.3 이었을 때 600 을 여섯 번에 나눠 내면 AP 1.8,
+    """**분할이 손해면 안 된다.** 정액 0.3 이었을 때 정가를 여섯 번에 나눠 내면 AP 1.8,
     한 번에 내면 0.3 이었다 — 분할을 넣어놓고 분할에 벌을 주고 있었다.
 
-    비례로 두면 나눠 내든 몰아 내든 합계가 같고, 정가 전액이 딱 한 턴이 된다.
+    비례로 두면 나눠 내든 몰아 내든 합계가 같고, **정가 전액이 딱 한 해의 행동력**이 된다
+    (L 200 ÷ 20 = 10회 × 0.1 = 1.0). 8/20 에 L 을 600 에서 내리면서 그렇게 맞췄다 —
+    600 일 때는 세 해였고 아무도 끝내지 못했다.
     """
     from core.agent_loop import Sink, execute_tool
     base = cfg.costs.learn_base
+    n = int(base / cfg.costs.unit)
+    # 정가는 딱 한 해분의 행동력이다. 여기가 학습이 몇 해 걸리는지를 정하는 자리다.
+    assert n * cfg.ap.unit == cfg.turn.action_points
+
     lump = world.agents["Asla2"]; lump.ap, lump.budget = 1.0, 10_000.0
     sink = Sink()
-    for _ in range(10):                            # 열 번이면 AP 를 다 쓴다
-        execute_tool("learn", {"country": "Miris", "reasoning": "r"},
-                     world, lump, cfg, sink, 48.0)
-    assert abs(lump.ap) < 1e-9
-    assert lump.budget == 10_000.0 - 10 * cfg.costs.unit
+    for i in range(n):
+        r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
+                            world, lump, cfg, sink, 48.0)
+        assert r["ok"], (i, r)
+    assert lump.ap == 0.0                       # 격자에 붙어 있다 (부동소수 아님)
+    assert lump.budget == 10_000.0 - base       # 나눠 냈어도 합계는 정가 그대로
+    assert r["complete"] is True                # 그리고 마지막 한 번에 끝난다
+
+    # **행동력과 완성이 같은 지점에서 만난다.** 한 해를 학습에 다 쓰면 정가가 채워지므로,
+    # 여기서 「AP 부족」 을 볼 수 없다 — 그건 test_learn_stops_when_action_runs_out 이 본다.
     r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
                         world, lump, cfg, sink, 48.0)
-    assert not r["ok"] and "not enough action" in r["error"]
-    assert base / cfg.costs.unit == 30            # 정가 600 은 30번 = 최소 3해
+    assert not r["ok"] and "already" in r["error"]
 
 
 def test_learn_stops_when_action_runs_out(cfg, world):
