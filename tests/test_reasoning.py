@@ -323,22 +323,38 @@ def test_judge_can_still_read_the_stream(cfg_think):
     assert "요격기" in r["reasonings"][0]
 
 
-def test_every_step_forces_a_tool_call(cfg, world):
-    """**모든 스텝에서 도구 호출을 강제한다.**
+def test_tool_choice_comes_from_the_config_on_every_step(cfg, world):
+    """**강제는 config 손잡이다** (8/25 · Eddie).
 
-    사고를 끈 뒤로 모델이 content 에 숙고를 쏟고 그대로 끝내는 일이 잦았다 —
-    실측에서 턴의 2~7% 가 통째로 날아갔다. 계획만 적거나(「1. propose_vote
-    2. observe_risk 3. invest — これら3つの行動を行います」) 메시지 본문을 산문으로
-    쓰는(「Ranoa1さん、こんにちは！」) 식이라 JSON 회수기도 못 잡았다.
+    `"required"` 가 코드에 박혀 있었다. 그런데 그것이 **프로바이더 선택을 덮어쓴다** —
+    업체 전부가 `supported_parameters` 에 `tool_choice` 를 신고하지만 실제로 `required`
+    를 받는 곳은 적고, OpenRouter 가 실제 지원으로 걸러내면서 우리 `order` 를 통째로
+    건너뛴다. 같은 요청 6콜씩 실측:
 
-    `end_turn` 도 도구이므로 "할 게 없다" 는 여전히 표현된다.
+        required   지연중앙 26,675ms   {Sail Research 5, CoreWeave 1}   ← order 무시
+        auto       지연중앙  9,208ms   {GMICloud 6}                     ← 2.9배
+
+    강제는 원래 **사고를 껐을 때** 넣은 우회책이었다 (8/16) — 「모델이 content 에 숙고를
+    쏟고 그대로 끝낸다 · 턴의 2~7% 가 날아갔다」. 사고를 되켰으므로 숙고는 reasoning
+    채널로 가고, 실측 6콜에서 도구 없는 응답은 **0건**이었다.
+
+    값을 박지 않고 **손잡이가 모든 스텝에 전해지는지**만 본다 — 그래야 되돌릴 때
+    코드를 안 고친다 (오늘 배운 것: 결정이 코드나 CLI 에만 있으면 조용히 낡는다).
     """
     from core.agent_loop import Sink, run_agent_turn
-    stub = StubClient([assistant_msg(tool_call("speak", "1", to="Asla3", text="x",
-                                               reasoning="r")),
-                       assistant_msg(tool_call("end_turn", "2"))])
-    a = world.agents["Asla2"]; a.ap = 1.0
-    run_agent_turn(world, a, cfg, stub, Sink(), KNOB,
-                   prompts.system_for(a, None, cfg), prompts.render_observation(world, a, cfg, KNOB))
-    # **모든 스텝에서** 강제한다. end_turn 도 도구라 잃는 선택지가 없다.
-    assert [c["tool_choice"] for c in stub.calls] == ["required"] * len(stub.calls)
+    from core import config as cfgmod
+    import dataclasses
+
+    for want in ("auto", "required"):
+        llm = dataclasses.replace(cfg.llm, tool_choice=want)
+        c = dataclasses.replace(cfg, llm=llm)
+        stub = StubClient([assistant_msg(tool_call("speak", "1", to="Asla3", text="x",
+                                                   reasoning="r")),
+                           assistant_msg(tool_call("end_turn", "2"))])
+        a = world.agents["Asla2"]; a.ap = 1.0
+        run_agent_turn(world, a, c, stub, Sink(), KNOB,
+                       prompts.system_for(a, None, c),
+                       prompts.render_observation(world, a, c, KNOB))
+        assert stub.calls, want
+        # **모든 스텝**에 같은 값이 간다 — 첫 스텝만 강제하는 식의 어긋남이 없어야 한다
+        assert [x["tool_choice"] for x in stub.calls] == [want] * len(stub.calls), want

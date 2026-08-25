@@ -171,6 +171,17 @@ class LLM:
     # 사고를 하고 그건 api_reasoning 으로 남는다. 끄면 그 사고가 reasonings 스트림에
     # 들어가 지표 4 가 계속 읽을 수 있다 (spec 12.1).
     tool_reasoning: bool = True
+    # 도구 호출을 강제할 것인가. **"required" 는 프로바이더 선택을 덮어쓴다** (8/25) —
+    # 업체 전부가 `supported_parameters` 에 `tool_choice` 를 신고하지만 실제로 `required`
+    # 를 받는 곳은 적고, OpenRouter 가 실제 지원으로 걸러내면서 우리 `order` 를 통째로
+    # 건너뛴다. 실측: 같은 요청에서 `required` → Sail Research 21초, 떼면 GMICloud 5.8초.
+    #
+    # 애초에 `required` 는 **사고를 껐을 때** 넣은 우회책이었다 (8/16 · d10ca2e) —
+    # 「모델이 content 에 숙고를 쏟고 그대로 끝낸다 · 턴의 2~7% 가 날아갔다」. 사고를
+    # 되켰으므로 숙고는 reasoning 채널로 간다. 안전망은 그대로다:
+    # `_recover_tool_calls` 가 content 에서 도구 호출을 파싱하고, 실패하면 `no_tool_call`
+    # 로 로그에 남는다 — 조용히 사라지지 않는다.
+    tool_choice: str = "auto"
     # 프로바이더 라우팅. OpenRouter 는 같은 모델을 여러 업체가 서빙하고 **가격이
     # 다르다.** {"order": [...]} 로 우선순위를, {"only": [...]} 로 고정한다.
     provider: dict | None = None

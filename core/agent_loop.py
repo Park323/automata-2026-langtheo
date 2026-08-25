@@ -815,8 +815,9 @@ def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
     messages = [{"role": "system", "content": system_prompt}, *agent.convo]
     t_call = time.time()
     try:
-        # 모든 스텝에서 도구 호출을 강제한다 (end_turn 도 도구라 "할 게 없다"는 표현됨).
-        resp = client.chat(messages, tools=tool_list, tool_choice="required",
+        # **강제는 config 손잡이다** (8/25). `"required"` 를 박아 두었더니 프로바이더
+        # 선택을 덮어썼다 — `core/config.py` 의 `tool_choice` 주석 참조.
+        resp = client.chat(messages, tools=tool_list, tool_choice=cfg.llm.tool_choice,
                            log_tag={"turn": world.turn, "agent": agent.id,
                                     "step": st.steps + 1, "age": agent.age,
                                     "country": agent.country})
@@ -1043,7 +1044,7 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             # 날아갔고, JSON 이 아니라 회수기도 못 잡았다 (계획만 적거나, 메시지 본문을
             # 산문으로 씀). **`end_turn` 도 도구이므로 "할 게 없다" 는 여전히 표현된다** —
             # 강제해도 잃는 선택지가 없다.
-            resp = client.chat(messages, tools=tool_list, tool_choice="required",
+            resp = client.chat(messages, tools=tool_list, tool_choice=cfg.llm.tool_choice,
                                log_tag={"turn": world.turn, "agent": agent.id,
                                         "step": steps + 1, "age": agent.age,
                                         "country": agent.country})
