@@ -30,8 +30,14 @@ def main() -> None:
     lived = _s.expected_life(c.survival.lambda_base, c.survival.k)
     weib = c.survival.lambda_base * __import__("math").gamma(1 + 1 / c.survival.k)
     print("```")
-    print("번역 모델   mistral-small-3.2-24b     3언어 분산 최소 (파일럿 ②) — **고정**")
-    print("에이전트    qwen/qwen3.6-35b-a3b      「모델 선택」 절")
+    # **모델 이름을 손으로 적지 않는다** (8/25). 여기 `qwen3.6-35b-a3b` 이 박혀 있었고
+    # 실제 런은 deepseek-v4-flash 였다 — 「숫자를 두 군데 적으면 하나가 낡는다」.
+    print(f"번역 모델   {c.llm.translate_model.split('/')[-1]:<32}"
+          " 3언어 분산 최소 (파일럿 ②) — **고정**")
+    print(f"에이전트    {c.llm.agent_model.split('/')[-1]:<32} "
+          f"사고 {c.llm.reasoning} · 도구 reasoning {c.llm.tool_reasoning}")
+    print(f"{'':<12}{'':<32} max_tokens {c.llm.max_tokens} · "
+          f"provider {c.llm.provider}")
     print()
     print(f"노브        ai 발신 AP {list(c.knob.comm_intl_ai_ap)}   ← 유일한 실험 변수")
     print(f"행동력      한 해 {c.turn.action_points} · speak {c.ap.speak} · unit {c.ap.unit} · "

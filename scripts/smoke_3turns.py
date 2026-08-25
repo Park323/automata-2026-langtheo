@@ -181,8 +181,16 @@ def main() -> None:
     # **번역기는 openrouter 에 둔다.** 파일럿으로 확정한 모델이고 (spec 12.2) 백엔드를
     # 바꾸면 그 파일럿의 근거가 이 런에 적용되지 않는다.
     agent_key = key if args.backend == "openrouter" else key_for(args.backend)
+    # **오버라이드를 raw 에 되쓴다** (8/25 · Eddie). 다섯 손잡이 중 모델 둘만
+    # `raw` 를 안 거치고 클라이언트로 바로 갔다. 그래서 `config_snapshot.yaml` 이
+    # **거짓을 적었다** — `noai50` 은 deepseek-v4-flash 로 돌았는데 스냅샷에는
+    # qwen3.6-35b-a3b 이 적혀 있었다. 산출물이 어느 모델의 것인지 알 수 없게 된다.
+    #
+    # 스냅샷은 재현의 유일한 근거다. 여기 빠진 손잡이는 조용히 사라진다.
     agent_model = args.agent_model or cfg.llm.agent_model
     translate_model = args.translate_model or cfg.llm.translate_model
+    raw["llm"]["agent_model"] = agent_model
+    raw["llm"]["translate_model"] = translate_model
     knob = (None if args.no_ai
             else args.knob if args.knob is not None
             else max(cfg.knob.comm_intl_ai_ap))
@@ -194,8 +202,9 @@ def main() -> None:
         raw["llm"]["provider"] = {"only": [args.provider], "allow_fallbacks": False}
     if args.max_tokens:
         raw["llm"]["max_tokens"] = args.max_tokens
-    if args.reasoning_effort or args.tool_reasoning or args.provider or args.max_tokens:
-        cfg = config.from_dict(raw)
+    # 모델은 위에서 늘 되썼으므로 조건 없이 다시 만든다 — 조건을 달면 그 손잡이가
+    # 또 스냅샷에만 남고 `cfg` 에는 안 들어가는 어긋남이 생긴다.
+    cfg = config.from_dict(raw)
     if args.provider:
         print(f"  [프로바이더] {args.provider} 고정 · 폴백 끔 — "
               f"조건이 런 중간에 바뀌지 않게")

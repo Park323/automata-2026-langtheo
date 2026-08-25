@@ -311,32 +311,39 @@ llm:
   context_limit: 8192             # 개체 기억 (spec 4.5). 2^13
   warn_ratio:    0.7              # 5,734 토큰에서 압박 경고
   repeat_guard:  3                # 동일 (도구,인자) 반복 상한. max_steps 는 두지 않는다
-  agent_model:     "qwen/qwen3.6-35b-a3b"                 # tools OK
+  agent_model:     "deepseek/deepseek-v4-flash"           # tools OK · 사고형
   translate_model: "mistralai/mistral-small-3.2-24b-instruct"  # 파일럿 확정 — 고정 (바꾸지 말 것)
   temperature:     0.7
   # 응답 상한. 없으면 모델이 같은 문장을 반복하다 붕괴한다 — 실측에서 한 응답이
-  # 40,935자였고 그 턴의 벽시계를 통째로 잡아먹었다. 사고를 껐으므로 출력은 도구 호출과
-  # reasoning 문자열뿐이고 2048 이면 넉넉하다 (메시지 상한은 fr 400자).
-  max_tokens:     2048
-  # 사고를 끈다. **DeepInfra 에서 실제로 먹는 손잡이는 이것뿐이다.**
-  # 같은 프롬프트로 3회씩 재봤다 (사고 토큰):
+  # 40,935자였고 그 턴의 벽시계를 통째로 잡아먹었다. **사고와 나눠 쓴다.**
   #
-  #   reasoning 없음              [602, 280, 572]
+  # 20턴 실측 (같은 시드·노브): 2048 로 조이면 잘림이 9% → 19% 로 두 배가 되고 메시지가
+  # 23% 줄었다. 우리 병목은 비용이 아니라 표본 수라 그 거래는 손해다.
+  max_tokens:     4096
+  # **사고를 켠다** (8/25). 8/16 에 껐던 것을 되돌린다.
+  #
+  # 껐던 근거는 「DeepInfra 가 effort 를 무시한다」 였다 — 같은 프롬프트 3회씩:
+  #
   #   effort: low                [481, 419, 477]
   #   effort: high               [438, 541, 476]   ← low 와 구분 안 됨
-  #   reasoning.max_tokens 256   [323, 278, 319]   ← 256 을 넘긴다. 하드 캡이 아니다
-  #   enabled: false             [  0,   0,   0]   ← 이것만 확실하다
+  #   enabled: false             [  0,   0,   0]   ← 이것만 확실했다
   #
-  # 20턴 비교에서 low/2048 과 medium/4096 의 사고 중앙값이 같았던 이유가 이것이다 —
-  # 강도는 애초에 안 걸렸고 max_tokens 만 일하고 있었다.
+  # 그 관측은 **끄는 것이 가능하다**는 뜻이고 **꺼야 한다**는 뜻이 아니었다. 강도를
+  # 못 고르는 것과 사고 자체를 버리는 것은 다르다. deepseek-v4-flash 로 옮기면서
+  # 사고를 켜는 쪽으로 정했고, `noai50` 에서 실제로 나왔다 —
+  # **사고 토큰 표본 120 · 중앙 198 · 최대 1183.**
   reasoning:
-    enabled: false
-  # 사고를 껐으므로 **도구마다 reasoning 을 다시 받는다** (spec 4.2 원안).
-  # 안 켜면 지표 4(2단계 판정)의 ①이 읽을 근거가 통째로 사라진다.
-  tool_reasoning: true
+    effort: low
+  # **끈다.** 사고형 모델이라 모델이 이미 생각하고 그것이 `api_reasoning` 으로 남는다.
+  # 끄면 그 사고가 `reasonings` 스트림에 `source: "thinking"` 으로 들어가 지표 4 의 ①이
+  # 계속 읽는다 (spec 12.1). **둘을 같이 켜면** 근거가 두 갈래로 와서 ①이 어느 쪽을
+  # 읽을지 모호해진다.
+  tool_reasoning: false
+  # deepseek-v4-flash 를 서빙하는 업체로 고정한다. akashml/parasail/atlas-cloud 는
+  # qwen 쪽 목록이었다 — 모델을 바꾸면 이것도 따라와야 한다.
   provider:
-    order: [akashml, parasail, atlas-cloud]
-    allow_fallbacks: true
+    only: [DeepInfra]
+    allow_fallbacks: false
 
 run:
   seed: 1

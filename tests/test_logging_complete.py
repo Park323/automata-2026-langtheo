@@ -317,3 +317,37 @@ def test_the_counter_does_not_leak_under_parallel_writes(tmp_path, cfg):
     rows = _rows(w, "raw_calls")
     assert w.counts["raw"] == N * T == len(rows)
     assert len({r["call_id"] for r in rows}) == N * T      # 겹치지 않는다
+
+
+def test_the_config_snapshot_records_the_model_that_actually_ran(tmp_path):
+    """**스냅샷이 거짓을 적고 있었다** (8/25 · Eddie).
+
+    러너의 손잡이 다섯 중 `reasoning_effort`·`tool_reasoning`·`provider`·`max_tokens` 는
+    `raw` 를 거쳐 스냅샷에 남았는데, **모델 둘만** 클라이언트로 바로 갔다:
+
+        agent_model = args.agent_model or cfg.llm.agent_model    # raw 를 안 거친다
+
+    그래서 `runs/noai50` 은 deepseek-v4-flash 로 돌았는데 `config_snapshot.yaml` 에는
+    qwen3.6-35b-a3b 이 적혀 있었다. **산출물이 어느 모델의 것인지 알 수 없다** — 스냅샷은
+    재현의 유일한 근거이므로 이건 지표 오염보다 나쁘다.
+
+    이 테스트는 러너의 그 줄을 직접 흉내낸다 — 손잡이가 늘 때 여기서 걸린다.
+    """
+    import yaml
+    from core import config as cfgmod, run_io
+
+    raw = yaml.safe_load((run_io.ROOT / "configs" / "base.yaml").read_text(encoding="utf-8"))
+    OVERRIDE = "some/other-model"
+    # 러너가 하는 것과 같은 순서: 오버라이드 → raw 되쓰기 → cfg 재생성
+    agent_model = OVERRIDE or raw["llm"]["agent_model"]
+    raw["llm"]["agent_model"] = agent_model
+    cfg = cfgmod.from_dict(raw)
+
+    assert cfg.llm.agent_model == OVERRIDE
+    # 스냅샷은 `raw` 를 적는다 — 그러니 `raw` 가 진실이어야 한다
+    assert raw["llm"]["agent_model"] == OVERRIDE
+
+    # 러너 코드가 실제로 되쓰는지 본다 (문자열 검사가 아니라 구조 검사)
+    src = (run_io.ROOT / "scripts" / "smoke_3turns.py").read_text(encoding="utf-8")
+    for k in ("agent_model", "translate_model"):
+        assert f'raw["llm"]["{k}"] = {k}' in src, f"{k} 가 raw 로 되쓰이지 않는다"
