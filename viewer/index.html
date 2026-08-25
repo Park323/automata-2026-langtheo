@@ -365,15 +365,18 @@ function describe(e){
       // 들어 있는데 `kind` 를 안 보고 같은 틀로 찍어서 「200 냈다」 로 읽혔다.
       const why = (e.discount_domestic ? " · 국내 구사자" : "") + (e.discount_parent ? " · 부모" : "");
       if (e.kind === "acquired")
-        return `${e.agent} 가 ${e.target} 말을 익혔다 — ${Math.round(e.required)} 완주${why}`;
-      // 낸 돈이 아니라 **쌓인 진척**이 배속을 탄다. 둘 다 보여야 배속이 읽힌다.
+        return `${e.agent} 가 ${e.target} 말을 익혔다 — 100% 완주${why}`;
+      // **%로 적는다** (8/25). 에이전트가 보는 것도 %다 — 절대값 40 은 목표를 모르면
+      // 뜻이 없고, 뷰어와 프롬프트가 다른 단위를 쓰면 로그를 읽을 때 머릿속에서 환산해야
+      // 한다. 그 환산이 곧 오독의 자리다.
       //
-      // `speed` 가 없는 런(8/23 이전)은 진척을 **적지 않는다.** 배속을 모르면 진척은
-      // 계산할 수 없고, 낸 돈을 진척으로 적으면 틀린 숫자가 된다 — 없는 것보다 나쁘다.
-      const head = `${e.agent} 가 ${e.target} 말 학습 · ${Math.round(e.charged)} 투입`;
+      // `speed` 가 없는 런(8/23 이전)은 진척을 **적지 않는다.** 배속을 모르면 계산할 수
+      // 없고, 낸 값을 진척으로 적으면 틀린 숫자가 된다 — 없는 것보다 나쁘다.
+      const head = `${e.agent} 가 ${e.target} 말 학습`;
       if (!e.speed) return head + ` (배속 미기록)` + why;
       const gain = e.charged * e.speed, done = (e.progress_before || 0) + gain;
-      return head + ` → 진척 +${Math.round(gain)} (${Math.round(done)}/${Math.round(e.required)})`
+      const pct = (x) => Math.round(x / e.required * 100);
+      return head + ` · +${pct(gain)}% → ${pct(done)}%`
         + (e.speed !== 1 ? ` · ×${e.speed} 배속` : "") + why;
     }
     case "facility_gain": return `${e.agent} 의 ${Math.round(e.amount)} → ${e.to} 진척 +${e.gain}`;
