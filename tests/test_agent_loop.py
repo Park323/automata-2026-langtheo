@@ -378,3 +378,71 @@ def test_tool_results_hide_progress(cfg, world):
         blob = json.dumps(r, ensure_ascii=False)
         for bad in ["success_prob", "lambda", "λ", "gained", "증가분", "progress"]:
             assert bad not in blob, f"도구 결과에 금지어 '{bad}' 노출: {blob}"
+
+
+def test_writing_the_same_memory_again_does_not_loop_forever(cfg, world):
+    """**무료 성공 호출이 두 그물을 다 통과했다** (8/25 · 260825-002-noai 4해).
+
+    `repeat_guard` 는 「실패한 호출만」 세었고 근거는 주석에 이렇게 적혀 있었다:
+
+        실패한 호출만 센다 (성공은 자원을 쓰므로 can_act 가 이미 막는다)
+
+    **`memory_write` 에서 그 전제가 거짓이다.** `ap.memory_write` 는 0.0 이라 성공해도
+    자원을 안 쓴다 → `can_act` 가 안 막고, 성공이므로 `repeat_guard` 도 안 센다.
+
+    실측: Asla3 이 4해에 `invest` 다섯 번으로 AP 를 다 쓴 뒤, **바이트까지 같은 글을
+    51번** 썼다. 매번 `{"ok": true}` 를 받았으니 멈출 이유가 없었다. 그 해 한 사람이
+    59콜을 썼다 (평소 5콜) — 세계 전체 111콜 중 절반이 한 사람의 헛돌기였다.
+    `RUNAWAY_CAP`(64) 은 백스톱이라 59 에서 안 걸렸고, 모델이 스스로 나왔다.
+
+    성공을 **다 세면 안 된다** — `invest` 5회는 인자까지 같은 정상 반복이다. 가르는
+    것은 「세계가 바뀌었나」 이고, 그것은 도구가 말해준다.
+    """
+    from core.agent_loop import Sink, execute_tool
+    a = world.agents["Asla2"]
+    a.memory_open = True                    # 압박 아래 — 목록에 있다
+    sink = Sink()
+
+    first, _ = execute_tool("memory_write", {"text": "メモ"}, world, a, cfg, sink, KNOB)
+    assert first["ok"] and not first.get("unchanged")
+
+    again, _ = execute_tool("memory_write", {"text": "メモ"}, world, a, cfg, sink, KNOB)
+    # 오류가 아니다 — 그러나 **아무 일도 아니었다는 사실**을 돌려준다
+    assert again["ok"] and again["unchanged"] is True
+
+    # 다른 글은 여전히 바꾼다
+    third, _ = execute_tool("memory_write", {"text": "別のメモ"}, world, a, cfg, sink, KNOB)
+    assert third["ok"] and not third.get("unchanged")
+    assert a.memory == "別のメモ"
+
+
+def test_the_repeat_guard_counts_calls_that_changed_nothing(cfg, world):
+    """같은 기억을 `repeat_guard` 번 쓰면 차례가 끝난다 — AP 를 안 쓰므로 다른 제동이 없다.
+
+    그리고 **정상 반복은 끊기지 않는다**: `invest` 는 인자가 같아도 매번 AP 를 쓰고
+    세계를 바꾼다 (`unchanged` 가 없다).
+    """
+    a = world.agents["Asla2"]
+    # **실제로 압박을 만든다** (8/25). `memory_open` 을 손으로 켜도 루프가 `pressured`
+    # 로 다시 계산해 덮어쓴다 — 그러면 다섯 번이 전부 「아직 못 쓴다」 로 **거절**되고,
+    # 옛 그물(실패만 센다)도 걸린다. 테스트가 **엉뚱한 이유로 통과**한다.
+    a.last_prompt_tokens = int(cfg.llm.context_limit * cfg.llm.warn_ratio) + 1
+    same = [assistant_msg(tool_call("memory_write", str(i), text="同じ"))
+            for i in range(1, 6)]
+    agent, sink, client, log = _run(world, cfg, "Asla2",
+                                    same + [assistant_msg(tool_call("end_turn", "9"))])
+    assert agent.memory_open, "압박이 안 걸렸다 — 이 테스트가 아무것도 안 본다"
+    assert log["ended_by"] == "repeat_guard", log["ended_by"]
+    # 첫 번째는 바꿨고, 그 뒤 `repeat_guard` 번째에 끊긴다
+    assert log["steps"] <= 1 + cfg.llm.repeat_guard
+
+    # 대조 — invest 다섯 번은 끝까지 간다
+    b = world.agents["Asla3"]
+    b.ap = cfg.turn.action_points
+    inv = [assistant_msg(tool_call("invest", str(i), target="wellness"))
+           for i in range(1, 6)]
+    _, sink2, _, log2 = _run(world, cfg, "Asla3",
+                             inv + [assistant_msg(tool_call("end_turn", "9"))])
+    # 요점은 **끊기지 않았다**는 것이다 — 다섯 번이 다 통했다
+    assert log2["ended_by"] != "repeat_guard", log2["ended_by"]
+    assert len(sink2.wellness) == 5

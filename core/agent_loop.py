@@ -257,7 +257,15 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             # 통째로 지워진다 — 실측에서 실제로 일어났다 ("saved": 0).
             return {"ok": False, "error": "memory_write needs text"}, None
         _spend(agent, cfg.ap.memory_write)
-        agent.memory = str(args.get("text", ""))
+        text = str(args.get("text", ""))
+        # **같은 글을 다시 쓴 것은 아무 일도 아니다** (8/25 · Eddie). 그래도 `ok` 다 —
+        # 오류가 아니다. 그러나 **바뀐 게 없다는 사실**을 돌려주지 않으면 모델에게
+        # 멈출 이유가 없다. 4해 실측에서 Asla3 이 **바이트까지 같은 글을 51번** 썼고
+        # 매번 `{"ok": true}` 를 받았다.
+        unchanged = text == agent.memory
+        agent.memory = text
+        if unchanged:
+            return {"ok": True, "unchanged": True}, None
         return {"ok": True}, None      # 돈도 AP 도 안 든다 — 돌려줄 것이 없다
 
     if name == "invest":
@@ -904,8 +912,15 @@ def _agent_one_call(world, agent, cfg, client, sink: "Sink", knob_ai: float,
         # 도구의 결과가 남은 블록 안에 들어가야 하기 때문이다.
         if name == "memory_write" and result.get("ok") and under_pressure(agent, cfg):
             st.compacted += compact_after_memory(agent, cfg, fixed)
-        # 실패한 호출만 센다 (성공은 자원을 쓰므로 can_act 가 이미 막는다).
-        if not result.get("ok"):
+        # **아무것도 안 바꾼 호출을 센다.** 전에는 「실패한 호출만」 이었고 근거는
+        # 「성공은 자원을 쓰므로 can_act 가 이미 막는다」 였다 — 그 전제가
+        # `memory_write` 에서 거짓이다. AP 가 0.0 이라 성공해도 자원을 안 쓰고,
+        # 그래서 `can_act` 도 안 막고 이 그물도 안 세었다. 무한히 반복 가능한 무료
+        # 성공 호출이 **두 그물을 다 통과했다** (4해 · Asla3 · 같은 글 51회 · 52콜 낭비).
+        #
+        # 성공을 다 세면 안 된다 — `invest` 5회처럼 **정상 반복이 인자까지 같다.**
+        # 가르는 것은 「세계가 바뀌었나」 이고, 그것은 도구가 말해준다(`unchanged`).
+        if not result.get("ok") or result.get("unchanged"):
             key = f"{name}|{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
             st.seen[key] = st.seen.get(key, 0) + 1
             if st.seen[key] >= cfg.llm.repeat_guard:
@@ -1141,9 +1156,11 @@ def run_agent_turn(world, agent, cfg, client, sink: Sink, knob_ai: float,
             # 보면 안 보인다 (이 프로젝트에서 이미 겪은 부류다).
             if name == "memory_write" and result.get("ok") and under_pressure(agent, cfg):
                 compacted += compact_after_memory(agent, cfg, fixed)
-            # ③ 실패한 호출만 센다. 성공은 자원을 쓰므로 ②가 이미 막는다 —
-            #    성공까지 세면 정상 행동(같은 상대에게 3번 말하기)이 끊긴다.
-            if not result.get("ok"):
+            # ③ **아무것도 안 바꾼 호출**을 센다. 「실패만」 이었을 때 `memory_write`
+            #    가 빠져나갔다 (AP 0.0 → 성공해도 자원을 안 쓴다 → ②도 안 막는다).
+            #    성공을 다 세면 정상 반복(`invest` 5회)이 끊기므로, 가르는 것은
+            #    「세계가 바뀌었나」 다 — 도구가 `unchanged` 로 말해준다.
+            if not result.get("ok") or result.get("unchanged"):
                 key = f"{name}|{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
                 seen[key] = seen.get(key, 0) + 1
                 if seen[key] >= cfg.llm.repeat_guard:
