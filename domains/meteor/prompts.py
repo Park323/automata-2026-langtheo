@@ -157,7 +157,7 @@ T = {
                  "             observe_risk の精度も良くなる。国民全員に及ぶ",
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n"
                 "             （省くと自国）",
-        cap="メッセージは {cap} 文字まで届きます。それを超えた分は届きません。",
+        cap="メッセージは書いた言語ごとに届く長さが違います — {caps}。それを超えた分は届きません。",
         rtt="送ったメッセージは翌年に届きます。返事が来るのはさらにその翌年です。",
         rtt_same="送ったメッセージは、相手が次に動くときに届きます。同じ年のうちに返事が来ることもあります。",
         in_hdr="今届いたメッセージ:", ev_hdr="起きたこと:",
@@ -232,7 +232,7 @@ T = {
         inv_natl="  national   提高本国的技术水平。投入设施时变成进度的效率、\n"
                  "             observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
-        cap="消息最多送达 {cap} 个字，超出部分不会送达。",
+        cap="消息能送达的长度按你写的语言而定 — {caps}。超出部分不会送达。",
         rtt="你发出的消息在第二年送达。对方的回信要再过一年才会到。",
         rtt_same="你发出的消息，会在对方下次行动时送达。回信也可能在同一年内到来。",
         in_hdr="刚送达的消息:", ev_hdr="发生的事:",
@@ -313,7 +313,7 @@ T = {
                           "             s'améliorent, pour tous ses habitants",
         inv_fac="  facility   contribue à la progression d'une installation ; `to` nomme la nation —\n"
                           "             la vôtre ou une autre (sans `to`, la vôtre)",
-        cap="Un message est délivré jusqu'à {cap} caractères ; au-delà, rien n'est délivré.",
+        cap="La longueur délivrée dépend de la langue dans laquelle vous écrivez — {caps}. Au-delà, rien n'est délivré.",
         rtt="Un message part et arrive l'année suivante ; une réponse n'arrive que l'année d'après.",
         rtt_same="Votre message arrive quand le destinataire agit la fois suivante ; une réponse peut venir dans la même année.",
         in_hdr="Messages qui viennent d'arriver :", ev_hdr="Ce qui est arrivé :",
@@ -755,7 +755,14 @@ def render_observation(world, agent, cfg, knob_ai: float,
     c = world.countries[agent.country]
     land = t["undecided"] if c.land is None else c.land   # 토큰은 영어 그대로
     mult = c.multiplier(cfg)
-    cap = cfg.length.message_max_chars[lang]
+    # **상한은 쓴 말의 것이다** (8/25). 전에는 모국어 상한 하나만 적었는데, 나라별 안내가
+    # 「그 나라 말로 쓰라」 고 하는 이상 그 문구는 거짓이 된다 — fr 화자가 zh 로 쓰면
+    # 400 이 아니라 90 이다.
+    #
+    # 세 언어 상한을 다 적는다. 이것은 힌트가 아니라 **규칙**이다: 어느 말로 쓸지는
+    # 나라별 안내가 정하고, 그 말의 상한을 모르면 잘리는 이유를 알 수 없다.
+    caps = " · ".join(f"{LANG_NAME[lang][lg]} {cfg.length.message_max_chars[lg]}"
+                      for lg in ("ja", "zh", "fr"))
     langs = ", ".join(_lang_phrase(world, agent, l) for l in sorted(agent.known_langs))
     # **기억은 자리가 좁아진 뒤에만 열린다.** 도구 목록과 같은 판정을 쓴다 (한쪽만 바뀌면
     # 비용표에는 있는데 부르면 거절당하는 상태가 된다).
@@ -828,7 +835,7 @@ def render_observation(world, agent, cfg, knob_ai: float,
         *[t["c_fac_mine"].format(nation=k, v=v)
           for k, v in sorted(agent.facility_invested.items()) if v > 0],
         "",
-        t["cap"].format(cap=cap),
+        t["cap"].format(caps=caps),
         t["rtt_same" if same_year else "rtt"],
         "",
     ]

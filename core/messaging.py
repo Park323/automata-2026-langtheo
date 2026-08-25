@@ -146,14 +146,25 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     """
     from_lang = sent["from_lang"]
     to_lang = sent["to_lang"]
-    text_sent, chars_cut = truncate(sent["text"], from_lang, cfg)
     kind = classify(sent["from_country"], sent["to_country"], sent.get("route"))
     reader = can_read(recipient_known_langs, from_lang)
     # **판정보다 먼저 「이 글이 무슨 말인가」 를 정한다** (#44). 전에는 전달 여부를
     # `from_lang`(발신자 모국어)으로만 보고 본문이 실제 무슨 말인지 안 봤다 — `original`
     # 이 「다룰 수 있는 아무 말」 을 허용하므로, 제3의 언어로 쓰면 아무도 못 읽는 글이
     # 전달되고 라벨이 「상대가 당신 말을 다뤄서 통했다」 는 거짓 사유를 댔다.
-    body_lang = detect_lang(text_sent, from_lang)
+    #
+    # **절단도 그 언어로 한다** (8/25). 전에는 `from_lang` 상한으로 잘랐다 — `original`
+    # 로 상대 언어를 쓰면 **정보량 등가가 무너진다.** 상한은 파일럿에서 「fr 기준 비례
+    # 배분」 으로 유도한 값(fr 400 / ja 130 / zh 90)이고, 같은 내용을 담는 글자 수다.
+    #
+    #     fr 화자가 zh 로 쓰면   90 자리에 400 자  →  4.44배
+    #     zh 화자가 fr 로 쓰면  400 자리에  90 자  →  0.23배
+    #
+    # #44 와 **같은 병**이다: `from_lang` 으로 판정하고 본문을 안 봤다.
+    #
+    # 절단 **전**의 글로 언어를 잰다 — 자른 뒤에 재면 잘린 조각이 다른 언어로 보일 수 있다.
+    body_lang = detect_lang(sent["text"], from_lang)
+    text_sent, chars_cut = truncate(sent["text"], body_lang, cfg)
     direct, direct_by = direct_works(sender_known_langs, recipient_known_langs,
                                      from_lang, to_lang, body_lang)
 
@@ -164,7 +175,9 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         "text_sent": text_sent,                # 절단 후. 번역 입력이자 채점 기준선
         "text_delivered": None,                # 수신자가 실제로 본 것 (아래에서 채움)
         "translate_instruction": sent.get("translate_instruction"),
-        "len_written": len(sent["text"]), "len_limit": cfg.length.message_max_chars[from_lang],
+        # **적용된 상한을 적는다** — 본문 언어의 것이다 (8/25)
+        "len_written": len(sent["text"]),
+        "len_limit": cfg.length.message_max_chars[body_lang],
         "truncated": chars_cut > 0, "chars_cut": chars_cut,
         "reader": reader,                      # 수신자가 발신 언어를 읽는가
         "direct_ok": direct,                   # 원문 직통이 통하는가 (읽기 OR 쓰기)

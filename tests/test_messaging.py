@@ -406,3 +406,39 @@ def test_there_is_only_one_direct_label_now(cfg):
                 assert m["meta"]["delivered_lang"] in rk
                 seen.add(m["meta"]["direct_by"])
     assert seen == {"reader", "writer"}          # 두 갈래 다 여전히 일어난다
+
+
+def test_the_length_cap_follows_the_body_language_not_the_sender(cfg):
+    """**상한은 쓴 말의 것이다** (8/25).
+
+    상한(fr 400 / ja 130 / zh 90)은 파일럿에서 「fr 기준 비례 배분」 으로 유도했다 —
+    **같은 내용을 담는 글자 수**다. `from_lang`(발신자 모국어)으로 자르면 `original` 로
+    상대 언어를 쓸 때 그 등가가 무너진다:
+
+        fr 화자가 zh 로 쓰면   90 자리에 400 자  →  4.44배
+        zh 화자가 fr 로 쓰면  400 자리에  90 자  →  0.23배
+
+    #44 와 같은 병이다 — `from_lang` 으로 판정하고 본문을 안 봤다.
+    """
+    L = cfg.length.message_max_chars
+    body_char = {"ja": "あ", "zh": "你", "fr": "a"}
+
+    def send(from_lang, to_lang, body_lang, n):
+        sent = _sent(from_lang=from_lang, from_country="Asla", to="B1",
+                     to_country="Miris", to_lang=to_lang, route="original",
+                     text=body_char[body_lang] * n)
+        return messaging.process_message(sent, {to_lang}, cfg, None, None,
+                                         sender_known_langs={from_lang, body_lang})
+
+    # 상한이 **본문 언어**의 것이고, 실제로 그 길이로 잘린다
+    for from_lang in ("ja", "zh", "fr"):
+        for body_lang in ("ja", "zh", "fr"):
+            m = send(from_lang, "fr" if body_lang != "fr" else "ja",
+                     body_lang, max(L.values()) + 50)["meta"]
+            assert m["len_limit"] == L[body_lang], (from_lang, body_lang, m["len_limit"])
+            assert len(m["text_sent"]) == L[body_lang], (from_lang, body_lang)
+
+    # **절단 전의 글로 언어를 잰다** — 자른 뒤에 재면 잘린 조각이 다른 언어로 보일 수 있다
+    m = send("fr", "zh", "zh", 500)["meta"]
+    assert m["chars_cut"] == 500 - L["zh"]
+    assert m["delivered_lang"] == "zh"
