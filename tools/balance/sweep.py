@@ -29,13 +29,15 @@ W_TARGET = 0.5         # Phase 1 캘리브레이션 목표 (spec 12.4)
 
 @dataclass
 class Cfg:
-    income: float
+    income: float            # **한 해 용량** (AP/ap_unit × unit). 옛 소득 자리다
     total_turns: int
     epoch_turns: int
     success_prob: float
     growth_coef: float
     growth_scale: float
-    initial_budget: float
+    initial_budget: float   # 남겨 둔다 — 0 이 아닌 격자를 훑던 이력이 있다
+                            # **기본값을 주지 말 것** — 뒤에 기본값 없는 필드가 있다
+                            # (이 프로젝트에서 다섯 번째로 밟은 자리다)
     surv_k: float
     surv_lambda: float
     wellness_gain: float
@@ -45,7 +47,6 @@ class Cfg:
     agents: int = 3
     # **나이가 들면 더 번다** (8/22). 창은 「한 나라의 전 기간 총소득」 에서 나오므로,
     # 나이 배수를 안 넣으면 창이 실제보다 좁아지고 임계가 「도달 가능」 쪽에 붙는다.
-    age_growth: float = 0.0
     adult_age: int = 10
     # **가장 잘 짓는 나라의 효율** (8/23). 나라마다 요격기 진척 속도가 다르므로
     # (`facility.build_spread`) 네 조건이 「최선의 나라에 몰아줬을 때」 로 걸려야 한다.
@@ -68,23 +69,6 @@ def expected_life(lam: float, k: float, tmax: int = 60) -> float:
 
 
 # ── 창 (spec 7장) ──────────────────────────────────────────────────
-def mean_age_multiplier(c: "Cfg") -> float:
-    """정상 연령분포에서 본 소득 나이 배수의 평균.
-
-    나이 a 에 살아 있을 확률은 S(a) 에 비례한다. `core.asserts.mean_age_multiplier` 와
-    **같은 식**이다 — 두 곳에 두는 것은 이 파일이 config 를 안 읽고 자기 Cfg 로만 도는
-    독립 검산이기 때문이다 (그게 이 자의 요점이다). 식이 갈리면 검산이 아니게 되므로
-    `tests/test_balance_config.py` 가 두 값을 맞춰 본다.
-    """
-    if c.age_growth <= 0:
-        return 1.0
-    horizon = int(c.surv_lambda * 3) + 1
-    w = [math.exp(-((a / c.surv_lambda) ** c.surv_k)) for a in range(horizon)]
-    tot = sum(w) or 1.0
-    return sum(w[a] * (1 + c.age_growth * max(0, a - c.adult_age))
-               for a in range(horizon)) / tot
-
-
 def bounds(c: Cfg):
     """요격기 임계가 놓여야 할 창. 전부 **진척 단위**.
 
@@ -97,8 +81,9 @@ def bounds(c: Cfg):
     성장을 전제로 임계를 잡으면 "국가 투자를 안 하면 구조적으로 도달 불가" 가 된다.
     """
     k = c.facility_eff * c.success_prob * c.build_best
-    # 실효 소득 — 나이 배수의 평균을 곱한다 (`core.asserts.mean_age_multiplier` 와 같은 식)
-    per_turn_country = c.income * mean_age_multiplier(c) * c.agents
+    # **나이 배수를 안 곱한다** (8/25). `age_growth` 를 없앴다 — AP 는 매년 리셋돼
+    # 나이와 무관하게 같은 용량이다.
+    per_turn_country = c.income * c.agents
     whole = per_turn_country * c.total_turns
     epoch = per_turn_country * c.epoch_turns
     A = 3 * epoch * k
@@ -114,7 +99,7 @@ def passes_asserts(c: Cfg):
     k = c.facility_eff * c.success_prob
     # **실효 소득으로 잰다** (8/22) — `bounds()` 와 같은 식이다. 여기만 안 곱하면 벙커 창이
     # 창보다 좁아져서 「전 기간을 부어도 의미 없다」 가 거짓으로 걸린다.
-    eff = c.income * mean_age_multiplier(c)
+    eff = c.income
     epoch_progress = eff * c.agents * c.epoch_turns * k
     whole_progress = eff * c.agents * c.total_turns * k
     if not c.interceptor > A:
@@ -189,7 +174,9 @@ def simulate(c: Cfg, policy, coord: float, rng: random.Random):
         for i in range(COUNTRIES):
             mult = 1 + c.growth_coef * math.sqrt(natl[i] / c.growth_scale)
             for a in people[i]:
-                a[2] += c.income * mult
+                # **이월이 없다** (8/25). 전에는 `+=` 였고 남은 예산이 쌓였다.
+                # 국가 배수는 용량이 아니라 **진척 전환**에만 걸린다 (아래 eff).
+                a[2] = c.income
                 w_well, w_nat, w_own, w_int = policy(
                     {"t": t, "T": c.total_turns, "age": a[0],
                      "others_investing": others})
@@ -311,7 +298,7 @@ def evaluate(c: Cfg, seeds: int, coords=(0.2, 0.9)):
 
 # ── 스윕 ───────────────────────────────────────────────────────────
 GRID = {
-    "income":         [100],          # 확정 (7장 기준 단위)
+    "income":         [200],          # 한 해 용량 = (1.0/0.2)회 × unit 40
     # **config 를 따라간다** (#52). 50 · 10 · 8.26 이 남아 있었다 — 세계는 8/21 에 60해로,
     # 수명은 8/19 에 두 배(16.52)로 갔다. 낡은 격자로 훑으면 **지금 없는 세계**에서 후보를
     # 고르게 된다. 확정 뒤의 재검증은 `verify_config.py` 가 맡는다.

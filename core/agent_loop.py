@@ -7,7 +7,7 @@
       각 tool_call 실행 → 결과를 role="tool" 로 append
   end_turn 은 루프를 즉시 끝낸다 (재생산 행위는 8/22 에 폐기 — 자연사가 후손을 남긴다).
 
-⚠ 도구는 세계를 즉시 바꾸지 않는다. 자기 budget/ap 만 즉시 차감하고 효과는 Sink 에
+⚠ 도구는 세계를 즉시 바꾸지 않는다. 자기 ap 만 즉시 차감하고 효과는 Sink 에
   넣는다. 국토 확정·진척 판정·cap 배분·번역은 전원의 루프가 끝난 뒤 loop.py 5단계에서.
 ⚠ 도구 결과로 감춰야 할 것을 흘리지 않는다 (진척 증가분·λ 변화·success_prob).
 """
@@ -45,7 +45,6 @@ class Sink:
     births: list = field(default_factory=list)        # agent_id
     # **준 돈** (from, to, amount). 받는 쪽 예산을 즉시 바꾸면 병렬이 깨지므로 (남의
     # 상태다) 정산에서 넣는다 — 보내는 쪽 차감만 즉시다.
-    gifts: list = field(default_factory=list)
     observations: list = field(default_factory=list)  # 위험 관측 (진실·관측치·오차)
     observations_by: dict = field(default_factory=dict)   # 이번 턴 개체별 관측 횟수
 
@@ -287,11 +286,6 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         if not _afford(agent.ap, ap_used):
             return {"ok": False,
                     "error": f"not enough action; one investment needs {ap_used}, have {agent.ap:.2f}"}, None
-        if agent.budget < amount:
-            return {"ok": False,
-                    "error": f"not enough budget; one investment needs {amount:.0f}, "
-                             f"have {agent.budget:.0f}"}, None
-        agent.budget -= amount
         _spend(agent, ap_used)
         if target == "facility":
             sink.facility.append((to, amount, agent.id))
@@ -305,16 +299,13 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             agent.facility_invested[to] = agent.facility_invested.get(to, 0.0) + amount
             return {"ok": True,
                     "your_total_into": round(agent.facility_invested[to], 1),
-                    "budget_left": round(agent.budget, 1),
                     "ap_left": round(agent.ap, 3)}, None
         if target == "wellness":
             sink.wellness.append((agent.id, amount))
             return {"ok": True,                                  # λ 변화 비공개
-                    "budget_left": round(agent.budget, 1),
                     "ap_left": round(agent.ap, 3)}, None
         sink.national.append((agent.country, amount, agent.id))
         return {"ok": True,
-                "budget_left": round(agent.budget, 1),
                 "ap_left": round(agent.ap, 3)}, None
 
     if name == "learn":
@@ -342,11 +333,6 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         if not _afford(agent.ap, ap_used):
             return {"ok": False,
                     "error": f"not enough action; one payment needs {ap_used}, have {agent.ap:.2f}"}, None
-        if agent.budget < amount:
-            return {"ok": False,
-                    "error": f"not enough budget; one payment needs {amount:.0f}, "
-                             f"have {agent.budget:.0f}"}, None
-        agent.budget -= amount
         _spend(agent, ap_used)
         # **진척은 즉시 쌓는다.** 금액이 20 으로 고정되면서 한 해에 여러 번 내는 것이
         # 정상 경로가 됐는데, 정산 때만 갱신하면 그 해의 두 번째 호출부터 `done_before`
@@ -370,7 +356,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             # 지금 변하는 값은 배속이다.
             "required": need, "speed": mult,
             "discount_domestic": domestic, "discount_parent": parent,
-            "age": agent.age, "budget_after": round(agent.budget, 2),
+            "age": agent.age,
             "lam": round(agent.lam, 4),
         })
         # **응답도 수확으로 센다.** 상태는 `gain` 을 쌓는데 응답만 `amount` 로 세면
@@ -390,8 +376,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                 #
                 # 병렬 경로는 여전히 턴 끝 정산이라 다음 턴부터다. execute_tool 은 어느
                 # 루프인지 모르므로, 언제부터인지는 관측의 「읽을 수 있는 언어」 가 답한다.
-                "complete": done >= need,
-                "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
+                "complete": done >= need, "ap_left": round(agent.ap, 1)}, None
 
     if name == "speak":
         to = args.get("to")
@@ -420,13 +405,9 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": "you cannot send a message to yourself"}, None
         recipient = world.agents[to]
         kind = messaging.classify(agent.country, recipient.country, args.get("route"))
-        c = messaging.cost(kind, cfg, knob_ai)
         ap_cost = messaging.ap_cost(kind, cfg, knob_ai)   # ai 는 노브에 따라 오른다 (8/25)
         if not _afford(agent.ap, ap_cost):
             return {"ok": False, "error": f"not enough action; speak needs {ap_cost}, have {agent.ap:.2f}"}, None
-        if agent.budget < c:
-            return {"ok": False, "error": f"not enough budget; need {c:.0f}, have {agent.budget:.0f}"}, None
-        agent.budget -= c
         _spend(agent, ap_cost)
         ti = args.get("translate_instruction")
         sink.messages.append({
@@ -439,17 +420,11 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         })
         # 전달 성공/실패는 알리지 않는다 (original 은 도박). 접수·과금만.
         # 받는 이·다음 턴 도착은 내가 방금 말한 것이고 규칙이다. 남은 자원만 돌려준다.
-        return {"ok": True,
-                "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
+        return {"ok": True, "ap_left": round(agent.ap, 1)}, None
 
     if name == "observe_risk":
         if not _afford(agent.ap, cfg.ap.observe_risk):
             return {"ok": False, "error": f"not enough action; observe_risk needs {cfg.ap.observe_risk}, have {agent.ap:.2f}"}, None
-        if agent.budget < cfg.costs.observe_risk:
-            return {"ok": False,
-                    "error": f"not enough budget; need {cfg.costs.observe_risk:.0f}, "
-                             f"have {agent.budget:.0f}"}, None
-        agent.budget -= cfg.costs.observe_risk
         _spend(agent, cfg.ap.observe_risk)
         truth = cfg.world.total_turns - world.turn        # 남은 턴 (마지막 턴에 판정)
         err = risk_error(world.countries[agent.country], cfg)
@@ -476,8 +451,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         return {"ok": True,
                 "years_until_impact": seen, "typical_error": round(err, 1),
                 "interceptor_needs": thr_seen,
-                "interceptor_typical_error_pct": round(rel * 100, 1),
-                "budget_left": round(agent.budget, 1), "ap_left": round(agent.ap, 1)}, None
+                "interceptor_typical_error_pct": round(rel * 100, 1), "ap_left": round(agent.ap, 1)}, None
 
     if name == "propose_vote":
         # **무엇을 지을지는 여기서 정하지 않는다 — 採決을 소집하기만 한다.**
@@ -496,9 +470,6 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": False, "error": f"not enough action; propose_vote needs {cfg.ap.propose_vote}, have {agent.ap:.2f}"}, None
         # **돈은 안 받는다.** 가난이 제안을 막으면 국토가 돈으로 정해진다. 무게는 AP 로만
         # 준다 — 국가의 용도를 여는 행위라 한 턴의 절반이 넘는다.
-        if cfg.costs.propose_vote and agent.budget < cfg.costs.propose_vote:
-            return {"ok": False, "error": f"not enough budget; need {cfg.costs.propose_vote}"}, None
-        agent.budget -= cfg.costs.propose_vote
         _spend(agent, cfg.ap.propose_vote)
         sink.votes.append((agent.id, agent.country))
         # **이제 날짜를 돌려줄 수 있다.** 소집에 내용이 없으니 둘이 소집해도 같은
@@ -535,36 +506,10 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         sink.ballots.append((agent.id, agent.country, choice))
         return {"ok": True, "ap_left": round(agent.ap, 1)}, None
 
-    if name == "give":
-        to = args.get("to")
-        if to is None:
-            return {"ok": False, "error":
-                    "give needs `to`, the recipient id (e.g. Ranoa2)"}, None
-        if to not in world.agents:
-            return {"ok": False, "error":
-                    f"unknown recipient: {to}. Use an id from the list of people in "
-                    f"your observation"}, None
-        if to == agent.id:
-            return {"ok": False, "error": "you cannot give to yourself"}, None
-        try:
-            amount = float(args.get("amount"))
-        except (TypeError, ValueError):
-            return {"ok": False, "error": "amount must be a number"}, None
-        if amount <= 0:
-            return {"ok": False, "error": "amount must be more than 0"}, None
-        if not _afford(agent.ap, cfg.ap.give):
-            return {"ok": False, "error":
-                    f"not enough action; give needs {cfg.ap.give}, "
-                    f"have {agent.ap:.2f}"}, None
-        # **넘치게 주지 않는다.** 잘라서 주면 받는 쪽이 얼마를 받았는지 되짚어야 한다.
-        if agent.budget < amount:
-            return {"ok": False, "error":
-                    f"not enough budget; you have {agent.budget:.0f}"}, None
-        agent.budget -= amount
-        _spend(agent, cfg.ap.give)
-        sink.gifts.append((agent.id, to, amount))
-        return {"ok": True, "budget_left": round(agent.budget, 1),
-                "ap_left": round(agent.ap, 1)}, None
+    # **`give` 를 없앴다** (8/25 · AP 전면 통일). 양도할 것이 없다 — AP 는 「내 올해
+    # 주의력」 이라 넘길 수 없고, 돈은 사라졌다. 그 도구는 잉여의 용처로 만든 것인데
+    # 이월이 없어지면서 잉여 자체가 없다 (`inh30` 30해 0건 · `ca3` 1건, 그것도 AP 가
+    # 남아서였다). 사람 사이 이전은 사라지고, 나라 사이 이전(`invest to=타국`)은 남는다.
 
     return {"ok": False, "error": f"unknown tool: {name}"}, None
 
@@ -762,13 +707,14 @@ def can_act(agent, cfg, knob_ai: float) -> bool:
     free_ap = cfg.ap.memory_write if agent.memory_open else None
     if free_ap is not None and free_ap <= 0:
         return True
-    if agent.budget >= cfg.costs.comm_domestic and _afford(agent.ap, cfg.ap.speak):
+    # **돈 조건이 사라졌다** (8/25 · AP 전면 통일). 남은 것은 AP 뿐이다.
+    if _afford(agent.ap, cfg.ap.speak):
         return True
-    if _afford(agent.ap, cfg.ap.propose_vote) and agent.budget >= cfg.costs.propose_vote:
+    if _afford(agent.ap, cfg.ap.propose_vote):
         return True
     # 투자·학습은 **고정 단위**다 (8/19). 예전엔 금액 비례라 「AP 가 조금이라도 있으면
     # 참」 이었는데, 단위가 고정된 뒤로도 그 말이 남아 있었다.
-    if agent.budget >= cfg.costs.unit and _afford(agent.ap, cfg.ap.unit):
+    if _afford(agent.ap, cfg.ap.unit):
         return True
     # **`min(memory_write, vote)` 이었다** (#47). `ap.memory_write = 0.0` 이라 값이 늘 0 이
     # 되어 **AP 가 0 이어도 참**이었고, 종료 조건 ②가 통째로 죽어 있었다. 게다가

@@ -215,10 +215,7 @@ class RunWriter:
             self._append("state", {
                 "turn": turn, "agent": aid, "country": a.country, "age": a.age,
                 "lambda": round(a.lam, 4), "known_langs": sorted(a.known_langs),
-                "parent_langs": sorted(a.parent_langs), "budget": round(a.budget, 4),
-                "budget_start": round(a.budget_start, 4),
-                "income_this_year": round(a.income_this_year, 4),
-                "income_last_year": round(a.income_last_year, 4),
+                "parent_langs": sorted(a.parent_langs),
                 "wellness_spent": round(a.wellness_spent, 4),
                 "born_turn": a.born_turn, "born_by": a.born_by, "alive": a.alive,
                 "uid": a.uid, "native_lang": a.native_lang,
@@ -240,7 +237,7 @@ class RunWriter:
                 "memory_open": a.memory_open,
                 # **개체 차이** — 소득·처리량 배수 (8/22). 남에게는 안 보이지만
                 # 로그에는 남는다: 비교우위가 실제로 교환으로 이어졌는지 재려면 필요하다
-                "income_mult": a.income_mult, "invest_mult": a.invest_mult,
+                "invest_mult": a.invest_mult,
             })
         for m in result.messages_log:
             if m.get("turn") == turn and not m.get("_written"):

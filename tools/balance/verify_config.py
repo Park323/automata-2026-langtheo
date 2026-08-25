@@ -23,27 +23,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import yaml  # noqa: E402
 
 from tools.balance.sweep import (  # noqa: E402
-    POLICIES, POLICY_COEF, W_TARGET, Cfg, bounds, evaluate, expected_life,
-    mean_age_multiplier, passes_asserts, required_w, required_w_growth,
+    POLICIES, POLICY_COEF, W_TARGET, Cfg, bounds, evaluate, expected_life, passes_asserts, required_w, required_w_growth,
 )
 
-# 무성장 0.50 / 성장 0.30 — 못 박을 때 실측한 값 (todo · RESULTS.md).
-# 코드가 바뀌어 여기서 벗어나면 세계의 난이도가 조용히 달라진 것이다.
+# 무성장 0.30 / 성장 0.25 — 못 박을 때 실측한 값.
 #
-# **0.45 / 0.20 에서 갱신했다** (8/23). 그 값은 임계 9558 · 100해 · adult_age 10 시절
-# 것이고, `adult_age` 를 5 로 내린 이틀 전부터 이미 낡아 있었다 — 이 도구를 안 돌려서
-# 몰랐다. 「숫자를 두 군데 적으면 하나가 낡는다」 의 여섯 번째다.
+# **0.50 / 0.30 에서 갱신했다** (8/25 · AP 전면 통일). 세계가 쉬워진 것이 아니라 **측정이
+# 정직해졌다.** 옛 시뮬레이터는 `a[2] += income` 으로 예산을 이월했고, 그러면 정상상태에서
+# 예산이 `income/w` 로 수렴해 **연간 기여가 w 와 무관하게 소득과 같아진다** — w 는 도달
+# 속도만 정했다. 이월이 없어지면서 기여가 `w × 용량` 이 되었다.
 #
-# 지금 값은 임계 13206 (창 [11483, 17225] 의 0.30 지점) · 국가 효율 최선 1.3 기준이다.
-EXPECTED = {"w_star": 0.50, "w_star_growth": 0.30}
+# 여기 값은 임계 19,375 (창 [16848, 25272] 의 0.30 지점) · 한 해 용량 200 · 최선 국가효율
+# 1.3 · growth_scale 6000 기준이다.
+EXPECTED = {"w_star": 0.30, "w_star_growth": 0.25}
 TOL = 0.05
 
 
 def cfg_from_yaml(path: Path) -> Cfg:
     d = yaml.safe_load(path.read_text(encoding="utf-8"))
     return Cfg(
-        income=d["income"]["per_turn"],
-        initial_budget=d["income"]["initial_budget"],
+        # **한 해 용량**이 옛 소득 자리다 (8/25 · AP 전면 통일).
+        income=(d["turn"]["action_points"] / d["ap"]["unit"]) * d["costs"]["unit"],
+        initial_budget=0.0,
         total_turns=d["world"]["total_turns"],
         epoch_turns=d["world"]["epoch_turns"],
         success_prob=d["world"]["success_prob"],
@@ -56,7 +57,6 @@ def cfg_from_yaml(path: Path) -> Cfg:
         interceptor=d["thresholds"]["interceptor"],
         bunker=d["thresholds"]["bunker_scale"],
         facility_eff=d["facility"]["eff"],
-        age_growth=d["income"].get("age_growth", 0.0),
         adult_age=d["world"].get("adult_age", 10),
         build_best=max(d["facility"].get("build_spread") or [1.0]),
     )
@@ -70,7 +70,7 @@ def report(c: Cfg, seeds: int) -> int:
     # 진척을 5,400 으로 찍었다 — 실제 7,361 보다 27% 낮다. 그 수로 보면 벙커 4,900 이
     # 전 기간의 91% 라 「상한에 거의 붙었다」 로 읽히는데, 실제로는 67% 다.
     # `core.asserts.check_all` 은 배수를 넣어 재고 있었으므로 **두 구현이 갈려 있었다.**
-    eff = c.income * mean_age_multiplier(c)
+    eff = c.income          # 한 해 용량 (8/25 — 나이 배수는 없어졌다)
     epoch_progress = eff * c.agents * c.epoch_turns * k
     whole_progress = eff * c.agents * c.total_turns * k
 

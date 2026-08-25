@@ -18,51 +18,21 @@ class ConfigError(Exception):
 
 @dataclass(frozen=True)
 class Knob:
-    comm_intl_ai: tuple[int, ...]   # 유일한 실험 변수 (리스트) — ai 경로 발신의 **돈** 비용
-    # **ai 경로 발신이 먹는 AP** — comm_intl_ai 와 같은 순서로 짝지어진다 (8/25).
-    # 노브를 돈으로만 매기면 예산 240 위에서 무력해진다 (inh30 실측: 65% 가 무력). 돈이
-    # 안 귀하고 AP 가 귀하기 때문 — 예산 240 이면 5회 발신 값이라 그 위는 AP 만 묶는다.
-    # AP 로도 물려 예산과 무관하게 물게 한다. 비면(구버전 config) speak 기본값으로 떨어진다.
-    comm_intl_ai_ap: tuple[float, ...] = ()
-
+    # **유일한 실험 변수 — 이제 AP 다** (8/25). 돈으로 매기던 `comm_intl_ai` 를 지웠다.
+    comm_intl_ai_ap: tuple
 
 @dataclass(frozen=True)
 class Costs:
-    comm_domestic: float
-    comm_intl_learner: float
-    learn_base: float
-    propose_vote: float
-    observe_risk: float = 20.0
-    unit: float = 20.0             # 한 번의 invest·learn 이 나가는 돈 (4.4)
-    # **할인이 아니라 가속이다** (8/22). 필요액을 깎으면 **목표가 움직인다** — 반쯤 낸
-    # 학습이 갑자기 완성되는 경로가 생긴다. 이제 필요액은 고정이고 회당 수확이 오른다.
-    # 사유 하나마다 `+learn_speedup` 배 (곱이 아니라 합 — ×1.5 를 두 번 곱하면 2.25 다).
-    learn_speedup: float = 0.5
-
+    # **가격이 아니라 양이다** (8/25 · AP 전면 통일). 돈 항목 넷을 지웠다
+    # (comm_domestic · comm_intl_learner · observe_risk · propose_vote) — `ap.*` 가 대신한다.
+    learn_base: float          # 한 언어를 익히기까지 쌓아야 하는 **진척**
+    learn_speedup: float       # 사유 하나당 배속 +
+    unit: float                # 한 번의 invest·learn 이 옮기는 **양**
 
 @dataclass(frozen=True)
 class Thresholds:
     interceptor: float
     bunker_scale: float
-
-
-@dataclass(frozen=True)
-class Income:
-    per_turn: float
-    initial_budget: float
-    # **나이가 들면 더 번다** (8/22). 성인 나이 이후 한 해마다 `per_turn × 이 값` 씩.
-    # 말년에 **소비가 못 따라가게** 하는 것이 목적이다 — 한 해에 쓸 수 있는 돈은 행동력이
-    # 묶으므로(invest 40원·0.2AP → 상한 200), 나이 16 을 넘기면 잉여가 강제로 쌓인다.
-    # 그 잉여의 용처가 `give` 다 — 재생산 행위를 없앤 뒤로 **유일한** 용처다.
-    age_growth: float = 0.0
-    # **사람마다 다르게 번다** (8/22). 태어날 때 이 단계들에서 하나를 뽑는다.
-    #
-    # **평균이 1.0 이어야 한다** — 임계값 창이 `per_turn × n × total` 에서 나오므로,
-    # 평균이 1 이 아니면 창이 어긋난다 (`tests/test_config.py` 가 본다).
-    #
-    # 이산인 이유는 **말로 전할 수 있기 때문**이다. 「나는 한 번에 56 옮긴다」 가 메시지가
-    # 되고 그걸 실제로 말하는지 채점할 수 있다 — 연속 분포로는 안 된다.
-    spread: tuple = (1.0,)
 
 
 @dataclass(frozen=True)
@@ -115,7 +85,6 @@ class Wellness:
 @dataclass(frozen=True)
 class Facility:
     eff: float
-    cap_per_turn: float
     transition_requires_vote: bool
     transition_forfeits_progress: bool
     # 개체별 「한 번에 옮기는 액수」 배수를 뽑는 단계들. 소득 배수와 **독립**이다.
@@ -218,7 +187,6 @@ class Config:
     knob: Knob
     costs: Costs
     thresholds: Thresholds
-    income: Income
     turn: TurnCfg
     ap: AP
     growth: Growth
@@ -267,12 +235,9 @@ def _world_from(d: dict) -> World:
 def from_dict(d: dict) -> Config:
     """assert 없이 dict 를 Config 로 만든다. (break 테스트가 이걸로 변형본을 만든다)"""
     return Config(
-        knob=Knob(comm_intl_ai=tuple(d["knob"]["comm_intl_ai"]),
-                  comm_intl_ai_ap=tuple(d["knob"].get("comm_intl_ai_ap", ()))),
+        knob=Knob(comm_intl_ai_ap=tuple(d["knob"]["comm_intl_ai_ap"])),
         costs=Costs(**d["costs"]),
         thresholds=Thresholds(**d["thresholds"]),
-        income=Income(**{**d["income"],
-                        "spread": tuple(d["income"].get("spread", (1.0,)))}),
         turn=TurnCfg(**d["turn"]),
         ap=AP(**d["ap"]),
         growth=Growth(**d["growth"]),

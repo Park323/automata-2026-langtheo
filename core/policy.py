@@ -25,7 +25,9 @@ def dummy_policy(world, agent, cfg, procreate_age: int | None = PROCREATE_AGE) -
     있다. procreate 를 켜면 age≥7 에서 강제 교체되어 수명 분포가 잘린다.
     """
     actions: list[dict] = [
-        {"type": "invest", "target": "facility", "amount": agent.budget / 2, "to": agent.country},
+        # **예산이 없다** (8/25). 더미는 한 해 AP 로 옮길 수 있는 양의 절반을 낸다.
+        {"type": "invest", "target": "facility",
+         "amount": cfg.costs.unit * agent.invest_mult * 2, "to": agent.country},
     ]
 
     return {"reasoning": "dummy", "actions": actions, "received": []}

@@ -78,19 +78,19 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["to", "text"]),
 
     fn("invest",
-        "Put one fixed amount into a resource; the observation shows how much money and "
-        "how much action it takes. **The money is not a fee — it is the investment "
-        "itself.** How much one call moves differs from person to person; how much "
-        "progress a given sum buys differs from nation to nation. The two are set "
-        "separately. That amount is yours; you cannot see anyone else's, so ask them. "
+        "Put one fixed amount into a resource; the observation shows how much it moves "
+        "and how much action it takes. How much one call moves differs from person to "
+        "person; how much progress a given amount buys differs from nation to nation. "
+        "The two are set separately. Your amount is yours; you cannot see anyone "
+        "else's, so ask them. "
         "`national` raises your nation's technical level, which "
         "lifts income, how much progress a facility gets out of what is put into it, and "
         "the precision of observe_risk — for everyone in that nation. "
         "For facility you may name any nation with `to` — your "
         "own or another; leaving `to` out puts it into your own nation's. "
-        "Money you put into a facility goes into whatever that nation is currently "
+        "What you put into a facility goes into whatever that nation is currently "
         "building — which may not be what you think it is, and a nation that has not "
-        "yet decided what to build has nothing to put it into, so the money buys "
+        "yet decided what to build has nothing to put it into, so it buys "
         "no progress. "
         "Only that nation knows which it is.",
         {"target": {"type": "string", "enum": ["wellness", "national", "facility"]},
@@ -100,7 +100,7 @@ def _build(reasoning_arg: bool) -> list[dict]:
 
     fn("learn",
         "Put one fixed amount toward learning another nation's language; one payment "
-        "takes the same action as an investment, and the cost table shows the money. "
+        "takes the same action as an investment. "
         "Give a nation id, not a language code. "
         "What you put in accumulates, and your observation shows how far along you are "
         "and how much is still needed. You can read and write the language once the "
@@ -115,7 +115,7 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "progress an interceptor needs. Both readings are imprecise; your nation's "
         "accumulated national investment is what sharpens them, and the result tells "
         "you the typical size of its error — a single reading can be much further off "
-        "than that. Each reading is a fresh measurement and costs both money and a "
+        "than that. Each reading is a fresh measurement and costs a "
         "large share of your action points — measuring the world takes most of a year. "
         "What you learn is yours alone — nobody else sees it.",
         {}, []),
@@ -127,7 +127,7 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "observation tells you which year that is. **Only people of your own nation may "
         "vote** — a foreigner cannot, no "
         "matter what they say. If a ballot is already called, calling again does nothing. "
-        "It costs no money — poverty must never decide what a nation builds — but it "
+        "It costs nothing to fund — nobody is priced out of proposing — but it "
         "takes more than half of your action points for the year.",
         {}, []),
 
@@ -136,23 +136,13 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "You cannot vote in another nation. Only in the year the ballot is held; the "
         "observation tells you which year that is. The choice with the most votes wins; "
         "`abstain` counts for neither. If the two tie, or nobody votes, your nation keeps "
-        "what it has and its progress survives. It costs no money and almost no action "
+        "what it has and its progress survives. It costs almost no action "
         "points, so voting never takes away your chance to speak on the day it matters most.",
         {"choice": {"type": "string", "enum": ["interceptor", "bunker", "abstain"]}},
         ["choice"]),
 
-    # **금액을 인자로 받는 유일한 도구다.**
-    #
-    # `invest`·`learn` 에서 금액을 뺀 이유는 비용표가 `600 · 額÷300` 처럼 두 숫자를 읽게
-    # 만들었기 때문이다. 주는 것은 다르다 — 크기가 **드는 수고를 바꾸지 않는다.** 한 번에
-    # 40 씩만 옮길 수 있으면 435 를 넘기는 데 열한 해가 걸리고, 그러면 잉여의 용처라는
-    # 이 도구의 존재 이유가 사라진다.
-    fn("give",
-        "Give money to one person. Any amount you have, in one go. It can be someone in "
-        "your nation or another. They are told who gave it and how much.",
-        {"to": {"type": "string", "description": "recipient id (e.g. Ranoa2)"},
-         "amount": {"type": "number", "description": "how much to hand over"}},
-        ["to", "amount"]),
+    # **`give` 를 없앴다** (8/25 · AP 전면 통일). 양도할 것이 없다 — 돈이 사라졌고 AP 는
+    # 「내 올해 주의력」 이라 넘길 수 없다. 나라 사이 이전은 `invest to=<타국>` 이 맡는다.
 
     fn("memory_write",
         "Overwrite your notes. They stay with you next year; nobody else sees them.",

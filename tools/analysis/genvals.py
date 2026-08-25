@@ -20,7 +20,6 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 def main() -> None:
     c = config.load(str(ROOT / "configs" / "base.yaml"))
-    m = asserts.mean_age_multiplier(c)
     a, b, cc, e = asserts.window(c)
     L = c.length.message_max_chars
     # **수명에는 규약이 둘이다** — 이 프로젝트가 이미 그 혼동을 겪었다 (spec 2.2).
@@ -34,14 +33,12 @@ def main() -> None:
     print("번역 모델   mistral-small-3.2-24b     3언어 분산 최소 (파일럿 ②) — **고정**")
     print("에이전트    qwen/qwen3.6-35b-a3b      「모델 선택」 절")
     print()
-    print(f"income      per_turn {c.income.per_turn:.0f} · initial_budget {c.income.initial_budget:.0f}")
-    print(f"            age_growth {c.income.age_growth} · spread {list(c.income.spread)}")
-    print(f"비용        국내 {c.costs.comm_domestic} / 국제원문 {c.costs.comm_intl_learner} · "
-          f"노브 {list(c.knob.comm_intl_ai)}")
-    print(f"            unit {c.costs.unit:.0f}원 · observe_risk {c.costs.observe_risk:.0f} · "
-          f"propose_vote {c.costs.propose_vote:.0f}")
-    print(f"행동력      speak {c.ap.speak} · unit {c.ap.unit} · give {c.ap.give} · vote {c.ap.vote}")
+    print(f"노브        ai 발신 AP {list(c.knob.comm_intl_ai_ap)}   ← 유일한 실험 변수")
+    print(f"행동력      한 해 {c.turn.action_points} · speak {c.ap.speak} · unit {c.ap.unit} · "
+          f"vote {c.ap.vote}")
     print(f"            observe_risk {c.ap.observe_risk} · propose_vote {c.ap.propose_vote}")
+    print(f"용량        한 사람 한 해 {asserts.capacity_per_year(c):.0f} "
+          f"(= {c.turn.action_points:g}/{c.ap.unit:g}회 × unit {c.costs.unit:.0f})")
     print(f"학습        learn_base {c.costs.learn_base:.0f} (고정) · "
           f"speedup +{c.costs.learn_speedup} / 사유")
     print(f"수명        k {c.survival.k} · λ {c.survival.lambda_base}")
@@ -49,12 +46,11 @@ def main() -> None:
           f"(프롬프트는 후자를 반올림해 「{weib:.0f}」 로 적는다)")
     print(f"세계        total_turns {c.world.total_turns} · epoch {c.world.epoch_turns} · "
           f"success_prob {c.world.success_prob}")
-    print(f"            adult_age {c.world.adult_age} · 첫 해 나이 1~{c.world.init_age_max}")
+    print(f"            첫 해 나이 1~{c.world.init_age_max}")
     print(f"            agents_per_country {c.world.agents_per_country}")
     print(f"임계        interceptor {c.thresholds.interceptor} · "
           f"bunker_scale {c.thresholds.bunker_scale}")
     print(f"            창 A {a:,.0f} · B {b:,.0f} · E {e:,.0f} < 임계 < C×0.6 {cc * 0.6:,.0f}")
-    print(f"            실효소득 배수 {m:.3f} (정상 연령분포 — `mean_age_multiplier`)")
     print(f"처리량      throughput_spread {list(c.facility.throughput_spread)} · "
           f"facility.eff {c.facility.eff}")
     print(f"국가효율    build_spread {list(c.facility.build_spread)} (요격기 전용 · 순열 배정)")

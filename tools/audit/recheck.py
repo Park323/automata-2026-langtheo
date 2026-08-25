@@ -215,8 +215,8 @@ def simulate_nation_mult(cfg, trials: int) -> dict:
         for t in range(1, cfg.world.total_turns + 1):
             w.turn = t
             for a in w.agents.values():
-                grown = 1.0 + cfg.income.age_growth * max(0, a.age - cfg.world.adult_age)
-                acc[a.country] += cfg.income.per_turn * grown * a.income_mult
+                # **용량이다** (8/25 · AP 전면 통일). 옛 소득 자리다.
+                acc[a.country] += asserts.capacity_per_year(cfg) * a.invest_mult
                 base[a.country] += cfg.income.per_turn * grown
             if t < cfg.world.total_turns:
                 loopmod._death_birth(w, cfg, rng, sorted(w.agents), set(), counter,

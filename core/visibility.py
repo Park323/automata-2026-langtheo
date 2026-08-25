@@ -58,7 +58,6 @@ FACTS: dict[str, tuple[Vis, str]] = {
     "other_nation_state":(Vis.SECRET, "타국의 진척·예산·국토·언어 능력. **소통으로만** 안다"),
 
     # ── PRIVATE — 행위자만 ─────────────────────────────────────────────────
-    "budget":            (Vis.PRIVATE, "내 예산"),
     "action_left":       (Vis.PRIVATE, "내 남은 행동력"),
     "lang_progress":     (Vis.PRIVATE, "내 언어 학습 진척"),
     "facility_invested": (Vis.PRIVATE, "내가 어느 나라에 얼마를 냈나"),
@@ -76,12 +75,6 @@ FACTS: dict[str, tuple[Vis, str]] = {
     "fac_gain":          (Vis.PRIVATE, "내 출자가 진척을 얼마 올렸나 (타국이면 여부만)"),
     "delivery_failed":   (Vis.PRIVATE, "내가 보낸 말이 닿지 않았다"),
     "message":           (Vis.PRIVATE, "주고받은 말. **보낸 이와 받는 이만**"),
-    "income":            (Vis.PRIVATE, "이 해에 내가 받은 수입. 나라 사람 모두가 같은 값을 "
-                                       "받지만 **누구에게도 통지되지 않는다** — 내 해 시작 "
-                                       "문구에만 적힌다. 그 값에서 국가 배수를 읽을 수 "
-                                       "있는 것은 PUBLIC 파생이고, 그건 그래도 된다"),
-
-    # ── PUBLIC — 그 나라 안 ────────────────────────────────────────────────
     "land":              (Vis.PUBLIC, "자국 국토"),
     "progress":          (Vis.PUBLIC, "자국 진척"),
 

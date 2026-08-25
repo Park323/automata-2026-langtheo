@@ -115,7 +115,7 @@ def observations(run_dir: Path) -> tuple[list[dict], dict, list[dict]]:
     rd = Path(run_dir)
     state = judge.read_jsonl(rd / "state.jsonl")
     events = judge.read_jsonl(rd / "events.jsonl")
-    diag: dict = {"no_budget_start": 0, "learns": 0, "opportunities": 0}
+    diag: dict = { "learns": 0, "opportunities": 0}
 
     base = None
     speedup = DEFAULT_SPEEDUP
@@ -176,10 +176,13 @@ def observations(run_dir: Path) -> tuple[list[dict], dict, list[dict]]:
             evs = paid.get((turn, r["agent"]), [])
             if not r.get("alive") and not evs:
                 continue
-            bs = r.get("budget_start")
-            if bs is None:
-                diag["no_budget_start"] += 1
-                continue
+            # **분모가 AP 가 됐다** (8/25 · AP 전면 통일). 「그 턴에 낼 돈이 있었던」 이
+            # 「그 턴에 AP 가 있었던」 이 되고, AP 는 매년 리셋되므로 **살아 있으면 늘 참**
+            # 이다. 그래서 분모가 사실상 「살아 있던 (사람,턴)」 이다.
+            #
+            # 약해진 것이 아니라 **혼동이 사라졌다**: 전에는 「안 배웠다」 가 「돈이
+            # 없었다」 와 섞여 있었고, 그 둘을 가르려고 budget_start 를 따로 찍었다.
+            bs = 1.0
             known = set(r.get("known_langs") or [])
             parent = set(r.get("parent_langs") or [])
             if evs:                                   # 이번 턴에 냈다 — 눈금은 로그에서
@@ -357,12 +360,10 @@ def format_estimate(est: dict, knob=None) -> str:
         if not b["n"]:
             continue
         L.append(f"  {band:<6} {b['label']:<18} (눈금 {'·'.join(b['rungs_seen'])}, n={b['n']})")
-    bad = [d for d in est["diag"] if d.get("no_budget_start") or d.get("error")]
+    bad = [d for d in est["diag"] if d.get("error")]
     if bad:
-        L.append("\n⚠ " + " · ".join(
-            d.get("error") or f"{d['run']}: budget_start 없는 상태행 {d['no_budget_start']}"
-            for d in bad))
-        L.append("  budget_start 는 x̂ 의 분모입니다. 이 필드 이전의 런은 x̂ 를 낼 수 없습니다.")
+        for d in bad:
+            L.append(f"  ⚠ {d.get('error')}")
     return "\n".join(L)
 
 

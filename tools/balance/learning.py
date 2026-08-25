@@ -54,7 +54,7 @@ def expected_remaining(age, lam, k, tmax=60):
     return sum(survival(age + j, lam, k) for j in range(0, tmax + 1)) / s0
 
 
-def remaining_income(age, cfg, lam, k, mult, tmax=60):
+def remaining_income(age, cfg, lam, k, mult, tmax=60, capacity=200.0):
     """남은 생애 기대 소득. **나이와 함께 오르는 소득**을 반영한다 (8/22).
 
     `expected_remaining × income` 으로 계산하면 젊은 에이전트를 과대평가한다 —
@@ -66,8 +66,7 @@ def remaining_income(age, cfg, lam, k, mult, tmax=60):
     tot = 0.0
     for j in range(0, tmax + 1):
         a = age + j
-        grown = 1.0 + cfg.income.age_growth * max(0, a - cfg.world.adult_age)
-        tot += survival(a, lam, k) * cfg.income.per_turn * mult * grown
+        tot += survival(a, lam, k) * capacity * mult
     return tot / s0
 
 
@@ -111,7 +110,7 @@ def main():
     print("① 자가 닿는 범위")
     print("=" * 84)
     # 성인 진입 시점 소득으로 상한을 잡는다 — 학습은 어린 쪽의 투자다.
-    income0 = cfg.income.per_turn * a.mult
+    income0 = 200.0 * a.mult
     ceil_ = remaining_income(cfg.world.adult_age, cfg, lam, k, a.mult)
     print(f"  x 측정 상한 ≈ 성인 진입({cfg.world.adult_age}세) 시점 잔여 기대소득 "
           f"= {ceil_:.0f}")
@@ -141,7 +140,7 @@ def main():
     print("=" * 84)
     print("  '남은 생애'가 개인마다 다릅니다. 같은 눈금이라도 늙은 에이전트에게는")
     print("  회수 기간이 없어 사실상 더 비쌉니다. 게다가 소득이 나이와 함께 오르므로")
-    print(f"  (age_growth {cfg.income.age_growth}) 젊을수록 남은 해가 싸기도 합니다.\n")
+    print()
     # **「감당 가능한가」 로는 이제 아무것도 안 갈립니다** — L 이 300 → 200 으로 내려가
     # 20세에도 셋 다 감당됩니다. 갈리는 건 **남은 소득에서 차지하는 비중**입니다.
     dear, cheap = max(m[2] for m in marks), min(m[2] for m in marks)
