@@ -1312,11 +1312,17 @@ def test_exactly_affordable_is_affordable(cfg, world):
     """
     a = world.agents["Ranoa1"]
     a.ap = cfg.turn.action_points
-    # **상수에서 짠다** (8/22 에 speak 0.3→0.2, unit 0.1→0.2 로 바뀌었다). AP 를 딱
+    # **상수에서 짠다** (speak 0.3→0.2→0.1, unit 0.1→0.2 로 바뀌어 왔다). AP 를 딱
     # `speak` 한 번 남기고, 그 한 번이 통하는지 본다.
+    #
+    # **큰 단위로 내려가다 작은 단위로 마무리한다** (8/25). 전에는 `invest`(0.2) 만
+    # 썼는데, `speak` 이 0.1 이 된 뒤로 1.0 에서 0.2 씩 빼서는 0.1 에 **닿지 못한다**.
+    # 격자를 확인하는 테스트가 격자를 못 쓰고 있었다.
     left = cfg.ap.speak
-    while round(a.ap - cfg.ap.unit, 3) >= left:
-        assert _do(world, cfg, a, "invest", {"target": "wellness"})["ok"]
+    for tool, args, step in (("invest", {"target": "wellness"}, cfg.ap.unit),
+                             ("speak", {"to": "Ranoa2", "text": "x"}, cfg.ap.speak)):
+        while round(a.ap - step, 3) >= left:
+            assert _do(world, cfg, a, tool, args)["ok"], (tool, a.ap)
     assert a.ap == left                      # 0.19999… 이 아니라 정확히 그 값
 
     r = _do(world, cfg, a, "speak", {"to": "Ranoa2", "text": "y"})

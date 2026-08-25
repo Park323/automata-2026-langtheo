@@ -131,8 +131,13 @@ def test_break_knob_below_speak():
     돈으로 매기던 시절에는 `comm_intl_learner`(5) 와 겨뤘다. 이제 비교 대상은
     `ap.speak` 다 — 자국·original 발신의 행동력.
     """
-    fails = asserts.check_all(_with(**{"knob.comm_intl_ai_ap": [0.1, 0.3]}))
-    assert any("노브" in f for f in fails)
+    # **값을 박지 않는다** — `[0.1, 0.3]` 이었는데 `ap.speak` 이 0.2 → 0.1 로 내려가
+    # 하한이 더 이상 하한이 아니게 됐다 (「숫자를 두 군데 적으면 하나가 낡는다」).
+    from core import config as _cfgmod
+    speak = _cfgmod.load(str(BASE)).ap.speak
+    below = round(speak - 0.05, 3)
+    fails = asserts.check_all(_with(**{"knob.comm_intl_ai_ap": [below, speak + 0.1]}))
+    assert any("노브" in f for f in fails), (below, fails)
 
 
 def test_break_knob_above_a_whole_year():
