@@ -95,8 +95,10 @@ def report(c: Cfg, seeds: int) -> int:
     # 맞추면 1.11배다 — 함정의 크기를 세 배로 읽고 있었다.
     b1 = c.bunker / (c.agents * c.total_turns)
     i1 = c.interceptor / (3 * c.agents * c.total_turns)
-    print(f"   1인부담  벙커 {b1:.1f} > 요격기 {i1:.1f}  ({c.total_turns}해·사람당, 비 {b1 / i1:.2f})  "
-          f"{'OK' if b1 > i1 else '위반 — 벙커가 더 싸면 함정이 아니다'}")
+    ok = abs(b1 - i1) <= 0.01 * i1
+    print(f"   1인부담  벙커 {b1:.2f} = 요격기 {i1:.2f}  ({c.total_turns}해·사람당, "
+          f"비 {b1 / i1:.3f})  "
+          f"{'OK' if ok else '위반 — 한쪽이 싸면 그쪽이 정답이 되어 선택이 사라진다'}")
     print(f"   성장     growth_coef {c.growth_coef} · growth_scale {c.growth_scale:.0f} "
           f"(한 주기 국가소득의 {c.growth_scale / (c.income * c.agents * c.epoch_turns):.2f}배)")
     print()

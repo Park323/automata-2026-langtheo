@@ -154,11 +154,28 @@ def check_all(cfg) -> list[str]:
     span = cfg.world.total_turns
     bunker_burden = bunker / (cfg.world.agents_per_country * span)
     intc_burden = intc / (3 * cfg.world.agents_per_country * span)
-    if not (bunker_burden > intc_burden):
+    # **둘을 정확히 같게 둔다** (8/25 · Eddie). 전에는 「벙커가 더 비싸야 한다」 였고
+    # 근거가 「벙커가 더 싸지면 아무도 요격기를 안 한다」 였다. 그 문장은 벙커가 **확률**
+    # 이던 시절에 쓴 것이다 — 조금 파도 조금 살았으니 「싸다」 가 「값싼 보험」 이었다.
+    #
+    # 벙커가 임계가 된 뒤로 그 assert 는 **함정을 함정이 아니게 만든다**. 벙커가 더 비싸고
+    # 살리는 사람도 적으면 요격기가 모든 축에서 지배하고, 벙커를 고를 이유가 「남을 못
+    # 믿는다」 하나로 줄어든다. 그러면 벙커를 고른 것은 유혹에 진 것이 아니라 **계산을
+    # 틀린 것**이 된다.
+    #
+    # 1인부담을 같게 두면 남는 차이는 **셋뿐**이고, 그 셋이 이 실험이 재려는 것이다:
+    #
+    #     누가 사는가      벙커 3명 / 요격기 9명
+    #     누구를 믿어야 하나  벙커 아무도 / 요격기 두 나라
+    #     조율의 이득       최선의 나라에 몰아주면 46% — 벙커 60% 보다 싸다
+    #
+    # 「아무도 요격기를 안 한다」 는 막아야 할 결함이 아니라 **관측하려는 현상**이다.
+    if abs(bunker_burden - intc_burden) > 0.01 * intc_burden:
         fails.append(
-            f"부담: 벙커 1인부담({bunker_burden:.1f}) 이 요격기 1인부담({intc_burden:.1f}) 보다 "
-            f"커야 한다 (둘 다 {span}해·사람당). 벙커가 더 싸지면 아무도 요격기를 안 한다. "
-            f"bunker 를 올리거나 interceptor 를 조정하라."
+            f"부담: 벙커 1인부담({bunker_burden:.2f}) 과 요격기 1인부담({intc_burden:.2f}) 이 "
+            f"1% 안에서 같아야 한다 (둘 다 {span}해·사람당). 한쪽이 싸면 그쪽이 정답이 되어 "
+            f"선택이 사라진다. interceptor 를 바꿨으면 bunker 를 "
+            f"{intc_burden * cfg.world.agents_per_country * span:.0f} 로 맞춰라."
         )
 
     # 노브 — **원문 경로보다 싸지면 경로 선택이 무의미해진다.** 전 구간에서.

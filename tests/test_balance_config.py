@@ -37,11 +37,23 @@ def test_interceptor_sits_inside_the_window(c):
     assert lo < c.interceptor < hi
 
 
-def test_bunker_is_a_trap_not_a_bargain(c):
-    """1인부담이 요격기보다 싸면 벙커가 함정이 아니라 정답이 된다 (spec 3.5)."""
-    b1 = c.bunker / (c.agents * c.epoch_turns)
+def test_the_two_thresholds_cost_the_same_per_head(c):
+    """**1인부담이 같아야 선택이 남는다** (8/25 · Eddie · spec 3.5).
+
+    한쪽이 싸면 그쪽이 정답이 되고 딜레마가 사라진다. 같게 두면 남는 차이가 셋이고,
+    그 셋이 이 실험이 재려는 것이다:
+
+        누가 사는가        벙커 3명 / 요격기 9명
+        누구를 믿어야 하나   벙커 아무도 / 요격기 두 나라
+        조율의 이득        최선의 나라에 몰아주면 46% — 벙커 60% 보다 싸다
+    """
+    # **같은 기간으로 나눈다** (#51). 벙커만 한 주기로 나누고 있었다 — 도구는 8/25 에
+    # 고쳤는데 이 테스트가 남아 있었다.
+    b1 = c.bunker / (c.agents * c.total_turns)
     i1 = c.interceptor / (3 * c.agents * c.total_turns)
-    assert b1 > i1
+    # **정확히 같다** (8/25 · Eddie). 한쪽이 싸면 그쪽이 정답이 되어 선택이 사라진다 —
+    # 벙커가 임계가 된 뒤로 「벙커가 더 비싸야」 는 함정을 함정이 아니게 만든다.
+    assert abs(b1 - i1) <= 0.01 * i1, (b1, i1)
 
 
 def test_newborns_do_not_mint_money(c):
