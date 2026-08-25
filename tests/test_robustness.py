@@ -307,7 +307,7 @@ def test_a_crash_leaves_enough_to_debug_it(tmp_path, cfg):
         w.crash(e, where="run")
     w.close({"final": {"outcome": "aborted"}})
 
-    (row,) = [json.loads(l) for l in (w.dir / "events.jsonl").read_text().splitlines()]
+    (row,) = [json.loads(l) for l in (w.dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     # 7턴까지 끝났고 8턴이 돌던 중이었다. 한 값만 적으면 "시작도 못 했다" 로 읽힌다.
     assert row["type"] == "crash"
     assert (row["turn"], row["last_completed_turn"]) == (8, 7)
@@ -336,3 +336,47 @@ def test_the_failing_agent_is_named_in_the_traceback(cfg):
                          parallel=True, sim_turns=1)
     notes = " ".join(getattr(ei.value, "__notes__", []) or [])
     assert "agent" in notes and "turn 1" in notes
+
+
+def test_every_file_open_declares_utf8():
+    """**Windows 에서 분석 도구가 통째로 안 돌았다** (#53).
+
+    `read_text()`·`open()` 에 인코딩이 없으면 기본 코드페이지(cp949)로 열린다. 우리 로그는
+    ja/zh/fr 가 섞여 있으므로 첫 줄에서 `UnicodeDecodeError` 다 — 런은 도는데 그 런을
+    **읽는** 도구가 안 돈다. `core/*` 는 전부 붙어 있었고 `tools/*`·`tests/*` 만 빠져 있었다.
+
+    규약을 검사로 굳힌다. 바이너리 모드는 인코딩을 받지 않으므로 뺀다.
+    """
+    import ast
+    import pathlib
+
+    TARGETS = {"read_text", "write_text", "open"}
+    SKIP = {".venv", "__pycache__", "runs", "build"}
+    root = pathlib.Path(__file__).resolve().parent.parent
+    bad = []
+    for path in root.rglob("*.py"):
+        if any(part in SKIP for part in path.parts):
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            f = node.func
+            if isinstance(f, ast.Attribute):
+                name = f.attr
+            elif isinstance(f, ast.Name):
+                name = f.id
+            else:
+                continue
+            if name not in TARGETS:
+                continue
+            if any(k.arg == "encoding" for k in node.keywords):
+                continue
+            if name == "open" and node.args:      # 바이너리 모드는 인코딩을 받지 않는다
+                pos = 1 if (isinstance(f, ast.Name) and len(node.args) > 1) else 0
+                mode = node.args[pos]
+                if isinstance(mode, ast.Constant) and isinstance(mode.value, str):
+                    if "b" in mode.value:
+                        continue
+            bad.append("{}:{} {}()".format(
+                path.relative_to(root).as_posix(), node.lineno, name))
+    assert not bad, "인코딩 없이 파일을 연다 (cp949 로 열린다): " + " · ".join(bad)

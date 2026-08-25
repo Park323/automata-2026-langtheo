@@ -65,7 +65,8 @@ def mean_age_multiplier(cfg) -> float:
     나이 a 에 살아 있을 확률은 생존함수 S(a) 에 비례한다. 소득이 성인 나이 이후 한 해마다
     `age_growth` 씩 오르므로, 한 사람이 평균적으로 받는 배수는 그 가중평균이다.
 
-        age_growth 0.20 → 평균 1.22   (나이 16 은 2.20, 나이 20 은 3.00)
+        age_growth 0.20 · adult_age 10 → 평균 1.224
+        age_growth 0.10 · adult_age  5 → 평균 1.363   ← 지금 값
 
     **손으로 적지 않는다.** `age_growth` 나 수명을 바꾸면 이 값이 따라 움직여야 하고,
     그러지 않으면 임계값 창이 조용히 어긋난다.
@@ -150,13 +151,21 @@ def check_all(cfg) -> list[str]:
             f"크면 아무리 파도 의미가 없다. bunker_scale 를 내려라."
         )
 
-    # ★D 시간 축을 분리한 부담 비교
-    bunker_burden = bunker / (cfg.world.agents_per_country * cfg.world.epoch_turns)
-    intc_burden = intc / (3 * cfg.world.agents_per_country * cfg.world.total_turns)
+    # ★D 1인부담 비교 — **분모의 기간을 맞춘다** (#51).
+    #
+    # 벙커는 한 주기(20해)로, 요격기는 전 기간(60해)으로 나누고 있었다. 사람 수가 다른
+    # 것은 옳다(벙커는 한 나라 3명이 지고 요격기는 세 나라 9명이 나눠 진다) — **기간이**
+    # 달랐다. 그래서 비가 3.34배로 찍혔는데, 같은 기간으로 재면 1.11배다.
+    #
+    # 조건은 그대로 통과한다. 다만 함정의 크기를 3배로 읽고 있었다 — 임계나 깊이척도를
+    # 다시 만질 때 그 차이가 그대로 판단을 바꾼다.
+    span = cfg.world.total_turns
+    bunker_burden = bunker / (cfg.world.agents_per_country * span)
+    intc_burden = intc / (3 * cfg.world.agents_per_country * span)
     if not (bunker_burden > intc_burden):
         fails.append(
             f"부담: 벙커 1인부담({bunker_burden:.1f}) 이 요격기 1인부담({intc_burden:.1f}) 보다 "
-            f"커야 한다. 벙커가 더 싸지면 아무도 요격기를 안 한다. "
+            f"커야 한다 (둘 다 {span}해·사람당). 벙커가 더 싸지면 아무도 요격기를 안 한다. "
             f"bunker_scale 를 올리거나 interceptor 를 조정하라."
         )
 

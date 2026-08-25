@@ -11,7 +11,7 @@ class Agent:
     country: str             # "A"
     native_lang: str         # "ja"
     known_langs: set[str]    # 읽을 수 있는 언어. 초기값은 모국어만
-    parent_langs: set[str]   # 부모가 구사하던 언어. **자연사 교체는 빈 집합**
+    parent_langs: set[str]   # 부모가 구사하던 언어. 자연사 교체는 **앞사람의 known_langs**
     budget: float
     age: int = 0
     lam: float = 0.0         # 수명 척도. wellness 로 증가. 본인에게도 비공개

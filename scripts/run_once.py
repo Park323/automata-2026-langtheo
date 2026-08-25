@@ -1,4 +1,4 @@
-"""50턴 1회 실행 요약. 과제 1 제출물 (결과 한 문단).
+"""1회 실행 요약. 과제 1 제출물 (결과 한 문단). 길이는 `world.total_turns` 가 정한다.
 
     python -m scripts.run_once            # seed 는 config 의 run.seed
     python -m scripts.run_once --seed 7
@@ -31,7 +31,7 @@ def main() -> None:
     mean_age = sum(r.death_ages) / len(r.death_ages) if r.death_ages else 0.0
     by_kind = Counter(b["born_by"] for b in r.births)
 
-    print(f"[seed {seed}] 50턴 완료")
+    print(f"[seed {seed}] {cfg.world.total_turns}턴 완료")
     print(f"  사망(=출생) {r.deaths}회  (자연사 {by_kind['natural']} / procreate {by_kind['procreate']})")
     print(f"  사망 나이 평균 {mean_age:.2f}, 최대 {max(r.death_ages) if r.death_ages else 0}")
     print(f"  국토 {lands}")

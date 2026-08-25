@@ -1163,7 +1163,7 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
                 #      memory_write 뿐이다
                 #   ③ 받을 것이 실제로 있어야 한다 (꺼내지 않고 본다)
                 #
-                # 무한 왕복은 AP 가 막는다 — speak 이 0.3 이라 한 해에 세 번이 끝이다.
+                # 무한 왕복은 AP 가 막는다 — speak 이 0.2 라 한 해에 다섯 번이 끝이다.
                 if not (ended[aid] == "ended"
                         and aid in world.agents
                         and world.agents[aid].uid in snapshot_uids

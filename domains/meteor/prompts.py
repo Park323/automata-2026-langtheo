@@ -98,7 +98,7 @@ T = {
     "ja": dict(
         you="あなたは {id}（{nation} の人）です。", read="扱える言語: {langs}",
         land="自国が建てるもの: {v}", undecided="未定",
-        prog="自国の進捗: {v:.0f}", thresh="  interceptor の完成に要る進捗: {v:.0f}",
+        prog="自国の進捗: {v:.0f}",
         year="今年: {y} 年",
         open="{y} 年になりました。あなたは {age} 歳。今年の収入は +{inc:.0f}{last}、手元の予算は {b:.0f} です。\nこの年を執り行ってください。",
         open_last="（昨年は +{v:.0f}）",
@@ -182,7 +182,7 @@ T = {
     "zh": dict(
         you="你是 {id}（{nation} 人）。", read="你掌握的语言: {langs}",
         land="本国要建的设施: {v}", undecided="未定",
-        prog="本国进度: {v:.0f}", thresh="  建成 interceptor 所需的进度: {v:.0f}",
+        prog="本国进度: {v:.0f}",
         year="今年: {y} 年",
         prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
         prop_today="  ★ 今年就是表决之年（由 {by} 召集）。可以用 vote 选 interceptor / bunker / abstain",
@@ -266,7 +266,6 @@ T = {
         you="Vous êtes {id}, de {nation}.", read="Langues que vous maniez : {langs}",
         land="Ce que bâtit votre nation : {v}", undecided="indéterminé",
         prog="Progression de votre nation : {v:.0f}",
-        thresh="  Progression requise pour achever un interceptor : {v:.0f}",
         year="Année : {y}",
         prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
         prop_today="  ★ Le scrutin a lieu cette année (convoqué par {by}). Choisissez avec vote : interceptor / bunker / abstain",

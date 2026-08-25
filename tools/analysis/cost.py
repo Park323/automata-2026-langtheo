@@ -23,7 +23,7 @@ def load(run: pathlib.Path) -> list[dict]:
     p = run / "raw_calls.jsonl"
     if not p.exists():
         raise SystemExit(f"{p} 가 없습니다")
-    return [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+    return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
 
 
 def _cost(r: dict) -> float:

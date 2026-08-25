@@ -30,7 +30,7 @@ def load_key() -> str:
         p = ROOT / name
         if not p.exists():
             continue
-        for line in p.read_text().splitlines():
+        for line in p.read_text(encoding="utf-8").splitlines():
             if line.startswith("OPENROUTER_API_KEY"):
                 return line.split("=", 1)[1].strip().strip("\"'")
     if os.environ.get("OPENROUTER_API_KEY"):
@@ -113,7 +113,7 @@ def translate(key, model, src_lang, dst_lang, text, instruction=None, retries=3)
 # ── 실행 ───────────────────────────────────────────────────────────
 def run(models, outdir, limit=None, delay=1.2):
     key = load_key()
-    d = json.loads(DATA.read_text())
+    d = json.loads(DATA.read_text(encoding="utf-8"))
     sents = d["sentences"][:limit] if limit else d["sentences"]
     variants = d["instruction_variants"]
     subset = set(d["instruction_test_subset"])
@@ -136,7 +136,7 @@ def run(models, outdir, limit=None, delay=1.2):
     raw = outdir / "raw.jsonl"
     print(f"총 {len(jobs)}회 호출 → {raw}\n")
     t0 = time.time()
-    with raw.open("w") as f:
+    with raw.open("w", encoding="utf-8") as f:
         for i, (model, s, src, dst, vkey) in enumerate(jobs, 1):
             res = translate(key, model, src, dst, s[src], variants[vkey])
             time.sleep(delay)
@@ -164,8 +164,8 @@ def run(models, outdir, limit=None, delay=1.2):
 
 # ── 리포트 ─────────────────────────────────────────────────────────
 def report(raw_path):
-    rows = [json.loads(l) for l in pathlib.Path(raw_path).read_text().splitlines() if l.strip()]
-    d = json.loads(DATA.read_text())
+    rows = [json.loads(l) for l in pathlib.Path(raw_path).read_text(encoding="utf-8").splitlines() if l.strip()]
+    d = json.loads(DATA.read_text(encoding="utf-8"))
     feats = [k for k in d["markers"] if not k.startswith("_")]
     base = [r for r in rows if r["instruction"] == "null" and not r.get("error")]
     models = sorted({r["model"] for r in rows})
