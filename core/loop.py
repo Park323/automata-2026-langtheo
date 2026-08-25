@@ -511,8 +511,10 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         gid = next(msg_ids)
         try:
             p = messaging.process_message(sent, reck, cfg, translator, knob_ai,
-                                          sender_known_langs=(sender.known_langs if sender
-                                                              else frozenset()),
+                                          # 쓴 시점에 알던 말 (agent_loop 참조).
+                                          # 옛 체크포인트에는 없으므로 살아 있는 발신자로 보완한다.
+                                          sender_known_langs=sent.get("from_known") or (
+                                              sender.known_langs if sender else frozenset()),
                                           log_tag={"turn": world.turn, "msg_id": gid})
         except BaseException as e:
             # 정산은 단일 스레드라 프레임은 남지만 **어느 메시지였는지는 안 남는다.**
@@ -960,8 +962,10 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         gid = next(msg_ids)
         try:
             p = messaging.process_message(sent, reck, cfg, translator, knob_ai,
-                                          sender_known_langs=(sender.known_langs if sender
-                                                              else frozenset()),
+                                          # 쓴 시점에 알던 말 (agent_loop 참조).
+                                          # 옛 체크포인트에는 없으므로 살아 있는 발신자로 보완한다.
+                                          sender_known_langs=sent.get("from_known") or (
+                                              sender.known_langs if sender else frozenset()),
                                           log_tag={"turn": world.turn, "msg_id": gid})
         except BaseException as e:
             e.add_note(f"[msg {gid} · {sent['from']} → {sent['to']} · "

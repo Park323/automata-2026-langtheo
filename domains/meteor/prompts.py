@@ -164,6 +164,7 @@ T = {
         in_hdr="今届いたメッセージ:", ev_hdr="起きたこと:",
         in_fail="  通知 — {to} 宛のメッセージは届きませんでした（相手がその言語を読めません）",
         in_fail_plain="  通知 — {to} 宛のメッセージは届きませんでした",
+        in_fail_lang="  通知 — {to} 宛のメッセージは届きませんでした（あなたが扱えない言語で書いたため）",
         in_unread="  {frm} より — 読めないメッセージが届きました",
         in_from="  {frm} より{label}",
         lbl_direct=" ［通訳なしで通じた］",          # 하위 호환
@@ -240,6 +241,7 @@ T = {
         in_hdr="刚送达的消息:", ev_hdr="发生的事:",
         in_fail="  通知 — 你发给 {to} 的消息未能送达（对方读不懂那种语言）",
         in_fail_plain="  通知 — 你发给 {to} 的消息未能送达",
+        in_fail_lang="  通知 — 你发给 {to} 的消息未能送达（因为你用了自己不会的语言写）",
         in_unread="  来自 {frm} — 送到一条你读不懂的消息",
         in_from="  来自 {frm}{label}",
         lbl_direct="［无需翻译就能听懂］",
@@ -322,6 +324,7 @@ T = {
         in_hdr="Messages qui viennent d'arriver :", ev_hdr="Ce qui est arrivé :",
         in_fail="  Avis — votre message à {to} n'a pas pu être délivré (ils ne lisent pas cette langue)",
         in_fail_plain="  Avis — votre message à {to} n'a pas pu être délivré",
+        in_fail_lang="  Avis — votre message à {to} n'a pas pu être délivré (vous l'avez écrit dans une langue que vous ne maniez pas)",
         in_unread="  de {frm} — un message illisible est arrivé",
         in_from="  de {frm}{label}",
         lbl_direct=" [compris sans traduction]",
@@ -610,8 +613,15 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
             # **원인을 섞지 않는다.** 엔진 장애를 「상대가 그 언어를 읽지 못한다」 로
             # 통지하고 있었다 — 상대의 언어 능력과 무관한 일을 언어 사실로 심는 것이고,
             # 이 실험의 핵심 변수를 에이전트의 머릿속에서 오염시킨다.
-            key = ("in_fail" if m.get("delivery_failed_reason", "unreadable") == "unreadable"
-                   else "in_fail_plain")
+            # **세 갈래다** (8/25). 「상대가 못 읽었다」 는 세계의 사실, 「내가 쓸 수 없는
+            # 말로 썼다」 도 세계의 사실이고 **내 잘못**이다. 엔진 장애만 이유를 안 댄다.
+            #
+            # 셋을 뭉개면 조용한 실패가 된다 — 어긴 것을 모르니 또 어긴다. 자기 언어
+            # 능력에서 나오는 사실이라 타국 사정을 흘리지 않는다 (어느 말이 통했을지는
+            # 여전히 안 알려준다).
+            key = {"unreadable": "in_fail",
+                   "not_your_language": "in_fail_lang"}.get(
+                       m.get("delivery_failed_reason", "unreadable"), "in_fail_plain")
             _add(t[key].format(to=m["delivery_failed_to"]))
             continue
         if m.get("unreadable"):

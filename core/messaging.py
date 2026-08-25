@@ -116,12 +116,28 @@ def direct_works(sender_known_langs, recipient_known_langs,
       모국어로 보내면서 통했다고 적는 허구였다. 8/22 에 경로별 언어 규칙이 들어오면서
       그 근거가 사라졌다: 이제 **아는 말의 나라에는 그 말로 쓰라고 안내한다**
       (`render_costs` 의 나라별 줄). 안내대로 쓰면 첫 갈래로 통하고, 어기면 통하지 않는다.
-      어긴 사실이 로그에 남는 것이 관측이다 — 본문 언어를 강제로 검사하지는 않는다.
+      어긴 사실이 로그에 남는 것이 관측이다 — 도구 호출을 거절하지는 않는다.
+
+    ⚠ **배우지 않은 말로는 쓸 수 없다** (8/25 · Eddie). 위 `writer` 갈래의 주석은
+      「발신자가 **배워서** 그 말로 썼다」 인데 코드는 배웠는지를 안 봤다. LLM 은
+      `known_langs` 에 없는 말도 물리적으로 써낼 수 있으므로, 학습을 건너뛰고 도달했다:
+
+          Ranoa2(zh) → Miris1(fr)   안내대로 zh 로 쓰면  90자 · 미전달
+                                    안 배운 fr 로 쓰면  400자 · **전달**
+
+      규칙을 지키면 안 닿고 어기면 닿았다. 그것도 4.4배 긴 글로. `learn` 의 값이 0 이
+      되고, 가설의 연쇄(학습자 감소 → 왜곡을 못 알아챔)가 여기서 끊긴다. 이것을 막고
+      있던 유일한 것은 「어느 나라가 어떤 말을 쓰는지 모른다」 였는데, 모르는 것에
+      기대는 것은 규칙이 아니다.
 
     그 규칙이 있던 이유(「이중언어자가 받는 데만 쓸모가 있었다」)는 그대로 해결된다.
     아는 말로 쓰면 상대의 모국어이므로 **반드시** 통한다.
     """
     body = body_lang or from_lang
+    # **쓸 수 없는 말로 쓴 글은 통하지 않는다.** 거절이 아니라 실패다 — 어긴 사실이
+    # 로그에 남아야 관측이 된다.
+    if body not in sender_known_langs:
+        return False, ""
     if body in recipient_known_langs:
         # 누구 덕인지는 **그 글이 무슨 말인지**가 정한다. 상대의 국어면 발신자가 배워서
         # 그 말로 쓴 것이고(writer), 아니면 상대가 그 말을 배운 것이다(reader).
@@ -132,7 +148,7 @@ def direct_works(sender_known_langs, recipient_known_langs,
 # ── 전달 형태 만들기 (spec 5.1 · 5.2 · 5.4) ───────────────────────────────────
 
 def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai: float,
-                    sender_known_langs=frozenset(), log_tag: dict | None = None) -> dict:
+                    sender_known_langs=None, log_tag: dict | None = None) -> dict:
     """발신 메시지 하나를 처리해 전달 결과를 만든다.
 
     반환:
@@ -146,6 +162,12 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     """
     from_lang = sent["from_lang"]
     to_lang = sent["to_lang"]
+    # **기본값은 「적어도 모국어」 다** (8/25). 전에는 `frozenset()` 이었는데, 쓰기 권한을
+    # 보게 된 순간 그 기본값은 「아무 말도 쓸 수 없다」 가 되어 **모든 발신이 실패한다.**
+    # 안 넘기고 부르면 조용히 그렇게 됐다 — 모국어는 누구나 쓸 수 있는 사실이므로
+    # 그것을 바닥으로 둔다. 「아무것도 못 쓴다」 를 원하면 명시적으로 `frozenset()`.
+    if sender_known_langs is None:
+        sender_known_langs = {from_lang}
     kind = classify(sent["from_country"], sent["to_country"], sent.get("route"))
     reader = can_read(recipient_known_langs, from_lang)
     # **판정보다 먼저 「이 글이 무슨 말인가」 를 정한다** (#44). 전에는 전달 여부를
@@ -165,6 +187,7 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     # 절단 **전**의 글로 언어를 잰다 — 자른 뒤에 재면 잘린 조각이 다른 언어로 보일 수 있다.
     body_lang = detect_lang(sent["text"], from_lang)
     text_sent, chars_cut = truncate(sent["text"], body_lang, cfg)
+    wrote_unknown = body_lang not in sender_known_langs
     direct, direct_by = direct_works(sender_known_langs, recipient_known_langs,
                                      from_lang, to_lang, body_lang)
 
@@ -179,6 +202,9 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         "len_written": len(sent["text"]),
         "len_limit": cfg.length.message_max_chars[body_lang],
         "truncated": chars_cut > 0, "chars_cut": chars_cut,
+        # 배우지 않은 말로 썼는가. **따로 셀 수 있어야 한다** — 안내를 어긴 빈도 자체가
+        # 관측값이다 (모델이 규칙을 지키는지).
+        "wrote_unknown_lang": wrote_unknown,
         "reader": reader,                      # 수신자가 발신 언어를 읽는가
         "direct_ok": direct,                   # 원문 직통이 통하는가 (읽기 OR 쓰기)
         "direct_by": direct_by or None,        # "reader" | "writer" — 누구의 학습 덕인가
@@ -216,7 +242,12 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
                  "original": None, "unreadable": True}
         # **원인을 붙인다.** 이 경로의 실패는 세계의 사실이다 — 내가 그 나라 말을
         # 모르고 상대도 내 말을 못 읽었다. route=original 의 도박이 정보를 주는 지점이다.
-        notice = {"type": "delivery_failed", "to": sent["to"], "reason": "unreadable"}
+        # **사유를 가른다.** 「상대가 못 읽었다」 와 「내가 쓸 수 없는 말로 썼다」 는
+        # 다른 사실이고, 섞으면 지표 9(미전달률)가 오염된다 — `translate_failed` 를 따로
+        # 둔 것과 같은 이유다. 발신자에게도 다른 얘기다: 앞은 도박이 빗나간 것이고
+        # 뒤는 안내를 어긴 것이다.
+        notice = {"type": "delivery_failed", "to": sent["to"],
+                  "reason": "not_your_language" if wrote_unknown else "unreadable"}
         return {"kind": kind, "delivered": False, "inbox": inbox,
                 "sender_notice": notice, "meta": meta}
 

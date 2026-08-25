@@ -338,12 +338,17 @@ def test_a_third_language_body_does_not_get_through(cfg):
 
     셋을 한자리에서 본다. 앞의 둘은 그대로 통해야 하고, 셋째만 막혀야 한다.
     """
-    # 발신자 Asla1 은 ja(모국어)와 zh 를 다룬다 · 수신자 Miris2 는 fr(모국어)과 ja 를 읽는다
+    # 발신자 Asla1 은 ja(모국어)·zh·fr 를 다룬다 · 수신자 Miris2 는 fr(모국어)과 ja 를 읽는다
+    #
+    # **fr 을 넣는다** (8/25). ②의 주석은 「내가 **배워서** 그 말로 쓴 것이다」 인데
+    # `sender_known_langs` 에 fr 이 없었다 — 픽스처가 스스로 모순이었고, 쓰기 권한을
+    # 보게 되자 드러났다. ③(zh)은 여전히 「쓸 수는 있지만 상대가 못 읽는다」 다.
     common = dict(from_lang="ja", from_country="Asla", to="Miris2", to_country="Miris",
                   to_lang="fr", route="original")
     send = lambda text: messaging.process_message(
         _sent(**common, text=text), recipient_known_langs={"fr", "ja"},
-        cfg=cfg, translator=None, knob_ai=KNOB, sender_known_langs={"ja", "zh"})
+        cfg=cfg, translator=None, knob_ai=KNOB,
+        sender_known_langs={"ja", "zh", "fr"})
 
     # ① 내 말(ja)로 썼다 — 상대가 ja 를 읽는다
     m = send("こんにちは")
@@ -406,6 +411,73 @@ def test_there_is_only_one_direct_label_now(cfg):
                 assert m["meta"]["delivered_lang"] in rk
                 seen.add(m["meta"]["direct_by"])
     assert seen == {"reader", "writer"}          # 두 갈래 다 여전히 일어난다
+
+
+def test_the_cut_ignores_the_recipient_entirely(cfg):
+    """**절단은 오직 쓰여진 말로 한다** (8/25 · Eddie).
+
+    안내는 나라마다 쓸 말을 하나씩 정해 준다 (「Ranoa へ — 中国語で書けば必ず届く」).
+    그래서 상한을 **행선지**에서 끌어오고 싶어지는데, 그러면 안 된다 — 수신자가 zh 와
+    ja 를 둘 다 읽으면 `original` 을 ja 로 써도 닿고, 그때 걸리는 상한은 ja 의 130 이다.
+    행선지에서 끌어오면 90 으로 잘려 40자가 사라진다.
+
+    상한은 **글자의 성질**이다 (같은 내용을 담는 글자 수). 누가 읽는지와 무관하다.
+    """
+    L = cfg.length.message_max_chars
+    body_char = {"ja": "あ", "zh": "你", "fr": "a"}
+    for body in ("ja", "zh", "fr"):
+        seen = set()
+        for to_country, to_lang in (("Ranoa", "zh"), ("Miris", "fr"), ("Asla", "ja")):
+            for reads in (frozenset({to_lang}), frozenset({"ja", "zh", "fr"})):
+                sent = _sent(from_lang="ja", from_country="Asla", to="X1",
+                             to_country=to_country, to_lang=to_lang,
+                             route="original", text=body_char[body] * (L[body] + 60))
+                m = messaging.process_message(
+                    sent, reads, cfg, None, None,
+                    sender_known_langs={"ja", "zh", "fr"})
+                seen.add((m["meta"]["len_limit"], m["meta"]["chars_cut"],
+                          len(m["meta"]["text_sent"])))
+        # 수신국·수신자 능력을 다 흔들어도 **하나**여야 한다
+        assert seen == {(L[body], 60, L[body])}, (body, seen)
+
+
+def test_you_cannot_write_a_language_you_have_not_learned(cfg):
+    """**배우지 않은 말로는 쓸 수 없다** (8/25 · Eddie).
+
+    `direct_works` 의 `writer` 갈래는 「발신자가 **배워서** 그 말로 썼다」 인데, 코드는
+    배웠는지를 안 봤다. LLM 은 `known_langs` 에 없는 말도 물리적으로 써낼 수 있으므로
+    학습을 건너뛰고 도달했다 — 그것도 더 긴 글로:
+
+        zh 화자 → fr 나라   안내대로 zh 로 쓰면   90자 · 미전달
+                            안 배운 fr 로 쓰면   400자 · **전달**
+
+    규칙을 지키면 안 닿고 어기면 닿았다. `learn` 의 값이 0 이 되고 가설의 연쇄가 끊긴다.
+
+    막는 방식은 **거절이 아니라 실패**다 — 어긴 사실이 로그에 남아야 관측이 된다.
+    """
+    def send(known, text):
+        sent = _sent(from_lang="zh", from_country="Ranoa", to="M1",
+                     to_country="Miris", to_lang="fr", route="original", text=text)
+        return messaging.process_message(sent, {"fr"}, cfg, None, None,
+                                         sender_known_langs=known)
+
+    # 안 배운 fr 로 썼다 — 통하지 않는다. 사유가 「상대가 못 읽었다」 와 갈린다.
+    bad = send({"zh"}, "Bonjour")
+    assert bad["delivered"] is False
+    assert bad["meta"]["wrote_unknown_lang"] is True
+    assert bad["sender_notice"]["reason"] == "not_your_language"
+
+    # 배운 뒤에는 같은 글이 통한다 — 학습이 정확히 이 문을 연다
+    ok = send({"zh", "fr"}, "Bonjour")
+    assert ok["delivered"] is True
+    assert ok["meta"]["direct_by"] == "writer"
+    assert ok["meta"]["wrote_unknown_lang"] is False
+
+    # 내 말(zh)로 쓰면 쓰기는 되고, 상대가 못 읽어서 실패한다 — 다른 사유다
+    mine = send({"zh"}, "你好朋友")
+    assert mine["delivered"] is False
+    assert mine["meta"]["wrote_unknown_lang"] is False
+    assert mine["sender_notice"]["reason"] == "unreadable"
 
 
 def test_the_length_cap_follows_the_body_language_not_the_sender(cfg):

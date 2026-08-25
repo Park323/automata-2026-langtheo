@@ -229,6 +229,55 @@ def test_learn_rejects_a_language_already_read(cfg, world):
     assert sink.learns == []
 
 
+def test_speak_records_the_languages_known_at_writing_time(cfg, world):
+    """**쓰기 권한은 「쓴 시점」 의 사실이다** (8/25 · Eddie).
+
+    배우지 않은 말로 쓴 글은 통하지 않는다 (`messaging.direct_works`). 그 판정을 정산
+    때 `world.agents` 에서 다시 읽으면 두 군데서 어긋난다:
+
+      · 턴 순서가 `a. 학습 반영` → `e. 메시지` 다. 정산 때 읽으면 **같은 해에 배운 말**이
+        통과한다 — 프롬프트는 「배운 것은 다음 해 관측부터」 라고 적는다.
+      · 발신자가 그 사이에 죽으면 집합이 비어 **보낸 말이 통째로 사라진다.**
+        조용한 무시가 가장 나쁜 실패다.
+
+    그래서 `speak` 가 그 순간의 집합을 박아 둔다. **배선까지 본다** — 필드만 확인하고
+    정산이 그걸 쓰는지 안 보면 낡은 경로가 그대로 남는다.
+    """
+    import itertools as _it
+    import random as _rnd
+    from core import loop as loop_mod, messaging
+    from core.llm import StubClient
+
+    script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=200)),
+              assistant_msg(tool_call("speak", "2", to="Miris1", text="x",
+                                      route="original")),
+              assistant_msg(tool_call("end_turn", "3"))]
+    agent, sink, client, log = _run(world, cfg, "Asla2", script)
+    sent, = sink.messages
+    # 이번 해에 Miris 말을 배웠지만, **쓸 때는 아직 몰랐다**
+    assert sent["from_known"] == frozenset(agent.known_langs)
+    assert "fr" not in sent["from_known"]
+
+    # 정산이 **이 필드**를 쓴다 — 발신자를 다시 조회하지 않는다
+    seen = {}
+    orig = messaging.process_message
+
+    def spy(*a, sender_known_langs=None, **kw):
+        seen["got"] = sender_known_langs
+        return orig(*a, sender_known_langs=sender_known_langs, **kw)
+
+    world.agents["Asla2"].known_langs = {"ja", "fr"}    # 정산 전에 늘려 둔다
+    messaging.process_message = spy
+    try:
+        loop_mod._settle_step(
+            world, cfg, _rnd.Random(0), sink,
+            StubClient([{"role": "assistant", "content": "x", "tool_calls": []}] * 3),
+            None, _it.count(900), loop_mod.RunResult(world=world), {}, [])
+    finally:
+        messaging.process_message = orig
+    assert seen["got"] == frozenset({"ja"}), seen
+
+
 def test_learn_uses_less_than_a_whole_turn(cfg, world):
     """한 번의 납부는 한 해의 십분의 일이다 — 열 번이면 AP 를 다 쓴다."""
     # 정가 학습이 딱 한 해분의 행동력이다
