@@ -64,6 +64,77 @@ def save(path: Path, world: World, rng: random.Random,
     tmp = Path(path).with_suffix(".tmp")
     tmp.write_text(json.dumps(blob, ensure_ascii=False, default=str), encoding="utf-8")
     tmp.replace(path)
+    # **매해를 따로 남긴다** (8/25 · Eddie). 전에는 한 파일을 덮어써서 복원점이 늘
+    # 「마지막 턴 끝」 하나였다 — 규칙을 고친 뒤 「n해부터 다시」 가 **원리적으로**
+    # 불가능했고, 그것을 알았을 때는 이미 되돌릴 곳이 없었다.
+    #
+    # 한 해가 12~40초인데 이 파일은 수십~수백 KB 다. 50해면 몇 MB — 런 하나의
+    # `raw_calls.jsonl` 이 30MB 인 것에 비하면 무료다. 안 남길 이유가 없었다.
+    d = Path(path).parent / "checkpoints"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"t{world.turn:03d}.json").write_bytes(Path(path).read_bytes())
+
+
+def at_turn(run_dir: Path, turn: int | None) -> tuple[Path, int]:
+    """되돌릴 복원점을 고른다 — `(경로, 그 해)`.
+
+    `turn=None` 이면 가장 마지막. `turn=N` 이면 **N해가 끝난 뒤**, 즉 다음이 N+1해다.
+    「N해부터 다시」 를 원하면 `N-1` 을 준다.
+    """
+    d = Path(run_dir) / "checkpoints"
+    have = sorted(int(f.stem[1:]) for f in d.glob("t*.json")) if d.is_dir() else []
+    if turn is None:
+        latest = Path(run_dir) / "checkpoint.json"
+        if latest.exists():
+            return latest, json.loads(latest.read_text(encoding="utf-8"))["turn"]
+        if not have:
+            raise FileNotFoundError(f"{run_dir} 에 복원점이 없습니다.")
+        return d / f"t{have[-1]:03d}.json", have[-1]
+    if turn == 0:
+        raise ValueError("0해로 되돌리는 것은 새 런입니다 — --run-id 를 바꾸세요.")
+    if turn not in have:
+        raise FileNotFoundError(
+            f"{turn}해 복원점이 없습니다. 있는 해: {have or '없음'}\n"
+            "  (매해 저장은 8/25 부터입니다 — 그 전 런은 마지막 하나뿐입니다.)")
+    return d / f"t{turn:03d}.json", turn
+
+
+# 되돌릴 때 잘라낼 로그. **여기 빠진 파일은 조용히 두 번 들어간다.**
+_TURN_LOGS = ("events", "messages", "metrics", "state", "raw_calls")
+
+
+def rewind_logs(run_dir: Path, turn: int) -> dict[str, int]:
+    """`turn` 보다 뒤의 행을 지운다. 지운 행 수를 파일별로 돌려준다.
+
+    **되돌리기의 절반은 로그다.** 세계만 되돌리고 로그를 그대로 두면 다시 돌린 해가
+    **두 번** 들어가고, 그 뒤 모든 지표가 조용히 오염된다 (`run_io` 가 겪었다).
+
+    `turn` 필드가 없는 행은 남긴다 — 크래시 행처럼 턴에 속하지 않는 기록이다.
+    """
+    cut: dict[str, int] = {}
+    for name in _TURN_LOGS:
+        f = Path(run_dir) / f"{name}.jsonl"
+        if not f.exists():
+            continue
+        keep, dropped = [], 0
+        for line in f.read_text(encoding="utf-8").splitlines(keepends=True):
+            if not line.strip():
+                continue
+            try:
+                t = json.loads(line).get("turn")
+            except json.JSONDecodeError:
+                keep.append(line)          # 못 읽는 줄은 건드리지 않는다
+                continue
+            if isinstance(t, int) and t > turn:
+                dropped += 1
+            else:
+                keep.append(line)
+        if dropped:
+            tmp = f.with_suffix(".tmp")
+            tmp.write_text("".join(keep), encoding="utf-8")
+            tmp.replace(f)
+        cut[name] = dropped
+    return cut
 
 
 def load(path: Path):

@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # PYTHONPATH 없이 실행
 
-from core import config, run_io
+from core import checkpoint, config, run_io
 from core.llm import BACKENDS, OpenRouterClient, key_for
 from core.loop import run_agentic
 from domains.meteor import prompts
@@ -155,7 +155,11 @@ def main() -> None:
                     help="temperature 0 + 샘플링 시드 고정. **버그 재현용** — "
                          "본실험은 0.7 로 두어야 행동의 분산이 데이터가 된다")
     ap.add_argument("--resume", action="store_true",
-                    help="같은 run-id 의 checkpoint.json 에서 이어한다")
+                    help="같은 run-id 에서 이어한다 (기본: 마지막 복원점)")
+    ap.add_argument("--from-turn", type=int, default=None, metavar="N",
+                    help="N해가 끝난 상태로 **되돌려** 이어한다 — 다음이 N+1해다. "
+                         "「N해부터 다시」 를 원하면 N-1 을 준다. "
+                         "그 뒤의 로그 행은 잘라낸다 (안 자르면 두 번 들어간다)")
     ap.add_argument("--run-id", default=None,
                     help="산출물 디렉터리 이름 (기본: smoke_{turns}t_seed{seed}_{시각})")
     args = ap.parse_args()
@@ -236,13 +240,24 @@ def main() -> None:
     t0 = time.time()
     stamp = time.strftime("%m%d_%H%M%S")
     run_id = args.run_id or f"smoke_{args.turns}t_seed{args.seed}_{stamp}"
-    ckpt = run_io.ROOT / "runs" / run_id / "checkpoint.json"
-    resuming = args.resume and ckpt.exists()
+    run_dir = run_io.ROOT / "runs" / run_id
+    ckpt = run_dir / "checkpoint.json"
+    # **되돌리기는 두 가지를 함께 해야 한다** (8/25) — 세계와 로그. 세계만 되돌리면
+    # 다시 돌린 해가 로그에 두 번 들어가고 그 뒤 지표가 조용히 오염된다.
+    resume_src, resume_turn = None, None
+    if args.resume or args.from_turn is not None:
+        resume_src, resume_turn = checkpoint.at_turn(run_dir, args.from_turn)
+    resuming = resume_src is not None
     writer = run_io.RunWriter(run_id, cfg_raw=raw, knob_ai=knob, seed=args.seed,
                               overwrite=resuming, append=resuming)
     if resuming:
-        import json as _j
-        print(f"  이어하기 — {_j.loads(ckpt.read_text(encoding='utf-8'))['turn']}턴까지 완료된 상태에서 재개")
+        cut = checkpoint.rewind_logs(run_dir, resume_turn)
+        dropped = {k: v for k, v in cut.items() if v}
+        print(f"  이어하기 — {resume_turn}해까지 완료된 상태에서 재개 "
+              f"({resume_src.name})")
+        if dropped:
+            print(f"  로그 되돌림 — {resume_turn}해 뒤의 행을 지웠습니다: "
+                  + " · ".join(f"{k} {v}" for k, v in dropped.items()))
     agent_client.inner.recorder = writer.recorder(kind="agent")
     translator.inner.recorder = writer.recorder(kind="translate")
 
@@ -266,7 +281,7 @@ def main() -> None:
                           sequential=not args.parallel, parallel=args.parallel,
                           on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)),
                           sim_turns=args.turns,
-                          resume_from=ckpt if resuming else None,
+                          resume_from=resume_src,
                           checkpoint_to=ckpt)
     except BaseException as e:
         # **트레이스백을 디스크에 남긴다.** 전에는 요약 한 줄뿐이라 스택이 stderr 로만

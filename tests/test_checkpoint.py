@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import itertools
+import json
 import random
 
 import pytest
@@ -117,3 +118,63 @@ def test_writing_a_checkpoint_is_atomic(tmp_path, cfg):
     assert not (tmp_path / "checkpoint.tmp").exists()    # 임시 파일이 안 남는다
     _run(cfg, 2, resume_from=ck, checkpoint_to=ck)
     assert ck.read_text(encoding="utf-8") != first       # 갱신됐다
+
+
+def test_every_year_gets_its_own_restore_point(tmp_path, cfg):
+    """**매해를 따로 남긴다** (8/25 · Eddie).
+
+    전에는 한 파일을 덮어써서 복원점이 늘 「마지막 턴 끝」 하나였다. 규칙을 고친 뒤
+    「n해부터 다시」 를 하려 했을 때 되돌릴 곳이 **원리적으로** 없었고, 그것을 알게 된
+    시점에는 이미 그 해가 지나가 있었다. 한 해가 12~40초인데 이 파일은 수십 KB 다 —
+    안 남길 이유가 없었다.
+    """
+    import itertools
+    import random as _rnd
+    from core import checkpoint as ck, loop
+
+    ckpt = tmp_path / "checkpoint.json"
+    rng = _rnd.Random(0)
+    world = loop.init_world(cfg, itertools.count(1), rng)
+    for t in (1, 2, 3, 4, 5):
+        world.turn = t
+        ck.save(ckpt, world, rng, next_uid=t, next_msg_id=t)
+
+    have = sorted(int(f.stem[1:]) for f in (tmp_path / "checkpoints").glob("t*.json"))
+    assert have == [1, 2, 3, 4, 5]
+
+    # 해를 지목해 고른다. `at_turn(N)` 은 「N해가 끝난 뒤」 다 — 다음이 N+1해다.
+    path, turn = ck.at_turn(tmp_path, 3)
+    assert turn == 3 and json.loads(path.read_text(encoding="utf-8"))["turn"] == 3
+    # 지목하지 않으면 마지막
+    assert ck.at_turn(tmp_path, None)[1] == 5
+    # 없는 해는 **시끄럽게** 죽는다 — 조용히 다른 해로 가면 세계가 달라진다
+    with pytest.raises(FileNotFoundError):
+        ck.at_turn(tmp_path, 9)
+    with pytest.raises(ValueError):
+        ck.at_turn(tmp_path, 0)
+
+
+def test_rewinding_the_world_also_rewinds_the_logs(tmp_path):
+    """**되돌리기의 절반은 로그다** (8/25 · Eddie).
+
+    세계만 되돌리고 로그를 그대로 두면 다시 돌린 해가 **두 번** 들어가고, 그 뒤 모든
+    지표가 조용히 오염된다. `run_io` 가 같은 이유로 `run_id` 재사용을 막고 있다.
+    """
+    from core import checkpoint as ck
+
+    for name in ck._TURN_LOGS:
+        (tmp_path / f"{name}.jsonl").write_text(
+            "".join(json.dumps({"turn": t, "x": i}) + "\n"
+                    for t in (1, 2, 3, 4, 5) for i in range(2)) +
+            json.dumps({"crash": "no turn field"}) + "\n",
+            encoding="utf-8")
+
+    cut = ck.rewind_logs(tmp_path, 3)
+    assert set(cut) == set(ck._TURN_LOGS)
+    for name in ck._TURN_LOGS:
+        rows = [json.loads(l) for l in
+                (tmp_path / f"{name}.jsonl").read_text(encoding="utf-8").splitlines()]
+        assert cut[name] == 4                                  # 4해·5해 각 2행
+        assert sorted(r["turn"] for r in rows if "turn" in r) == [1, 1, 2, 2, 3, 3]
+        # 턴에 속하지 않는 행(크래시 기록)은 남는다
+        assert any("crash" in r for r in rows)
