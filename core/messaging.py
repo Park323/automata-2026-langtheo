@@ -186,8 +186,18 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     #
     # 절단 **전**의 글로 언어를 잰다 — 자른 뒤에 재면 잘린 조각이 다른 언어로 보일 수 있다.
     body_lang = detect_lang(sent["text"], from_lang)
-    text_sent, chars_cut = truncate(sent["text"], body_lang, cfg)
     wrote_unknown = body_lang not in sender_known_langs
+    # **그 말의 예산은 그 말을 구사할 때만 받는다** (8/25 · Eddie).
+    #
+    # `original` 은 쓰기 권한이 없으면 아예 닿지 않으므로(`direct_works`) 상한이 무의미
+    # 하다. 그런데 `ai` 는 **늘 닿는다** — 절단은 분기보다 먼저 일어나므로, 모국어로
+    # 쓰라는 안내를 어기고 fr 로 400자를 쓰면 노브 값만 내고 4.44배 정보를 실었다.
+    # 학습을 우회하는 것은 아니라 가설을 깨지는 않지만, 길이 규칙이 뚫린다.
+    #
+    # 규칙은 하나로 적는다: **절단은 쓰여진 말의 것이고, 구사하지 못하는 말로 썼다면
+    # 자기 말의 것이다.** 「fr 로 쓰면 400」 이 아니라 「fr 을 구사하면 400」 이다.
+    cap_lang = from_lang if wrote_unknown else body_lang
+    text_sent, chars_cut = truncate(sent["text"], cap_lang, cfg)
     direct, direct_by = direct_works(sender_known_langs, recipient_known_langs,
                                      from_lang, to_lang, body_lang)
 
@@ -198,9 +208,9 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         "text_sent": text_sent,                # 절단 후. 번역 입력이자 채점 기준선
         "text_delivered": None,                # 수신자가 실제로 본 것 (아래에서 채움)
         "translate_instruction": sent.get("translate_instruction"),
-        # **적용된 상한을 적는다** — 본문 언어의 것이다 (8/25)
+        # **적용된 상한을 적는다** — 쓰여진 말의 것이고, 구사하지 못하는 말이면 내 말의 것
         "len_written": len(sent["text"]),
-        "len_limit": cfg.length.message_max_chars[body_lang],
+        "len_limit": cfg.length.message_max_chars[cap_lang],
         "truncated": chars_cut > 0, "chars_cut": chars_cut,
         # 배우지 않은 말로 썼는가. **따로 셀 수 있어야 한다** — 안내를 어긴 빈도 자체가
         # 관측값이다 (모델이 규칙을 지키는지).

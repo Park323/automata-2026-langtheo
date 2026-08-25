@@ -441,6 +441,38 @@ def test_the_cut_ignores_the_recipient_entirely(cfg):
         assert seen == {(L[body], 60, L[body])}, (body, seen)
 
 
+def test_the_ai_route_gives_no_length_bonus_for_a_language_you_lack(cfg):
+    """**그 말의 예산은 그 말을 구사할 때만 받는다** (8/25 · Eddie).
+
+    `original` 은 쓰기 권한이 없으면 아예 닿지 않으니 상한이 무의미하다. 그런데 `ai` 는
+    **늘 닿는다** — 절단이 분기보다 먼저 일어나므로, 모국어로 쓰라는 안내를 어기고 fr 로
+    400자를 쓰면 노브 값만 내고 4.44배 정보를 실을 수 있었다. 학습 우회는 아니라 가설을
+    깨지는 않지만 길이 규칙이 뚫린다.
+
+    「fr 로 쓰면 400」 이 아니라 **「fr 을 구사하면 400」** 이다.
+    """
+    L = cfg.length.message_max_chars
+
+    def send(known, n):
+        sent = _sent(from_lang="zh", from_country="Ranoa", to="M1",
+                     to_country="Miris", to_lang="fr", route="ai", text="a" * n)
+        return messaging.process_message(sent, {"fr"}, cfg, _translator("traduit"),
+                                         KNOB, sender_known_langs=known)
+
+    # fr 을 모른다 → 내 말(zh)의 90 이 걸린다. 400 을 써도 90 만 간다.
+    bad = send({"zh"}, L["fr"])
+    assert bad["meta"]["wrote_unknown_lang"] is True
+    assert bad["meta"]["len_limit"] == L["zh"]
+    assert len(bad["meta"]["text_sent"]) == L["zh"]
+    assert bad["delivered"] is True            # ai 는 늘 닿는다 — 그 계약은 그대로
+
+    # fr 을 배웠다 → 그 말의 400 을 받는다
+    ok = send({"zh", "fr"}, L["fr"])
+    assert ok["meta"]["wrote_unknown_lang"] is False
+    assert ok["meta"]["len_limit"] == L["fr"]
+    assert ok["meta"]["truncated"] is False
+
+
 def test_you_cannot_write_a_language_you_have_not_learned(cfg):
     """**배우지 않은 말로는 쓸 수 없다** (8/25 · Eddie).
 
