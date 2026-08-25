@@ -46,12 +46,34 @@ def classify(from_country: str, to_country: str, requested_route: str | None) ->
 
 
 def cost(kind: str, cfg, knob_ai: float) -> float:
-    """경로별 발신 비용. knob_ai 는 이번 런의 comm_intl_ai 선택값."""
+    """경로별 발신 **돈** 비용. knob_ai 는 이번 런의 comm_intl_ai 선택값."""
     return {
         "domestic": cfg.costs.comm_domestic,
         "original": cfg.costs.comm_intl_learner,
         "ai": knob_ai,
     }[kind]
+
+
+def ai_ap(cfg, knob_ai: float) -> float:
+    """ai 경로 발신이 먹는 **AP**. knob_ai(돈 값)에 짝지어진 `comm_intl_ai_ap` 를 찾는다.
+
+    노브를 돈으로만 매기면 예산 240 위에서 무력해진다 (8/25). AP 는 매년 1.0 로 리셋돼
+    예산과 무관하게 귀하므로 AP 로도 물린다. `comm_intl_ai_ap` 가 비었으면(구버전 config)
+    speak 기본값으로 떨어진다 — 옛 런은 그대로 재현된다.
+    """
+    aps = getattr(cfg.knob, "comm_intl_ai_ap", ()) or ()
+    if not aps:
+        return cfg.ap.speak
+    knobs = list(cfg.knob.comm_intl_ai)
+    try:
+        return aps[knobs.index(knob_ai)]
+    except (ValueError, IndexError):
+        return cfg.ap.speak
+
+
+def ap_cost(kind: str, cfg, knob_ai: float) -> float:
+    """경로별 발신 **행동력**. ai 만 노브에 따라 오르고, 자국·original 은 speak 기본값이다."""
+    return ai_ap(cfg, knob_ai) if kind == "ai" else cfg.ap.speak
 
 
 # ── 도착한 글은 무슨 말인가 ────────────────────────────────────────────────────

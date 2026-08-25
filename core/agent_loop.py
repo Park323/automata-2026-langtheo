@@ -421,7 +421,7 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         recipient = world.agents[to]
         kind = messaging.classify(agent.country, recipient.country, args.get("route"))
         c = messaging.cost(kind, cfg, knob_ai)
-        ap_cost = cfg.ap.speak
+        ap_cost = messaging.ap_cost(kind, cfg, knob_ai)   # ai 는 노브에 따라 오른다 (8/25)
         if not _afford(agent.ap, ap_cost):
             return {"ok": False, "error": f"not enough action; speak needs {ap_cost}, have {agent.ap:.2f}"}, None
         if agent.budget < c:

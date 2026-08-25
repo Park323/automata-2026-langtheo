@@ -18,7 +18,12 @@ class ConfigError(Exception):
 
 @dataclass(frozen=True)
 class Knob:
-    comm_intl_ai: tuple[int, ...]   # 유일한 실험 변수 (리스트)
+    comm_intl_ai: tuple[int, ...]   # 유일한 실험 변수 (리스트) — ai 경로 발신의 **돈** 비용
+    # **ai 경로 발신이 먹는 AP** — comm_intl_ai 와 같은 순서로 짝지어진다 (8/25).
+    # 노브를 돈으로만 매기면 예산 240 위에서 무력해진다 (inh30 실측: 65% 가 무력). 돈이
+    # 안 귀하고 AP 가 귀하기 때문 — 예산 240 이면 5회 발신 값이라 그 위는 AP 만 묶는다.
+    # AP 로도 물려 예산과 무관하게 물게 한다. 비면(구버전 config) speak 기본값으로 떨어진다.
+    comm_intl_ai_ap: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -262,7 +267,8 @@ def _world_from(d: dict) -> World:
 def from_dict(d: dict) -> Config:
     """assert 없이 dict 를 Config 로 만든다. (break 테스트가 이걸로 변형본을 만든다)"""
     return Config(
-        knob=Knob(comm_intl_ai=tuple(d["knob"]["comm_intl_ai"])),
+        knob=Knob(comm_intl_ai=tuple(d["knob"]["comm_intl_ai"]),
+                  comm_intl_ai_ap=tuple(d["knob"].get("comm_intl_ai_ap", ()))),
         costs=Costs(**d["costs"]),
         thresholds=Thresholds(**d["thresholds"]),
         income=Income(**{**d["income"],
