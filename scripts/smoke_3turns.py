@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # PYTHONPATH 없이 실행
 
 from core import checkpoint, config, run_io
-from core.llm import BACKENDS, OpenRouterClient, key_for
+from core.llm import BACKENDS, OpenRouterClient, RateLimitGuard, key_for
 from core.loop import run_agentic
 from domains.meteor import prompts
 
@@ -227,6 +227,9 @@ def main() -> None:
     #   사라져** 시드를 12개 돌려도 "초기 나이·사망 주사위만 다른 12개" 가 된다.
     #   본실험의 신뢰구간은 그 분산에서 나오므로 기본은 0.7 이다.
     det = args.deterministic
+    # **두 클라이언트가 그릇 하나를 나눠 갖는다** — 어느 쪽이 막히든 그 런의 데이터가
+    # 상하는 것은 같고, 따로 세면 각각 한도의 절반씩 맞고도 안 걸린다.
+    rate_guard = RateLimitGuard(cfg.llm.rate_limit_abort)
     agent_client = CountingClient(
         OpenRouterClient(agent_model, api_key=agent_key,
                          temperature=0.0 if det else cfg.llm.temperature,
@@ -234,6 +237,7 @@ def main() -> None:
                          reasoning=cfg.llm.reasoning,
                          provider=cfg.llm.provider,
                          seed=args.seed if det else None,
+                         rate_guard=rate_guard,
                          backend=args.backend), "agent")
     translator = CountingClient(
         OpenRouterClient(translate_model, api_key=key,
@@ -242,6 +246,7 @@ def main() -> None:
                          # **번역기도 업체를 고정한다** (8/26). 안 넘기면 매 호출 다른
                          # 업체로 가고 양자화가 섞인다 — `core/config.py` 주석 참조.
                          provider=cfg.llm.translate_provider,
+                         rate_guard=rate_guard,
                          seed=args.seed if det else None), "translate")
     if det:
         print("  [결정론] temperature 0 · seed 고정 — 버그 재현용입니다")

@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from core import messaging, survival, visibility
+from core.llm import RateLimitStorm
 from core import agent_loop
 from core.agent_loop import Sink, run_agent_turn
 from core.policy import PROCREATE_AGE, dummy_policy
@@ -228,6 +229,10 @@ def _last_words(world: World, agent, cfg, client_for, system_prompt) -> str:
             log_tag={"turn": world.turn, "agent": agent.id, "step": 0,
                      "age": agent.age, "country": agent.country, "kind_note": "last_words"})
         txt = (resp["choices"][0]["message"].get("content") or "").strip()
+    except RateLimitStorm:
+        # **폭풍은 여기서도 통과시킨다** (8/26). 이 그물은 「유언은 있으면 좋은 것」 이라
+        # 넓게 쳐 두었는데, 넓은 그물이 런을 세워야 하는 예외까지 삼킨다.
+        raise
     except Exception:
         # 마지막 말은 있으면 좋은 것이다. 못 받으면 그냥 없다.
         return ""
