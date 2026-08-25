@@ -921,6 +921,35 @@ def test_national_investment_states_all_three_effects(cfg, world):
             assert m in obs, f"{a.native_lang}: {m}"
 
 
+def test_the_prompt_never_names_a_language_the_agent_cannot_read(world, cfg):
+    """**어느 나라가 어떤 말을 쓰는지는 배우기 전까지 모른다** (8/25 · Eddie).
+
+    길이 상한을 「日本語 130 · 中国語 90 · フランス語 400」 로 한 줄에 나열한 적이 있다.
+    그 줄만 보면 나라 얘기가 없어 안전해 보이는데, 다른 문장들과 합치면 무너진다:
+
+        「三つの国があり、それぞれ自分の言語を持ちます」    언어는 셋이다
+        「Ranoa へ — 中国語で書けば必ず届く」            Ranoa = 中国語 (배웠으니 정당)
+        내 나라는 Asla = 日本語                        모국어이므로 안다
+        위의 나열                                     남은 하나가 **소거로 특정된다**
+
+    첫 해에 누구나 둘을 알므로, 목록을 까는 것은 곧 세 번째를 알려주는 것이다.
+    그래서 상한은 행선지마다 그 줄에 붙는다 — 아는 말의 것만 나온다.
+    """
+    from domains.meteor import prompts
+    for a in world.agents.values():
+        obs = prompts.render_observation(world, a, cfg, KNOB)
+        nm = prompts.LANG_NAME[a.native_lang]
+        for lg in ("ja", "zh", "fr"):
+            if lg in a.known_langs:
+                continue
+            assert nm[lg] not in obs, f"{a.id} 가 모르는 {lg} 의 이름을 봤다"
+            # 상한도 마찬가지다 — 숫자만으로도 어느 말이 남았는지 세어볼 수 있다.
+            other = {cfg.length.message_max_chars[k] for k in a.known_langs}
+            v = cfg.length.message_max_chars[lg]
+            if v not in other:
+                assert str(v) not in obs, f"{a.id} 가 모르는 {lg} 의 상한 {v} 를 봤다"
+
+
 def test_cost_table_says_which_nations_are_guaranteed(cfg, world):
     """**나라별로 보장 여부를 적는다.** 규칙만 적었을 때 연결을 못 했다.
 
@@ -935,18 +964,22 @@ def test_cost_table_says_which_nations_are_guaranteed(cfg, world):
     obs = prompts.render_observation(world, a, cfg, KNOB)
     # **무슨 말로 쓸지까지 적는다** (8/25 · #44) — 나라마다 길이 하나씩만 열린다
     nm = prompts.LANG_NAME[a.native_lang]
-    sure = prompts.T[a.native_lang]["c_orig_sure"].format(nation="Miris", lang=nm["fr"])
-    risk = prompts.T[a.native_lang]["c_orig_risk"].format(nation="Asla", lang=nm["ja"])
+    L = cfg.length.message_max_chars
+    # 아는 말의 나라 → 그 말로 · 그 말의 상한. 모르는 나라 → 내 말로 · 내 말의 상한.
+    sure = prompts.T[a.native_lang]["c_orig_sure"].format(
+        nation="Miris", lang=nm["fr"], cap=L["fr"])
+    risk = prompts.T[a.native_lang]["c_orig_risk"].format(
+        nation="Asla", lang="", cap=L[a.native_lang])
     assert sure in obs and risk in obs
 
     mono = world.agents["Ranoa2"]              # 자기 말만 안다
     obs2 = prompts.render_observation(world, mono, cfg, KNOB)
     nm2 = prompts.LANG_NAME[mono.native_lang]
     assert prompts.T[mono.native_lang]["c_orig_sure"].format(
-        nation="Miris", lang=nm2["fr"]) not in obs2
-    for cid, lg in (("Asla", "ja"), ("Miris", "fr")):
+        nation="Miris", lang=nm2["fr"], cap=L["fr"]) not in obs2
+    for cid in ("Asla", "Miris"):
         assert prompts.T[mono.native_lang]["c_orig_risk"].format(
-            nation=cid, lang=nm2[lg]) in obs2
+            nation=cid, lang="", cap=L[mono.native_lang]) in obs2
 
 
 def test_the_guarantee_line_leaks_nothing_about_others(cfg, world):

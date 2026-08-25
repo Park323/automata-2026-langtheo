@@ -133,9 +133,10 @@ T = {
         costs_hdr="行動の費用", col_ap="行動力",
         ap_hdr="行動力は毎年 1.0 に戻り、繰り越せません。何を諦めるかがここで決まります。",
         c_dom="  話す（自国内）", c_orig="  話す（国際・original）",
+        c_dom_note="   {cap}文字まで",
         c_orig_note="   行動力は届かなくても使われる",
-        c_orig_sure="    {nation} へ — この国の言語を扱えるので、**{lang}で書けば必ず届く**",
-        c_orig_risk="    {nation} へ — 扱えないので**日本語で書く**。あなたの言語を読める相手にだけ届く",
+        c_orig_sure="    {nation} へ — この国の言語を扱えるので、**{lang}で書けば必ず届く**（{cap}文字まで）",
+        c_orig_risk="    {nation} へ — 扱えないので**日本語で書く**。あなたの言語を読める相手にだけ届く（{cap}文字まで）",
         c_ai="  話す（国際・ai）",
         c_learn="  {nation} の言語を学ぶ",
         c_learn_prog="   これまで {done:.0f}%",
@@ -157,7 +158,7 @@ T = {
                  "             observe_risk の精度も良くなる。国民全員に及ぶ",
         inv_fac="  facility   施設の進捗に寄与する。to で国を指定する — 自国でも他国でもよい\n"
                 "             （省くと自国）",
-        cap="メッセージは書いた言語ごとに届く長さが違います — {caps}。それを超えた分は届きません。",
+        cap="長さの上限を超えた分は届きません。",
         rtt="送ったメッセージは翌年に届きます。返事が来るのはさらにその翌年です。",
         rtt_same="送ったメッセージは、相手が次に動くときに届きます。同じ年のうちに返事が来ることもあります。",
         in_hdr="今届いたメッセージ:", ev_hdr="起きたこと:",
@@ -209,9 +210,10 @@ T = {
         costs_hdr="行动费用", col_ap="行动力",
         ap_hdr="行动力每年恢复为 1.0，不能结转。放弃什么，在这里决定。",
         c_dom="  说话（本国内）", c_orig="  说话（国际·original）",
+        c_dom_note="   最多 {cap} 字",
         c_orig_note="   即使没送到，行动力也会消耗",
-        c_orig_sure="    发往 {nation} — 你会这个国家的语言，**用{lang}写就一定送到**",
-        c_orig_risk="    发往 {nation} — 你不会，**用中文写**。只能送到读得懂你的语言的人那里",
+        c_orig_sure="    发往 {nation} — 你会这个国家的语言，**用{lang}写就一定送到**（最多 {cap} 字）",
+        c_orig_risk="    发往 {nation} — 你不会，**用中文写**。只能送到读得懂你的语言的人那里（最多 {cap} 字）",
         c_ai="  说话（国际·ai）",
         c_learn="  学习 {nation} 的语言",
         c_learn_prog="   目前 {done:.0f}%",
@@ -232,7 +234,7 @@ T = {
         inv_natl="  national   提高本国的技术水平。投入设施时变成进度的效率、\n"
                  "             observe_risk 的精度都会变好，惠及全体国民",
         inv_fac="  facility   投入设施进度。用 to 指定国家 — 本国或别国都可以（不写则本国）",
-        cap="消息能送达的长度按你写的语言而定 — {caps}。超出部分不会送达。",
+        cap="超出长度上限的部分不会送达。",
         rtt="你发出的消息在第二年送达。对方的回信要再过一年才会到。",
         rtt_same="你发出的消息，会在对方下次行动时送达。回信也可能在同一年内到来。",
         in_hdr="刚送达的消息:", ev_hdr="发生的事:",
@@ -287,9 +289,10 @@ T = {
         costs_hdr="Coûts des actions", col_ap="action",
         ap_hdr="L'action revient à 1.0 chaque année et ne se reporte pas. Ce que vous renoncez se décide ici.",
         c_dom="  parler (dans votre nation)", c_orig="  parler (international, original)",
+        c_dom_note="   {cap} caractères max",
         c_orig_note="   l'action est dépensée même si rien n'arrive",
-        c_orig_sure="    vers {nation} — vous maniez sa langue : **écrivez en {lang}, il arrive à coup sûr**",
-        c_orig_risk="    vers {nation} — vous ne la maniez pas : **écrivez en français**. Il n'arrive qu'à qui lit la vôtre",
+        c_orig_sure="    vers {nation} — vous maniez sa langue : **écrivez en {lang}, il arrive à coup sûr** ({cap} caractères max)",
+        c_orig_risk="    vers {nation} — vous ne la maniez pas : **écrivez en français**. Il n'arrive qu'à qui lit la vôtre ({cap} caractères max)",
         c_ai="  parler (international, ai)",
         c_learn="  apprendre la langue de {nation}",
         c_learn_prog="   déjà {done:.0f}%",
@@ -313,7 +316,7 @@ T = {
                           "             s'améliorent, pour tous ses habitants",
         inv_fac="  facility   contribue à la progression d'une installation ; `to` nomme la nation —\n"
                           "             la vôtre ou une autre (sans `to`, la vôtre)",
-        cap="La longueur délivrée dépend de la langue dans laquelle vous écrivez — {caps}. Au-delà, rien n'est délivré.",
+        cap="Au-delà de la limite de longueur, rien n'est délivré.",
         rtt="Un message part et arrive l'année suivante ; une réponse n'arrive que l'année d'après.",
         rtt_same="Votre message arrive quand le destinataire agit la fois suivante ; une réponse peut venir dans la même année.",
         in_hdr="Messages qui viennent d'arriver :", ev_hdr="Ce qui est arrivé :",
@@ -433,6 +436,7 @@ def _roster(world, agent, t: dict) -> str:
 
 def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
     t = T[agent.native_lang]
+    L = cfg.length.message_max_chars
     w = 37          # 항목명 폭. 라벨 길이가 언어마다 달라 값 정렬을 맞춘다
                     # (fr 의 "parler (international, original)" 이 34 를 꽉 채워 값이 붙었다)
     m = 7           # 행동력 폭
@@ -452,7 +456,8 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
 
     lines = [t["costs_hdr"],
              f"{'':<{w}}{t['col_ap']:>{m}}",
-             row(t["c_dom"], cfg.ap.speak),
+             row(t["c_dom"], cfg.ap.speak,
+                 t["c_dom_note"].format(cap=L[agent.native_lang])),
              row(t["c_orig"], cfg.ap.speak, t["c_orig_note"])]
     # **나라별로 보장 여부를 적는다.** 규칙만 적었을 때 에이전트가 연결하지 못했다 —
     # 20턴 실측에서 자기가 아는 말의 나라에 24원짜리 ai 를 6번 썼다 (5원이면 확실했다).
@@ -467,8 +472,17 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
         #
         # 나라마다 길이 하나씩만 열린다: 그 말을 알면 그 말로, 모르면 내 말로.
         # 자기 언어 능력에서 나오는 사실이라 타국 사정을 흘리지 않는다.
-        key = "c_orig_sure" if c.lang in agent.known_langs else "c_orig_risk"
-        lines.append(t[key].format(nation=c.id, lang=LANG_NAME[agent.native_lang][c.lang]))
+        # **상한은 그 줄에 붙는다** (8/25 · Eddie). 세 언어 상한을 한 줄에 나열했더니
+        # 언어 목록이 통째로 드러났다 — 첫 해에 둘을 아니 **소거로 남은 하나가**
+        # **특정된다**. 「어느 나라가 어떤 말을 쓰는지는 배우기 전까지 모른다」 가
+        # 무너진 것이다. 행선지마다 쓸 말이 이미 하나로 정해져 있으므로, 그 말의
+        # 상한만 그 줄에 적으면 된다 — 아는 것에서만 나오는 사실이다.
+        sure = c.lang in agent.known_langs
+        lines.append(t["c_orig_sure" if sure else "c_orig_risk"].format(
+            nation=c.id,
+            # 모르는 말의 이름은 넘기지 않는다 — 넘기면 다음에 누가 쓴다.
+            lang=LANG_NAME[agent.native_lang][c.lang] if sure else "",
+            cap=L[c.lang if sure else agent.native_lang]))
     # **노브가 여기 있다.** ai 발신의 AP 가 이번 런의 실험 변수다 (8/25).
     # `None` 이면 그 세계에 AI 가 없다 — 없는 도구를 설명하지 않는다.
     if knob_ai is not None:
@@ -755,14 +769,6 @@ def render_observation(world, agent, cfg, knob_ai: float,
     c = world.countries[agent.country]
     land = t["undecided"] if c.land is None else c.land   # 토큰은 영어 그대로
     mult = c.multiplier(cfg)
-    # **상한은 쓴 말의 것이다** (8/25). 전에는 모국어 상한 하나만 적었는데, 나라별 안내가
-    # 「그 나라 말로 쓰라」 고 하는 이상 그 문구는 거짓이 된다 — fr 화자가 zh 로 쓰면
-    # 400 이 아니라 90 이다.
-    #
-    # 세 언어 상한을 다 적는다. 이것은 힌트가 아니라 **규칙**이다: 어느 말로 쓸지는
-    # 나라별 안내가 정하고, 그 말의 상한을 모르면 잘리는 이유를 알 수 없다.
-    caps = " · ".join(f"{LANG_NAME[lang][lg]} {cfg.length.message_max_chars[lg]}"
-                      for lg in ("ja", "zh", "fr"))
     langs = ", ".join(_lang_phrase(world, agent, l) for l in sorted(agent.known_langs))
     # **기억은 자리가 좁아진 뒤에만 열린다.** 도구 목록과 같은 판정을 쓴다 (한쪽만 바뀌면
     # 비용표에는 있는데 부르면 거절당하는 상태가 된다).
@@ -835,7 +841,7 @@ def render_observation(world, agent, cfg, knob_ai: float,
         *[t["c_fac_mine"].format(nation=k, v=v)
           for k, v in sorted(agent.facility_invested.items()) if v > 0],
         "",
-        t["cap"].format(caps=caps),
+        t["cap"],
         t["rtt_same" if same_year else "rtt"],
         "",
     ]
