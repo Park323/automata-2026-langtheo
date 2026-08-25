@@ -117,12 +117,12 @@ T = {
         c_orig_risk="    {nation} へ — 扱えないので**日本語で書く**。あなたの言語を読める相手にだけ届く",
         c_ai="  話す（国際・ai）",
         c_learn="  {nation} の言語を学ぶ",
-        c_learn_prog="   これまで {done:.0f} / {need:.0f}",
+        c_learn_prog="   これまで {done:.0f}%",
         c_fac_mine="  {nation} の施設にこれまで出した額: {v:.0f}",
-        c_plain="   一度で {gain:.0f} たまる",
-        c_cheap="   自国に話せる人がいるので一度で {gain:.0f} たまる",
-        c_disc="   親が話せたので一度で {gain:.0f} たまる",
-        c_both="   自国に話せる人がいて、親も話せたので一度で {gain:.0f} たまる",
+        c_plain="   一度で {gain:.0f}% 進む",
+        c_cheap="   自国に話せる人がいるので一度で {gain:.0f}% 進む",
+        c_disc="   親が話せたので一度で {gain:.0f}% 進む",
+        c_both="   自国に話せる人がいて、親も話せたので一度で {gain:.0f}% 進む",
         c_vote="  propose_vote",
         c_vote_note="何を建てるかの採決を召集する",
         c_obs="  observe_risk",
@@ -152,7 +152,7 @@ T = {
         last_ask="——あなたの生涯はここで終わります。あとに来る人へ、ひとこと残してください。道具は使えません。日本語で、{cap} 文字までで書いてください。",
         testa="  あなたより前にこの場所にいた人が残した言葉:", testa_line="    「{t}」",
         gifted="  {frm} があなたに {amt:.0f} を渡しました。",
-        fac_gain="  あなたの facility 出資 {amt:.0f} は {to} の進捗を {gain:.0f} 進めました。",
+        fac_gain="  あなたが {to} の facility に動かした分で、進捗が {gain:.0f} 進みました。",
         fac_moved="  あなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
         fac_still="  あなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
         prog_up="  自国の進捗が {gain:.0f} 進んで {now:.0f} になりました。",
@@ -193,12 +193,12 @@ T = {
         c_orig_risk="    发往 {nation} — 你不会，**用中文写**。只能送到读得懂你的语言的人那里",
         c_ai="  说话（国际·ai）",
         c_learn="  学习 {nation} 的语言",
-        c_learn_prog="   已投入 {done:.0f} / {need:.0f}",
+        c_learn_prog="   目前 {done:.0f}%",
         c_fac_mine="  你至今向 {nation} 的设施投入: {v:.0f}",
-        c_plain="   一次积 {gain:.0f}",
-        c_cheap="   本国有人会说，所以一次积 {gain:.0f}",
-        c_disc="   父母会说，所以一次积 {gain:.0f}",
-        c_both="   本国有人会说，父母也会说，所以一次积 {gain:.0f}",
+        c_plain="   一次进 {gain:.0f}%",
+        c_cheap="   本国有人会说，所以一次进 {gain:.0f}%",
+        c_disc="   父母会说，所以一次进 {gain:.0f}%",
+        c_both="   本国有人会说，父母也会说，所以一次进 {gain:.0f}%",
         c_vote="  propose_vote",
         c_vote_note="召集「建什么」的表决",
         c_obs="  observe_risk",
@@ -228,7 +228,7 @@ T = {
         last_ask="——你的一生到此为止。给后来的人留一句话吧。不能使用工具。请用中文，{cap} 个字以内。",
         testa="  在你之前站在这个位置的人留下的话:", testa_line="    「{t}」",
         gifted="  {frm} 给了你 {amt:.0f}。",
-        fac_gain="  你投入 facility 的 {amt:.0f}，使 {to} 的进度前进了 {gain:.0f}。",
+        fac_gain="  你投向 {to} 的 facility，使进度前进了 {gain:.0f}。",
         fac_moved="  你投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
         fac_still="  你投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
         prog_up="  本国的进度前进了 {gain:.0f}，现在是 {now:.0f}。",
@@ -271,12 +271,12 @@ T = {
         c_orig_risk="    vers {nation} — vous ne la maniez pas : **écrivez en français**. Il n'arrive qu'à qui lit la vôtre",
         c_ai="  parler (international, ai)",
         c_learn="  apprendre la langue de {nation}",
-        c_learn_prog="   déjà versé {done:.0f} / {need:.0f}",
+        c_learn_prog="   déjà {done:.0f}%",
         c_fac_mine="  déjà versé à l'installation de {nation} : {v:.0f}",
-        c_plain="   {gain:.0f} par versement",
-        c_cheap="   {gain:.0f} par versement : quelqu'un de votre nation la parle",
-        c_disc="   {gain:.0f} par versement : votre parent la parlait",
-        c_both="   {gain:.0f} par versement : quelqu'un de votre nation la parle et votre parent la parlait",
+        c_plain="   +{gain:.0f}% par appel",
+        c_cheap="   +{gain:.0f}% par appel : quelqu'un de votre nation la parle",
+        c_disc="   +{gain:.0f}% par appel : votre parent la parlait",
+        c_both="   +{gain:.0f}% par appel : quelqu'un de votre nation la parle et votre parent la parlait",
         c_vote="  propose_vote",
         c_vote_note="convoquer un scrutin sur quoi bâtir",
         c_obs="  observe_risk",
@@ -308,7 +308,7 @@ T = {
         last_ask="——Votre vie s'achève ici. Laissez un mot à celui qui viendra après vous. Les outils ne sont pas disponibles. En français, {cap} caractères au plus.",
         testa="  Les mots laissés par celui qui occupait cette place avant vous :", testa_line="    « {t} »",
         gifted="  {frm} vous a remis {amt:.0f}.",
-        fac_gain="  Votre versement de {amt:.0f} à facility a fait progresser {to} de {gain:.0f}.",
+        fac_gain="  Ce que vous avez mis dans la facility de {to} l'a fait progresser de {gain:.0f}.",
         fac_moved="  Votre versement de {amt:.0f} a fait progresser {to}.",
         fac_still="  Votre versement de {amt:.0f} n'a fait progresser {to} en rien.",
         prog_up="  La progression de votre nation a avancé de {gain:.0f} ; elle est à {now:.0f}.",
@@ -460,22 +460,22 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
             # 문구가 뭉개져 있어서 그 거짓이 눈에 띄지 않았다.
             domestic, parent = learn_discounts(agent, c.id, world)
             mult, _ = learn_speed(agent, c.id, world, cfg)
-            # **회당 수확을 적는다** (8/22). 전에는 깎인 액수를 적었는데, 이제 필요액은
-            # 고정이고 오르는 것은 속도다 — 「한 번에 얼마가 쌓이나」 가 그 사실이다.
-            g = cfg.costs.unit * mult
+            # **%로 적는다** (8/25 · Eddie). 「一度で 40 たまる」 였는데 40 이라는 절대
+            # 수치는 아무 뜻이 없다 — 목표(learn_base)를 모르면 40 이 큰지 작은지 알 수
+            # 없고, 목표를 함께 적으면 「40 / 200」 처럼 숫자가 둘이 된다.
+            #
+            # 회당 몇 %씩 오르는지가 그 자체로 뜻을 갖는다: 사유 0 → 20% · 1 → 30% ·
+            # 2 → 40%. 다섯 번이면 끝난다는 것이 20% 라는 수에 이미 들어 있다.
+            g = cfg.costs.unit * mult / cfg.costs.learn_base * 100
             note = (t["c_both"].format(gain=g) if domestic and parent
                     else t["c_cheap"].format(gain=g) if domestic
                     else t["c_disc"].format(gain=g) if parent
                     else t["c_plain"].format(gain=g))
-            # **비용 칸은 한 번의 값이다** (20 · 0.1). 총액은 바로 아래 진척 줄이
-            # 말한다 — 전에는 비용 칸에 총액(600)이 있고 아래에 또 0/600 이 나와서
-            # 같은 숫자가 두 번 보였고, 「20 을 낸다」 와 「600 이 든다」 가 한 줄에
-            # 섞여 읽혔다.
             lines.append(row(t["c_learn"].format(nation=c.id), cfg.ap.unit, note))
-            # 얼마를 냈고 얼마가 남았는지. **0 일 때도 적는다** — 「0 / 600」 이면
-            # 쌓인다는 것이 숫자의 모양으로 보인다.
-            done = agent.lang_progress.get(c.lang, 0.0)
-            lines.append(t["c_learn_prog"].format(done=done, need=cost))
+            # 지금까지 몇 %. **0 일 때도 적는다** — 「0%」 면 쌓인다는 것이 숫자의
+            # 모양으로 보인다. 목표는 늘 100% 이므로 분모를 적지 않는다.
+            done = agent.lang_progress.get(c.lang, 0.0) / cost * 100
+            lines.append(t["c_learn_prog"].format(done=done))
     lines.append(row(t["c_vote"], cfg.ap.propose_vote, t["c_vote_note"]))
     lines.append(row(t["c_obs"], cfg.ap.observe_risk, t["c_obs_note"]))
     lines.append(row(t["c_ballot"], cfg.ap.vote, t["c_ballot_note"]))
