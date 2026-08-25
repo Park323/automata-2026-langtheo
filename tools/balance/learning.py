@@ -199,7 +199,7 @@ def main():
     print("\n" + "=" * 84)
     print("④ 부등식으로만 묶인 것들")
     print("=" * 84)
-    print("  comm_domestic < comm_intl_learner < comm_intl_ai   (전 구간, assert)")
+    print("  ap.speak ≤ comm_intl_ai_ap ≤ 한 해 AP   (전 구간, assert)")
     print("  comm_intl_learner   학습자 본인은 회수하지 못하므로 x 도출식에 들어가지 않는다")
     print("  propose_vote        국내/국제 비대칭의 크기")
 

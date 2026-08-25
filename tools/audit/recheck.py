@@ -237,7 +237,7 @@ def sec_C(d: dict, trials: int) -> None:
     ap_speak = d["ap"]["speak"]
     ap_unit = d["ap"]["unit"]
     unit = d["costs"]["unit"]
-    knobs = d["knob"]["comm_intl_ai"]
+    knobs = d["knob"]["comm_intl_ai_ap"]
     max_speaks = int(ap_total / ap_speak)
     print(f"  한 해 AP {ap_total} · speak {ap_speak} → 국제 발신은 한 해 최대 {max_speaks}건")
     print(f"\n  {'노브':>6}{'5건 전액':>10}{'무력화 예산':>12}   설명")
@@ -492,7 +492,7 @@ def sec_I(d: dict, trials: int) -> None:
     from core.state import Agent
 
     cfg = cfgmod.load(str(ROOT / "configs" / "base.yaml"))
-    knob = max(cfg.knob.comm_intl_ai)
+    knob = max(cfg.knob.comm_intl_ai_ap)
     print(f"  {'AP':>6}{'예산':>7}{'memory_open':>13}{'can_act':>9}   실제로 부를 수 있는 것")
     for ap, budget, mem in ((1.0, 1000, False), (0.0, 1000, False), (0.0, 0, False),
                             (0.04, 1000, False), (0.0, 1000, True)):

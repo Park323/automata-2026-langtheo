@@ -93,7 +93,8 @@ def main() -> None:
     ap.add_argument("--config", default=str(ROOT / "configs" / "base.yaml"))
     ap.add_argument("--turns", type=int, default=3,
                     help="**시뮬 길이**. 운석이 떨어지는 해(config 의 total_turns)와 다르다")
-    ap.add_argument("--knob", type=float, default=None, help="comm_intl_ai 값 (기본: config 최고값)")
+    ap.add_argument("--knob", type=float, default=None,
+                    help="ai 발신의 AP (comm_intl_ai_ap 의 한 값). 기본: 최고값")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--agent-model", default=None)
     # **직접 부르기.** OpenRouter 를 거치지 않고 그 회사 엔드포인트로 간다.
@@ -104,9 +105,16 @@ def main() -> None:
     ap.add_argument("--price-out", type=float, default=None,
                     help="에이전트 모델 출력 1M당 $ (비용 추정용, 선택)")
     ap.add_argument("--check", action="store_true", help="모델 검증만 하고 종료")
+    # **기본이 순차 라운드로빈이다** (8/25). 전에는 `--sequential` 을 줘야 했고 생략하면
+    # 병렬이었는데, 실제로 돌린 런 여섯 개가 전부 그 플래그를 줬다 — 기본값이 한 번도
+    # 안 돌려본 세계를 가리키고 있었다.
+    #
+    # `--sequential` 은 받아만 준다. 옛 명령을 그대로 붙여도 같은 뜻이 되게.
     ap.add_argument("--sequential", action="store_true",
-                    help="순차 라운드로빈 (issue #20 — 한 턴 안에서 서로 반영·대화). "
-                         "기본은 병렬·1회정산.")
+                    help="(기본값이 됐다 — 남겨 둔 별칭)")
+    ap.add_argument("--parallel", action="store_true",
+                    help="옛 경로: 9명 동시 · 한 번 정산 · 메시지는 다음 해 도착. "
+                         "같은 턴 수에 콜이 훨씬 적지만 한 턴 안에서 대화가 안 된다")
     # `minimal` 은 **사고를 0 토큰으로** 만든다. gemini-3.6-flash 실측:
     #   minimal → 사고 0 · 생성 34 · $0.00021    low → 사고 158 · 생성 192 · $0.00080
     # 그리고 그 모델은 `reasoning.enabled: false` 를 **거절한다**
@@ -166,7 +174,7 @@ def main() -> None:
     agent_key = key if args.backend == "openrouter" else key_for(args.backend)
     agent_model = args.agent_model or cfg.llm.agent_model
     translate_model = args.translate_model or cfg.llm.translate_model
-    knob = args.knob if args.knob is not None else max(cfg.knob.comm_intl_ai)
+    knob = args.knob if args.knob is not None else max(cfg.knob.comm_intl_ai_ap)
     if args.reasoning_effort:                      # 실측 비교용 상단 우선
         raw["llm"]["reasoning"] = {"effort": args.reasoning_effort}
     if args.tool_reasoning:
@@ -247,7 +255,8 @@ def main() -> None:
                           render_arrivals=prompts.render_arrivals,
                           # `same_year` 는 **루프가 정한다** (`core.loop._system`) — 러너가
                           # 기억해야 하는 진실은 다른 경로에서 조용히 거짓이 된다
-                          system_prompt=prompts.system_for, sequential=args.sequential,
+                          system_prompt=prompts.system_for,
+                          sequential=not args.parallel, parallel=args.parallel,
                           on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)),
                           sim_turns=args.turns,
                           resume_from=ckpt if resuming else None,

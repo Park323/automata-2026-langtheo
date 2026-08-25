@@ -665,7 +665,7 @@ def _system(system_prompt, agent, world, cfg, knob_ai, *, same_year: bool):
 def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
                      counter: "itertools.count", client_for, translator, knob_ai: float,
                      render_obs, system_prompt, msg_ids, is_last: bool = False,
-                     parallel: bool = True, on_turn_end=None, render_events=None,
+                     parallel: bool = False, on_turn_end=None, render_events=None,
                      render_arrivals=None) -> None:
     """한 턴 (에이전트). spec 3.1 순서를 지키되 3단계는 9명 병렬, 5단계는 정렬 정산."""
     # 1. AP 리셋. **이월 없다** (8/25 · AP 전면 통일).
@@ -1166,12 +1166,25 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
 
 
 def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
-                render_obs, system_prompt, parallel: bool = True, sequential: bool = False,
+                render_obs, system_prompt, parallel: bool = False, sequential: bool = True,
                 on_turn_end=None, sim_turns: int | None = None,
                 resume_from: "Path | None" = None,
                 checkpoint_to: "Path | None" = None, render_events=None,
                 render_arrivals=None) -> RunResult:
     """LLM(또는 StubClient) 에이전트로 total_turns 턴을 돌린다.
+
+    **기본값이 순차 라운드로빈이다** (8/25). 전에는 병렬(`sequential=False`)이 기본이었는데
+    **실제로 돌린 런은 여섯 개 전부 `--sequential` 이었다** — 인자를 생략한 호출이
+    우리가 한 번도 돌려보지 않은 세계를 만들고 있었다.
+
+    그 기본값에 걸려 있던 것 셋:
+
+        수명 10 의 근거    「순차라서 왕복이 한 해 안에 끝난다」 — 병렬이면 성립하지 않는다
+        프롬프트 문구       `rtt`(다음 해 도착) / `rtt_same`(같은 해) 가 갈린다
+        #46 의 그 경로      유언·선물·採決 결과가 사라지던 곳. 고쳤지만 안 쓰는 길이다
+
+    병렬은 남겨 둔다 — 명시적으로 `parallel=True, sequential=False` 를 주면 쓸 수 있다.
+    9명이 동시에 움직이고 한 번에 정산하므로 같은 턴 수에 콜이 훨씬 적다.
 
     client_for(aid) : 에이전트별 클라이언트 (병렬이라 상태 있는 Stub 은 에이전트마다 별개여야).
                       실제 API 는 stateless OpenRouterClient 를 공유해도 안전.
