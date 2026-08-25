@@ -18,6 +18,11 @@ from core import config, llm, messaging
 from core.llm import LLMCallError
 
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 # ── 벽시계 상한 ─────────────────────────────────────────────────────────────────
 
 class _SlowOpener:
@@ -166,13 +171,13 @@ def test_the_agent_turn_also_only_swallows_declared_failures(cfg):
     a = world.agents["Asla1"]
     a.ap = cfg.turn.action_points          # 실제 루프의 1단계(소득·AP 리셋)를 대신한다.
                                            # 0 이면 `can_act` 가 먼저 막아 API 를 안 부른다 (#47)
-    obs = prompts.render_observation(world, a, cfg, 48.0)
+    obs = prompts.render_observation(world, a, cfg, KNOB)
 
     class _Api:
         def chat(self, *ar, **kw):
             raise LLMCallError("HTTP 503 Service Unavailable")
 
-    lg = run_agent_turn(world, a, cfg, _Api(), Sink(), 48.0, prompts.system_for(a, None, cfg), obs)
+    lg = run_agent_turn(world, a, cfg, _Api(), Sink(), KNOB, prompts.system_for(a, None, cfg), obs)
     assert lg["ended_by"] == "error" and "LLMCallError" in lg["error"]
 
     class _Bug:
@@ -180,7 +185,7 @@ def test_the_agent_turn_also_only_swallows_declared_failures(cfg):
             raise AttributeError("NoneType has no attribute 'get'")
 
     with pytest.raises(AttributeError):
-        run_agent_turn(world, a, cfg, _Bug(), Sink(), 48.0, prompts.system_for(a, None, cfg), obs)
+        run_agent_turn(world, a, cfg, _Bug(), Sink(), KNOB, prompts.system_for(a, None, cfg), obs)
 
 
 def test_engine_fault_is_counted_apart_from_metric_9(cfg):
@@ -249,9 +254,9 @@ def test_malformed_response_kills_only_that_agent(cfg):
             return {"unexpected": True}
 
     w = loop.init_world(cfg, itertools.count(1))
-    a = w.agents["Asla1"]; a.ap, a.budget = 1.0, 500.0
-    lg = run_agent_turn(w, a, cfg, _Weird(), Sink(), 48.0,
-                        prompts.system_for(a, None, cfg), prompts.render_observation(w, a, cfg, 48.0))
+    a = w.agents["Asla1"]; a.ap = 1.0
+    lg = run_agent_turn(w, a, cfg, _Weird(), Sink(), KNOB,
+                        prompts.system_for(a, None, cfg), prompts.render_observation(w, a, cfg, KNOB))
     assert lg["ended_by"] == "error" and "malformed response" in lg["error"]
 
 
@@ -330,7 +335,7 @@ def test_the_failing_agent_is_named_in_the_traceback(cfg):
 
     bug = _Bug()
     with pytest.raises(AttributeError) as ei:
-        loop.run_agentic(cfg, random.Random(1), lambda aid: bug, bug, 48.0,
+        loop.run_agentic(cfg, random.Random(1), lambda aid: bug, bug, KNOB,
                          render_obs=prompts.render_turn_open,
                          system_prompt=prompts.system_for,
                          parallel=True, sim_turns=1)

@@ -35,7 +35,7 @@ def _with(**overrides) -> Config:
 
 def test_valid_config_loads():
     cfg = config.load(BASE)
-    assert cfg.thresholds.interceptor == 13206     # 창의 0.30 지점 (8/23)
+    assert cfg.thresholds.interceptor == 19375     # 행동력 용량 창의 0.30 지점 (8/25)
     assert cfg.k == pytest.approx(0.3)          # eff 1.0 × success_prob 0.3
 
 
@@ -55,7 +55,7 @@ def test_window_values():
     # **실효 소득으로 잡는다** (8/22) — 소득이 나이와 함께 오르므로 「전 기간 총소득」 이
     # `per_turn × n × total` 보다 크다. 그 값을 그대로 쓰면 창이 좁아지고 임계가
     # 「도달 가능」 쪽에 붙는다.
-    per = cfg.income.per_turn * asserts.mean_age_multiplier(cfg)
+    per = asserts.capacity_per_year(cfg)
     # **가장 잘 짓는 나라 기준** (8/23). 나라마다 요격기 진척 속도가 다르므로 네 조건이
     # 모두 최선의 나라에 몰아줬을 때로 걸린다 — ★B 가 그 기준을 강제한다.
     k = cfg.k * max(cfg.facility.build_spread)
@@ -89,11 +89,11 @@ def test_break_interceptor_above_window():
 def test_break_bunker_shallow():
     """벙커가 한 주기 진척(=to_progress(국가_한주기)=1800) 미만이면 벙커↓ 가 걸린다.
 
-    ⚠ 과제 A-4 표는 `bunker_scale: 1000` 을 예로 드는데, 스펙 공식상 하한은
+    ⚠ 과제 A-4 표는 `bunker: 1000` 을 예로 드는데, 스펙 공식상 하한은
        (50턴 시절) 900 이라 1000 은 통과했다. 100턴에서는 하한이 1800 이다.
        하한 미만인 1600 으로 벙커↓ 를 시연한다 → A-4 예시값이 스펙과 어긋나는 지점.
     """
-    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": 1600}))
+    fails = asserts.check_all(_with(**{"thresholds.bunker": 1600}))
     assert any("벙커↓" in f for f in fails)
 
 
@@ -104,12 +104,12 @@ def test_bunker_just_above_floor():
     실효 소득(나이 배수 포함)에서 나오므로 1800 → 2204 로 움직였다.
     """
     cfg = config.load(BASE)
-    eff = cfg.income.per_turn * asserts.mean_age_multiplier(cfg)
+    eff = asserts.capacity_per_year(cfg)
     floor = eff * cfg.world.agents_per_country * cfg.world.epoch_turns * cfg.k
-    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": floor + 1}))
+    fails = asserts.check_all(_with(**{"thresholds.bunker": floor + 1}))
     assert not any("벙커↓" in f for f in fails)
     # 그리고 하한 **아래**는 걸린다
-    fails = asserts.check_all(_with(**{"thresholds.bunker_scale": floor - 1}))
+    fails = asserts.check_all(_with(**{"thresholds.bunker": floor - 1}))
     assert any("벙커↓" in f for f in fails)
 
 
@@ -125,9 +125,25 @@ def test_break_success_prob_half():
     assert any("★E" in f for f in fails)      # 스펙 공식상 실제로 걸리는 것은 ★E
 
 
-def test_break_knob_low():
-    """comm_intl_ai 최저값이 learner(5) 이하면 노브가 무의미."""
-    fails = asserts.check_all(_with(**{"knob.comm_intl_ai": [4, 12]}))
+def test_break_knob_below_speak():
+    """**AI 발신이 원문보다 싸지면 아무도 배우지 않는다** (8/25 · AP 전면 통일).
+
+    돈으로 매기던 시절에는 `comm_intl_learner`(5) 와 겨뤘다. 이제 비교 대상은
+    `ap.speak` 다 — 자국·original 발신의 행동력.
+    """
+    fails = asserts.check_all(_with(**{"knob.comm_intl_ai_ap": [0.1, 0.3]}))
+    assert any("노브" in f for f in fails)
+
+
+def test_break_knob_above_a_whole_year():
+    """**한 해 AP 를 넘으면 노브가 아니라 금지다.** 비싼 것과 없는 것이 구분되지 않는다."""
+    fails = asserts.check_all(_with(**{"knob.comm_intl_ai_ap": [0.2, 1.5]}))
+    assert any("노브" in f for f in fails)
+
+
+def test_break_knob_out_of_order():
+    """오름차순이어야 「i 번째로 비싼 노브」 라는 뜻을 갖는다."""
+    fails = asserts.check_all(_with(**{"knob.comm_intl_ai_ap": [0.5, 0.2]}))
     assert any("노브" in f for f in fails)
 
 

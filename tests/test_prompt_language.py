@@ -31,6 +31,11 @@ from core import config, loop, tools
 from core.agent_loop import learn_cost  # noqa: F401  (import 되는지 확인)
 from domains.meteor import prompts
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 HANGUL = re.compile(r"[가-힣ᄀ-ᇿ㄰-㆏]")
 KANA = re.compile(r"[぀-ヿ]")
 CJK = re.compile(r"[一-鿿]")
@@ -56,7 +61,7 @@ def _model_facing(world, cfg):
         lang = a.native_lang
         out.append((f"SYSTEM[{lang}]", lang, prompts.system_for(a, None, cfg)))
         out.append((f"observation[{lang}]", lang,
-                    prompts.render_observation(world, a, cfg, 48.0, inbox)))
+                    prompts.render_observation(world, a, cfg, KNOB, inbox)))
         out.append((f"inbox[{lang}]", lang, prompts.render_inbox(inbox, lang)))
     return out
 
@@ -104,9 +109,9 @@ def test_tool_tokens_stay_english(world_cfg):
     world, cfg = world_cfg
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
-        obs = prompts.render_observation(world, a, cfg, 48.0, [])
+        obs = prompts.render_observation(world, a, cfg, KNOB, [])
         for token in ("wellness", "national", "facility", "propose_vote",
-                      "invest", "give"):
+                      "invest"):
             assert token in obs, f"{a.native_lang} 관측에 토큰 '{token}' 이 없다"
 
 
@@ -118,7 +123,7 @@ def test_roster_lists_everyone(world_cfg):
     """
     world, cfg = world_cfg
     for aid in ("Asla1", "Ranoa2", "Miris3"):
-        obs = prompts.render_observation(world, world.agents[aid], cfg, 48.0, [])
+        obs = prompts.render_observation(world, world.agents[aid], cfg, KNOB, [])
         for other in world.agents:
             assert other in obs, f"{aid} 의 관측에 {other} 가 없다"
         lang = world.agents[aid].native_lang
@@ -128,10 +133,9 @@ def test_roster_lists_everyone(world_cfg):
 def test_roster_reveals_no_state(world_cfg):
     """명단에는 id 와 소속만. 진척·예산·언어 능력은 spec 4.1 의 금지 목록이다."""
     world, cfg = world_cfg
-    world.agents["Ranoa2"].budget = 12345.0
     world.agents["Ranoa2"].known_langs = {"zh", "ja"}
     world.countries["Ranoa"].progress = 777.0
-    obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0, [])
+    obs = prompts.render_observation(world, world.agents["Asla1"], cfg, KNOB, [])
     assert "12345" not in obs and "777" not in obs
 
 
@@ -158,21 +162,24 @@ def test_system_says_progress_does_not_add_up():
             assert n in SYSTEM[lang], (lang, n)
 
 
-def test_system_says_you_may_fund_another_nation_and_must_ask_what_they_build():
-    """둘은 한 쌍이다 — 낼 수 있다는 것과, 무엇을 짓는지는 **말로만** 안다는 것.
+def test_system_says_you_may_fund_another_nation_but_not_how_to_find_out():
+    """**낼 수 있다는 사실만 적는다** (8/25 · Eddie).
 
-    앞의 것만 있으면 눈감고 내게 되고, 뒤의 것만 있으면 낼 수 있다는 것을 모른다.
-    실측에서 885원이 남의 **벙커** 로 들어간 적이 있다.
+    전에는 「무엇을 짓는지는 말해서 확인하는 수밖에 없다」 를 짝으로 붙였다. 그 문장은
+    사실이지만 **말하라는 지시**다 — 대화가 유일한 길이라는 것은 규칙에서 따라 나와야
+    하고, 그것을 스스로 알아내는지가 관측 대상이다.
+
+    낼 수 있다는 것은 남긴다. 그것 없이는 선택지 자체를 모른다 — 실측에서 885 가 남의
+    **벙커** 로 들어간 적이 있는데, 그건 선택지를 알고 잘못 고른 것이라 관측이다.
     """
     from domains.meteor.prompts import SYSTEM
-    must = {
-        "ja": ("他国のものにも出せます", "話して確かめる"),
-        "zh": ("也可以投别国的", "交谈"),
-        "fr": ("comme à celle d'une autre", "d'en parler"),
-    }
-    for lang, needles in must.items():
-        for n in needles:
-            assert n in SYSTEM[lang], (lang, n)
+    must = {"ja": "他国のものにも出せます", "zh": "也可以投别国的",
+            "fr": "comme à celle d'une autre"}
+    gone = ("話して確かめる", "交谈去弄清", "le savoir que d'en parler")
+    for lang, needle in must.items():
+        assert needle in SYSTEM[lang], (lang, needle)
+        for g in gone:
+            assert g not in SYSTEM[lang], (lang, g)
 
 
 def test_the_new_lines_do_not_smuggle_in_a_goal():
@@ -266,8 +273,11 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
     든 사람이 저 줄을 보면 **손도 못 댈 값**으로 읽는다. 실측에서 학습 시도가 거의 0 이었다.
 
     두 곳을 고쳤다.
-      ① 진척 줄을 **언제나** 적는다. 「0 / 200」 이면 쌓인다는 것이 숫자의 모양으로 보인다.
-      ② 비용 칸은 **한 번의 값**(20 · 0.1)이다. 총액은 진척 줄이 말한다.
+      ① 진척 줄을 **언제나** 적는다. 「0%」 면 쌓인다는 것이 숫자의 모양으로 보인다.
+      ② 비용 칸은 **한 번의 값**(AP)이다. 회당 몇 %인지는 주석이 말한다.
+
+    **%로 바꿨다** (8/25 · Eddie). 「0 / 200」 이었는데 200 이라는 절대 수치는 뜻이 없다 —
+    목표는 늘 100% 이므로 분모를 적지 않는다.
 
     **정가·할인가를 여기 적지 않는다** — 8/20 에 L 을 600 에서 200 으로 내리고 할인을
     정액으로 바꿨을 때, 박아 둔 600·300 이 다섯 파일에서 같이 깨졌다.
@@ -281,13 +291,11 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
     L = cfg.costs.learn_base
     world = loop.init_world(cfg, itertools.count(1), random.Random(1))
     world.turn = 1
-    # **필요액은 어느 말이든 같다** (8/22) — 다른 것은 회당 수확이다.
-    for aid, marks in (("Asla2", (f"0 / {L:.0f}",)),
-                       ("Ranoa1", (f"0 / {L:.0f}",)),
-                       ("Miris1", (f"0 / {L:.0f}",))):
+    # **목표는 어느 말이든 100%다** (8/25) — 다른 것은 회당 몇 %인지다.
+    for aid, marks in (("Asla2", ("0%",)), ("Ranoa1", ("0%",)), ("Miris1", ("0%",))):
         agent = world.agents[aid]
         agent.lang_progress = {}
-        obs = prompts.system_for(agent, world, cfg, 48.0)
+        obs = prompts.system_for(agent, world, cfg, KNOB)
         for m in marks:
             assert m in obs, (aid, m)
         # **비용 칸은 한 번의 값이다.** 총액이 비용 칸에 있으면 「한 번에 그만큼 나간다」
@@ -295,29 +303,18 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
         learn_lines = [l for l in obs.splitlines()
                        if any(k in l for k in ("の言語を学ぶ", "学习 ", "apprendre la langue de"))]
         assert learn_lines
+        # 비용 칸은 AP 이고, 목표(learn_base)는 어디에도 안 나온다
         for l in learn_lines:
-            assert f"{cfg.costs.unit:g}" in l and f"{L:.0f}" not in l, l
+            assert f"{cfg.ap.unit:.2f}" in l and f"{L:.0f}" not in l, l
 
-    # 낸 것이 있으면 그대로 보인다
+    # 낸 것이 있으면 그대로 보인다 — 절반을 냈으면 50%
     a = world.agents["Asla2"]
-    a.lang_progress = {"zh": 100.0}
-    assert f"100 / {L:.0f}" in prompts.system_for(a, world, cfg, 48.0)
+    a.lang_progress = {"zh": L / 2}
+    assert "50%" in prompts.system_for(a, world, cfg, KNOB)
 
 
-def test_the_observation_says_money_carries_over():
-    """**안 쓰면 사라진다고 읽으면 저축을 안 한다.**
 
-    관측은 예산과 이번 해 수입만 적고, 남은 돈이 다음 해로 넘어간다는 것은 어디에도
-    없었다. 실측에서 에이전트들이 매 해 예산을 거의 0 까지 쓰고 있었다 — 600 짜리 학습에
-    손을 못 대는 이유 중 하나가 이것일 수 있다.
-
-    쌓인다는 것은 세계의 사실이므로 적는다.
-    """
-    from domains.meteor import prompts
-    marks = {"ja": "翌年に残ります", "zh": "会留到明年", "fr": "reste pour l'année suivante"}
-    for lang, m in marks.items():
-        assert m in prompts.T[lang]["multi"], lang
-
+# **`test_the_observation_says_money_carries_over` 를 지웠다** (8/25 · AP 전면 통일) — 이월이 없다.
 
 def test_learn_and_invest_share_one_unit():
     """learn 도 invest 도 **한 번에 같은 AP** 다. 규칙이 여럿이면 문구가 갈리고, 실제로
@@ -340,18 +337,22 @@ def test_learn_and_invest_share_one_unit():
     world = loop.init_world(c, itertools.count(1), random.Random(1))
     world.turn = 1
     a = world.agents["Asla2"]
-    obs = prompts.system_for(a, world, c, 48.0)
+    obs = prompts.system_for(a, world, c, KNOB)
     rows = [l for l in obs.splitlines()
             if "の言語を学ぶ" in l or l.startswith("  invest ")]   # 헤더는 들여쓰기가 없다
     assert len(rows) == 3                       # 학습 둘 + invest 하나
     for l in rows:                              # 셋이 같은 AP 를 쓴다
         assert f"{c.ap.unit:g}" in l, l
-    # 학습은 정가, invest 는 내 배수
+    # **학습은 %로, invest 는 옮기는 양으로 적는다** (8/25). 학습의 절대 수치(40)는
+    # 목표를 모르면 뜻이 없어 「회당 몇 %」 로 바꿨고, invest 는 내 배수가 곱해진 양이다.
     learn_rows = [l for l in rows if "の言語を学ぶ" in l]
     inv_row = next(l for l in rows if l.startswith("  invest "))
+    # 사유(국내 구사자·부모)가 붙으면 배속이 올라 %도 오른다 — 셋 중 하나여야 한다
+    base = c.costs.unit / c.costs.learn_base * 100
+    ok = {f"{base * (1 + c.costs.learn_speedup * r):.0f}%" for r in (0, 1, 2)}
     for l in learn_rows:
-        assert f"{c.costs.unit:g}" in l, l
-    assert f"{c.costs.unit * a.invest_mult:g}" in inv_row, inv_row
+        assert any(x in l for x in ok), (l, ok)
+    assert f"{c.costs.unit * a.invest_mult:.0f}" in inv_row, inv_row
 
 def test_the_observation_states_no_message_cap():
     """**「메시지는 1년에 3건까지」 는 규칙이 아니었고, 참도 아니었다.**
@@ -492,10 +493,10 @@ def test_no_error_message_says_turn():
     world.countries["Ranoa"].proposal = {"by": "Ranoa1", "opened_turn": 10,
                                          "vote_turn": ballot}
 
-    a = world.agents["Ranoa2"]; a.ap, a.budget = 1.0, 100.0
+    a = world.agents["Ranoa2"]; a.ap = 1.0
     for name, args in (("propose_vote", {"reasoning": "r"}),
                        ("vote", {"choice": "bunker", "reasoning": "r"})):
-        r, _ = execute_tool(name, args, world, a, c, Sink(), 48.0)
+        r, _ = execute_tool(name, args, world, a, c, Sink(), KNOB)
         assert not r["ok"], name
         assert "turn" not in r["error"], (name, r["error"])
         assert str(FIRST_YEAR + ballot - 1) in r["error"], (name, r["error"])
@@ -531,12 +532,11 @@ def test_no_tool_response_says_turn():
              ("invest", {"target": "facility", "reasoning": "r"}),
              # Asla1 은 초기화로 Ranoa 말을 이미 안다 (`init_world` 가 나라마다 한 명)
              ("learn", {"country": "Miris", "reasoning": "r"}),
-             ("give", {"to": "Asla2", "amount": 10, "reasoning": "r"}),
              ("observe_risk", {"reasoning": "r"}),
              ("speak", {"to": "Asla2", "text": "こんにちは", "reasoning": "r"})]
     for name, args in calls:
-        a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 1000.0
-        res, _ = execute_tool(name, args, world, a, c, Sink(), 48.0)
+        a = world.agents["Asla1"]; a.ap = 1.0
+        res, _ = execute_tool(name, args, world, a, c, Sink(), KNOB)
         assert res["ok"], (name, res)
         for k in res:
             assert "turn" not in k, (name, k, res)
@@ -600,11 +600,11 @@ def test_nothing_tells_the_agent_to_repeat_an_action():
     from core import loop
     world = loop.init_world(cfg, itertools.count(1), random.Random(1))
     world.turn = 1
-    obs = prompts.system_for(world.agents["Miris1"], world, cfg, 48.0)
+    obs = prompts.system_for(world.agents["Miris1"], world, cfg, KNOB)
     lines = obs.splitlines()
     i = next(n for n, l in enumerate(lines) if "apprendre la langue de" in l)
-    assert f"{cfg.costs.unit:g}" in lines[i]                     # 한 번의 값
-    assert f"/ {cfg.costs.learn_base:.0f}" in lines[i + 1]       # 총액
+    assert f"{cfg.ap.unit:.2f}" in lines[i]                      # 한 번의 행동력
+    assert "%" in lines[i] and "%" in lines[i + 1]                # 회당 %와 누적 %
 
 
 def test_the_year_and_the_steps_inside_it_are_explained():
@@ -649,7 +649,7 @@ def test_the_year_and_the_steps_inside_it_are_explained():
     for aid, mark in (("Asla1", "行動力が残っている間"),
                       ("Ranoa1", "只要还有行动力"),
                       ("Miris1", "l'année n'est pas terminée")):
-        obs = prompts.system_for(world.agents[aid], world, cfg, 48.0)
+        obs = prompts.system_for(world.agents[aid], world, cfg, KNOB)
         assert mark in obs, aid
 
 
@@ -705,18 +705,22 @@ def test_the_fact_that_people_differ_is_stated_but_not_the_numbers():
     from core import config
     from domains.meteor import prompts
     cfg = config.load("configs/base.yaml")
-    marks = {"ja": ("人によって違います", "他人の分は見えません"),
-             "zh": ("因人而异", "别人的数值你看不到"),
-             "fr": ("varient d'une personne à l'autre", "ne vous sont pas visibles")}
-    for lang, (differ, hidden) in marks.items():
+    # **「남의 것은 안 보인다」 는 지웠다** (8/25 · Eddie). 그건 물어보라는 지시다 —
+    # 남의 값이 관측에 없다는 것은 관측을 보면 알 수 있고, 그것을 알아채는지가 관측
+    # 대상이다. 남기는 것은 **다르다는 사실** 하나다.
+    marks = {"ja": "人によって違います", "zh": "因人而异",
+             "fr": "varie d'une personne à l'autre"}
+    gone = ("他人の分は見えません", "别人的数值你看不到", "ne vous sont pas visibles")
+    for lang, differ in marks.items():
         sysmsg = prompts.SYSTEM[lang]
         assert differ in sysmsg, lang        # 다르다는 사실
-        assert hidden in sysmsg, lang        # 남의 것은 안 보인다는 사실
+        for g in gone:
+            assert g not in sysmsg, (lang, g)
 
     # **숫자는 적지 않는다** — 단계값도, 평균도
     for lang in ("ja", "zh", "fr"):
         blob = prompts.SYSTEM[lang]
-        for v in cfg.income.spread:
+        for v in cfg.facility.throughput_spread:
             if v != 1.0:
                 assert f"{v}" not in blob, (lang, v)
 

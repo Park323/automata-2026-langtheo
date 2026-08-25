@@ -168,7 +168,7 @@ def test_a_natural_death_passes_the_budget_and_the_discount(cfg):
     w.turn = 5                                   # 후손을 born_turn 으로 찾을 수 있게
     before = set(w.agents)
     a = w.agents["Asla1"]
-    a.budget, a.known_langs, a.lang_progress = 500.0, {"ja", "zh"}, {"fr": 100.0}
+    a.known_langs, a.lang_progress = {"ja", "zh"}, {"fr": 100.0}
     a.memory = "내 메모"
 
     r = loop.RunResult(world=w)
@@ -179,7 +179,6 @@ def test_a_natural_death_passes_the_budget_and_the_discount(cfg):
     assert "Asla1" not in w.agents
     (heir,) = [w.agents[k] for k in set(w.agents) - before]
 
-    assert heir.budget == 500.0                  # 예산은 넘어간다
     assert heir.parent_langs == {"ja", "zh"}     # 할인 자격도
     assert heir.known_langs == {"ja"}            # **언어 자체는 아니다**
     assert heir.lang_progress == {}              # 진척도 아니다
@@ -187,4 +186,4 @@ def test_a_natural_death_passes_the_budget_and_the_discount(cfg):
     assert heir.age == 0
 
     (d,) = r.deaths_log
-    assert d["by"] == "natural" and d["budget_passed"] == 500.0
+    assert d["by"] == "natural"

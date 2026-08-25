@@ -8,6 +8,11 @@ import pytest
 from core import config, messaging
 from core.llm import StubClient
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 BASE = Path(__file__).resolve().parent.parent / "configs" / "base.yaml"
 
 
@@ -41,7 +46,7 @@ def test_truncate_before_translate(cfg):
     """8. 번역 입력도 잘린 것(400자)이어야 한다."""
     m = messaging.process_message(_sent(from_lang="fr", to_lang="zh", text="a" * 401),
                                   recipient_known_langs={"zh"}, cfg=cfg,
-                                  translator=_translator(), knob_ai=48)
+                                  translator=_translator(), knob_ai=KNOB)
     assert m["meta"]["chars_cut"] == 1
     assert len(m["meta"]["text_sent"]) == 400
     assert "a" * 400 in m["meta"]["translate_prompt"]
@@ -57,17 +62,14 @@ def test_classify(cfg):
     assert messaging.classify("Asla", "Ranoa", "ai") == "ai"
 
 
-def test_cost(cfg):
-    assert messaging.cost("domestic", cfg, 48) == cfg.costs.comm_domestic
-    assert messaging.cost("original", cfg, 48) == cfg.costs.comm_intl_learner
-    assert messaging.cost("ai", cfg, 48) == 48
 
+# **`test_cost` 를 지웠다** (8/25 · AP 전면 통일) — 발신의 돈 비용이 없다.
 
 def test_original_fail_when_cannot_read(cfg):
     """6. original 인데 수신자가 발신 언어를 모르면 본문 미전달 + 발신자 실패 통지."""
     m = messaging.process_message(_sent(route="original"),
                                   recipient_known_langs={"zh"},   # ja 를 모름
-                                  cfg=cfg, translator=None, knob_ai=48)
+                                  cfg=cfg, translator=None, knob_ai=KNOB)
     assert m["delivered"] is False
     assert m["inbox"]["text"] is None
     assert m["inbox"]["unreadable"] is True
@@ -78,7 +80,7 @@ def test_original_fail_when_cannot_read(cfg):
 def test_original_success_when_can_read(cfg):
     m = messaging.process_message(_sent(route="original"),
                                   recipient_known_langs={"zh", "ja"},
-                                  cfg=cfg, translator=None, knob_ai=48)
+                                  cfg=cfg, translator=None, knob_ai=KNOB)
     assert m["delivered"] is True
     assert m["inbox"]["text"] == "본문"
     # **통역 없이 닿았다는 표시가 붙는다.** 전에는 라벨이 없어 국내 메시지와 같은
@@ -102,13 +104,13 @@ def test_ai_route_never_shows_the_original(cfg):
     """
     for known in ({"zh", "ja"}, {"zh"}):          # 발신 언어를 알든 모르든
         r = messaging.process_message(_sent(route="ai"), recipient_known_langs=known,
-                                      cfg=cfg, translator=_translator("译文"), knob_ai=48)
+                                      cfg=cfg, translator=_translator("译文"), knob_ai=KNOB)
         assert r["inbox"]["label"] == messaging.AI_LABEL
         assert r["inbox"]["text"] == "译文"
         assert r["inbox"]["original"] is None
     # meta.reader 는 남는다 — 채점기가 "읽을 수 있었는데도 ai 를 받았다" 를 구분해야 한다
     r = messaging.process_message(_sent(route="ai"), recipient_known_langs={"zh", "ja"},
-                                  cfg=cfg, translator=_translator("译文"), knob_ai=48)
+                                  cfg=cfg, translator=_translator("译文"), knob_ai=KNOB)
     assert r["meta"]["reader"] is True
 
 
@@ -282,22 +284,21 @@ def test_a_missing_recipient_says_which_field_is_missing(cfg):
     from core.loop import init_world
     world = init_world(cfg, itertools.count(1), random.Random(1))
     a = world.agents["Miris1"]
-    a.ap, a.budget = 1.0, 1000.0
+    a.ap = 1.0
 
     r, _ = execute_tool("speak", {"route": "ai", "text": "Bonjour Ranoa1 !"},
-                        world, a, cfg, Sink(), 48.0)
+                        world, a, cfg, Sink(), KNOB)
     assert not r["ok"]
     assert "`to`" in r["error"]                       # 어느 칸인지 말한다
     assert "inside the text does not send it" in r["error"]   # 오해를 집는다
     assert "unknown recipient" not in r["error"]      # 다른 실패와 섞이지 않는다
 
     r, _ = execute_tool("speak", {"to": "Ranoa9", "text": "x"},
-                        world, a, cfg, Sink(), 48.0)
+                        world, a, cfg, Sink(), KNOB)
     assert not r["ok"] and "unknown recipient: Ranoa9" in r["error"]
     assert "list of people" in r["error"]             # 어디를 보라고 말한다
 
     # 둘 다 **돈도 AP 도 물리지 않는다** — 검증이 과금보다 먼저다
-    assert a.ap == 1.0 and a.budget == 1000.0
 
 
 
@@ -312,7 +313,7 @@ def test_the_delivered_language_is_the_one_actually_written(cfg):
     m = messaging.process_message(
         _sent(from_lang="fr", from_country="Miris", to="Asla1", to_country="Asla",
               to_lang="ja", route="original", text="こんにちは、協力しましょう"),
-        recipient_known_langs={"ja"}, cfg=cfg, translator=None, knob_ai=48,
+        recipient_known_langs={"ja"}, cfg=cfg, translator=None, knob_ai=KNOB,
         sender_known_langs={"fr", "ja"})
     assert m["delivered"] is True
     assert m["meta"]["delivered_lang"] == "ja", m["meta"]["delivered_lang"]
@@ -321,7 +322,7 @@ def test_the_delivered_language_is_the_one_actually_written(cfg):
     m2 = messaging.process_message(
         _sent(from_lang="fr", from_country="Miris", to="Asla1", to_country="Asla",
               to_lang="ja", route="original", text="Bonjour, coopérons"),
-        recipient_known_langs={"ja"}, cfg=cfg, translator=None, knob_ai=48,
+        recipient_known_langs={"ja"}, cfg=cfg, translator=None, knob_ai=KNOB,
         sender_known_langs={"fr", "ja"})
     assert m2["meta"]["delivered_lang"] == "fr"
 
@@ -342,7 +343,7 @@ def test_a_third_language_body_does_not_get_through(cfg):
                   to_lang="fr", route="original")
     send = lambda text: messaging.process_message(
         _sent(**common, text=text), recipient_known_langs={"fr", "ja"},
-        cfg=cfg, translator=None, knob_ai=48, sender_known_langs={"ja", "zh"})
+        cfg=cfg, translator=None, knob_ai=KNOB, sender_known_langs={"ja", "zh"})
 
     # ① 내 말(ja)로 썼다 — 상대가 ja 를 읽는다
     m = send("こんにちは")
@@ -398,7 +399,7 @@ def test_there_is_only_one_direct_label_now(cfg):
             m = messaging.process_message(
                 _sent(from_lang=f, from_country="Asla", to="B1", to_country="Miris",
                       to_lang=t, route="original", text=TEXT[body]),
-                recipient_known_langs=rk, cfg=cfg, translator=None, knob_ai=48,
+                recipient_known_langs=rk, cfg=cfg, translator=None, knob_ai=KNOB,
                 sender_known_langs={f, body})
             if m["delivered"]:
                 assert m["inbox"]["label"] == messaging.DIRECT_READ_LABEL

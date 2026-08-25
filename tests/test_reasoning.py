@@ -18,6 +18,11 @@ from core.llm import StubClient, assistant_msg, tool_call
 from domains.meteor import prompts
 
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 # **인구가 늘어난다** (8/21). `bear_child` 는 부모를 죽이지 않으므로 초기 9명 말고도
 # 사람이 생긴다 — 초기 id 로만 만든 클라이언트 사전은 새 사람에게서 KeyError 를 낸다.
 # 없는 id 는 즉시 끝내는 스텁으로 채운다.
@@ -143,7 +148,7 @@ def world(cfg):
     # **개체 차이를 1.0 으로 눕힌다** (8/22) — 다른 기제를 재는 테스트가 사람마다 다른
     # 액수에 흔들리지 않게. 차이 자체는 test_world_rules_v2 의 전용 테스트가 본다.
     for a in w.agents.values():
-        a.income_mult = a.invest_mult = 1.0
+        a.invest_mult = 1.0
     return w
 
 
@@ -188,15 +193,14 @@ def test_recovered_call_actually_runs(cfg, world):
     """회수한 호출이 실제로 세계를 바꾼다 — 줍기만 하고 안 쓰면 의미가 없다."""
     from core.agent_loop import Sink, run_agent_turn
     a = world.agents["Asla2"]
-    a.ap, a.budget = 1.0, 5000.0
+    a.ap = 1.0
     leaked = {"role": "assistant",
               "content": '{"name":"learn","arguments":{"country":"Miris",'
                          '"reasoning":"r"}}'}
-    lg = run_agent_turn(world, a, cfg, StubClient([leaked]), Sink(), 48.0,
-                        prompts.system_for(a, None, cfg), prompts.render_observation(world, a, cfg, 48.0))
+    lg = run_agent_turn(world, a, cfg, StubClient([leaked]), Sink(), KNOB,
+                        prompts.system_for(a, None, cfg), prompts.render_observation(world, a, cfg, KNOB))
     assert lg["recovered_calls"] == 1
     assert [x["type"] for x in lg["actions"]] == ["learn"]
-    assert a.budget == 5000.0 - cfg.costs.unit
 
 
 def test_no_tool_call_is_not_reported_as_exhausted(cfg, world):
@@ -206,11 +210,11 @@ def test_no_tool_call_is_not_reported_as_exhausted(cfg, world):
     """
     from core.agent_loop import Sink, run_agent_turn
     a = world.agents["Asla1"]
-    a.ap, a.budget = 1.0, 5000.0                      # 자원은 충분하다
+    a.ap = 1.0                      # 자원은 충분하다
     lg = run_agent_turn(world, a, cfg,
                         StubClient([{"role": "assistant", "content": "생각 중입니다"}]),
-                        Sink(), 48.0, prompts.system_for(a, None, cfg),
-                        prompts.render_observation(world, a, cfg, 48.0))
+                        Sink(), KNOB, prompts.system_for(a, None, cfg),
+                        prompts.render_observation(world, a, cfg, KNOB))
     assert lg["ended_by"] == "no_tool_call"
     assert lg["recovered_calls"] == 0
     assert "생각 중입니다" in lg["no_tool_content"]    # 무엇을 답했는지 남는다
@@ -226,12 +230,12 @@ def test_exhausted_still_means_exhausted(cfg, world):
     from core.agent_loop import Sink, run_agent_turn
     from dataclasses import replace
     a = world.agents["Asla1"]
-    a.ap, a.budget = 0.0, 0.0
+    a.ap = 0.0
     # `procreate` 는 없어졌고 `bear_child` 가 이미 1.0 이다 (8/21)
     broke = replace(cfg, ap=replace(cfg.ap, memory_write=0.1))
-    lg = run_agent_turn(world, a, broke, StubClient([]), Sink(), 48.0,
+    lg = run_agent_turn(world, a, broke, StubClient([]), Sink(), KNOB,
                         prompts.system_for(a, None, cfg),
-                        prompts.render_observation(world, a, broke, 48.0))
+                        prompts.render_observation(world, a, broke, KNOB))
     assert lg["ended_by"] == "exhausted" and lg["steps"] == 0
 
 
@@ -333,8 +337,8 @@ def test_every_step_forces_a_tool_call(cfg, world):
     stub = StubClient([assistant_msg(tool_call("speak", "1", to="Asla3", text="x",
                                                reasoning="r")),
                        assistant_msg(tool_call("end_turn", "2"))])
-    a = world.agents["Asla2"]; a.ap, a.budget = 1.0, 500.0
-    run_agent_turn(world, a, cfg, stub, Sink(), 48.0,
-                   prompts.system_for(a, None, cfg), prompts.render_observation(world, a, cfg, 48.0))
+    a = world.agents["Asla2"]; a.ap = 1.0
+    run_agent_turn(world, a, cfg, stub, Sink(), KNOB,
+                   prompts.system_for(a, None, cfg), prompts.render_observation(world, a, cfg, KNOB))
     # **모든 스텝에서** 강제한다. end_turn 도 도구라 잃는 선택지가 없다.
     assert [c["tool_choice"] for c in stub.calls] == ["required"] * len(stub.calls)

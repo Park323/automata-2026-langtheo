@@ -84,7 +84,7 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "The two are set separately. Your amount is yours; you cannot see anyone "
         "else's, so ask them. "
         "`national` raises your nation's technical level, which "
-        "lifts income, how much progress a facility gets out of what is put into it, and "
+        "lifts how much progress a facility gets out of what is put into it, and "
         "the precision of observe_risk — for everyone in that nation. "
         "For facility you may name any nation with `to` — your "
         "own or another; leaving `to` out puts it into your own nation's. "

@@ -18,6 +18,11 @@ from core.llm import StubClient, assistant_msg, tool_call
 from domains.meteor import prompts
 
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 # **인구가 늘어난다** (8/21). `bear_child` 는 부모를 죽이지 않으므로 초기 9명 말고도
 # 사람이 생긴다 — 초기 id 로만 만든 클라이언트 사전은 새 사람에게서 KeyError 를 낸다.
 # 없는 id 는 즉시 끝내는 스텁으로 채운다.
@@ -40,7 +45,7 @@ def world(cfg):
     # **개체 차이를 1.0 으로 눕힌다** (8/22) — 다른 기제를 재는 테스트가 사람마다 다른
     # 액수에 흔들리지 않게. 차이 자체는 test_world_rules_v2 의 전용 테스트가 본다.
     for a in w.agents.values():
-        a.income_mult = a.invest_mult = 1.0
+        a.invest_mult = 1.0
     return w
 
 
@@ -48,8 +53,8 @@ def _turn(world, cfg, aid, script, warn=False):
     a = world.agents[aid]
     a.ap = cfg.turn.action_points
     cl = StubClient(script)
-    log = run_agent_turn(world, a, cfg, cl, Sink(), 48.0, prompts.system_for(a, None, cfg),
-                         prompts.render_observation(world, a, cfg, 48.0))
+    log = run_agent_turn(world, a, cfg, cl, Sink(), KNOB, prompts.system_for(a, None, cfg),
+                         prompts.render_observation(world, a, cfg, KNOB))
     return a, cl, log
 
 
@@ -75,18 +80,15 @@ def test_memory_survives_and_shows_in_observation(cfg, world):
         assistant_msg(tool_call("memory_write", "1", text="Ranoa2 は我々の言語を読める", reasoning="r")),
         assistant_msg(tool_call("end_turn", "2", reasoning="r"))])
     assert a.memory == "Ranoa2 は我々の言語を読める"
-    assert a.memory in prompts.render_observation(world, a, cfg, 48.0)
+    assert a.memory in prompts.render_observation(world, a, cfg, KNOB)
 
 
 def test_memory_costs_ap_not_budget(cfg, world):
     """예산을 물리면 기억이 시설 투자와 경쟁해 관측에 교란이 섞인다 (spec 4.5)."""
     a = world.agents["Asla1"]
-    a.budget = 500.0
-    before = a.budget
     _turn(world, cfg, "Asla1", [
         assistant_msg(tool_call("memory_write", "1", text="x", reasoning="r")),
         assistant_msg(tool_call("end_turn", "2", reasoning="r"))])
-    assert a.budget == before                       # 예산 무관
     assert a.ap == pytest.approx(1.0 - cfg.ap.memory_write)
 
 
@@ -103,15 +105,14 @@ def test_nothing_of_a_life_survives_a_natural_death(cfg, world):
     a.memory = "내가 평생 알아낸 것"
     a.convo.append({"role": "user", "content": "옛 기억"})
     a.lang_progress = {"fr": 400.0}
-    a.budget = 500.0
 
-    child = loop._newborn("Asla9", "Asla", "ja", 0.0, set(), world.turn,
+    child = loop._newborn("Asla9", "Asla", "ja", set(), world.turn,
                           "natural", cfg, itertools.count(9000))
     loop._replace(world, "Asla1", child, [])
 
     assert "Asla1" not in world.agents        # id 는 재사용하지 않는다
     assert child.convo == [] and child.memory == ""
-    assert child.lang_progress == {} and child.budget == 0.0
+    assert child.lang_progress == {}
     assert child.parent_langs == set()       # 자연사에는 부모가 없다 (3.2)
 def test_pressure_warning_prepended(cfg, world):
     """임계를 넘으면 관측 **앞**에 통지가 붙는다. 사실 통지이지 지시가 아니다."""
@@ -169,10 +170,10 @@ def test_free_actions_keep_can_act_true(cfg, world):
     그래서 「공짜 행동」 은 이제 `memory_write` 하나이고, 그것도 압박선 위에서만 열린다.
     """
     a = world.agents["Asla1"]
-    a.budget, a.ap = 0.0, 0.0
+    a.ap = 0.0
     a.memory_open = True                       # 압박선 위 — 기억이 열려 있다
     assert cfg.ap.memory_write == 0.0
-    assert can_act(a, cfg, 48.0) is True
+    assert can_act(a, cfg, KNOB) is True
 
 
 def test_can_act_is_false_when_nothing_is_affordable(cfg, world):
@@ -190,12 +191,11 @@ def test_can_act_is_false_when_nothing_is_affordable(cfg, world):
     """
     a = world.agents["Asla1"]
     a.memory_open = False                      # 압박선 아래 — 기억은 목록에 없다
-    a.budget, a.ap = 0.0, 0.0
-    assert can_act(a, cfg, 48.0) is False
-    a.budget = 10_000.0                        # 돈이 넘쳐도 AP 가 0 이면 못 한다
-    assert can_act(a, cfg, 48.0) is False
+    a.ap = 0.0
+    assert can_act(a, cfg, KNOB) is False
+    assert can_act(a, cfg, KNOB) is False
     a.ap = cfg.ap.vote                         # 採決일이면 표는 던질 수 있다
-    assert can_act(a, cfg, 48.0) is True
+    assert can_act(a, cfg, KNOB) is True
 
 
 def test_no_max_steps_constant():
@@ -217,7 +217,7 @@ def test_sender_context_has_no_translation(cfg):
                                                  text=long_text, reasoning="r")), end]}
     clients = {a: StubClient(list(scripts.get(a, []))) for a in ids}
     tr = StubClient([{"role": "assistant", "content": "TRANSLATED_MARK", "tool_calls": []}] * 30)
-    res = loop.run_agentic(cfg, random.Random(1), _client_for(clients, assistant_msg(tool_call("end_turn", "z", reasoning="r"))), tr, 48.0,
+    res = loop.run_agentic(cfg, random.Random(1), _client_for(clients, assistant_msg(tool_call("end_turn", "z", reasoning="r"))), tr, KNOB,
                            prompts.render_turn_open, prompts.system_for, parallel=False)
     sender = res.world.agents["Asla1"]
     blob = json.dumps(sender.convo, ensure_ascii=False)
@@ -250,7 +250,7 @@ def test_agents_have_separate_contexts(cfg):
     live = sorted(res.world.agents)
     for aid in live:
         agent = res.world.agents[aid]
-        sysp = prompts.system_for(agent, res.world, cfg, 48.0)
+        sysp = prompts.system_for(agent, res.world, cfg, KNOB)
         assert (f"あなたは {aid}" in sysp or f"你是 {aid}" in sysp
                 or f"Vous êtes {aid}" in sysp), aid
         for other in live:
@@ -275,8 +275,8 @@ def test_memory_not_wiped_by_truncated_args(cfg, world):
            "function": {"name": "memory_write", "arguments": '{"text": "잘린'}}   # 깨진 JSON
     cl = StubClient([{"role": "assistant", "content": None, "tool_calls": [bad]},
                      assistant_msg(tool_call("end_turn", "2", reasoning="r"))])
-    run_agent_turn(world, a, cfg, cl, Sink(), 48.0, prompts.system_for(a, None, cfg),
-                   prompts.render_observation(world, a, cfg, 48.0))
+    run_agent_turn(world, a, cfg, cl, Sink(), KNOB, prompts.system_for(a, None, cfg),
+                   prompts.render_observation(world, a, cfg, KNOB))
     assert a.memory == "지켜야 할 기억", "잘린 인자로 기억이 지워졌다"
 
 
@@ -288,8 +288,8 @@ def test_broken_arguments_normalized_before_echo(cfg, world):
            "function": {"name": "speak", "arguments": '{"to": "Asla2", "text": "잘린'}}
     cl = StubClient([{"role": "assistant", "content": None, "tool_calls": [bad]},
                      assistant_msg(tool_call("end_turn", "2", reasoning="r"))])
-    run_agent_turn(world, a, cfg, cl, Sink(), 48.0, prompts.system_for(a, None, cfg),
-                   prompts.render_observation(world, a, cfg, 48.0))
+    run_agent_turn(world, a, cfg, cl, Sink(), KNOB, prompts.system_for(a, None, cfg),
+                   prompts.render_observation(world, a, cfg, KNOB))
     echoed = [m for m in a.convo if m["role"] == "assistant" and m.get("tool_calls")]
     for m in echoed:
         for tc in m["tool_calls"]:
@@ -299,7 +299,6 @@ def test_broken_arguments_normalized_before_echo(cfg, world):
 def test_repeat_guard_ignores_successful_repeats(cfg, world):
     """성공한 호출은 자원을 쓰므로 ②가 막는다 — ③이 정상 행동을 끊으면 안 된다."""
     a = world.agents["Asla1"]
-    a.budget = 10000.0
     same = tool_call("speak", "1", to="Asla2", text="같은 말", reasoning="r")
     _, _, log = _turn(world, cfg, "Asla1",
                       [assistant_msg(same, same, same),
@@ -337,7 +336,7 @@ def test_the_memo_header_says_it_overwrites(cfg, world):
         ag.memory_open = True
         for memo in ("", "요격기에 몰아줘라"):
             ag.memory = memo
-            obs = prompts.system_for(ag, world, cfg, 48.0)
+            obs = prompts.system_for(ag, world, cfg, KNOB)
             assert hdr in obs                     # 채워져 있어도 보인다
             if memo:
                 assert memo in obs
@@ -354,7 +353,7 @@ def test_the_memo_is_visible_even_when_the_tool_is_closed(cfg, world):
     ag = world.agents["Asla1"]
     ag.memory = "부모의 유언: 요격기에 몰아줘라"
     ag.memory_open = False                        # 도구가 닫혀 있다
-    obs = prompts.system_for(ag, world, cfg, 48.0)
+    obs = prompts.system_for(ag, world, cfg, KNOB)
     assert ag.memory in obs                       # 유언은 보인다
     assert prompts.T["ja"]["mem_hdr_ro"] in obs
     assert "書き足すのではなく" not in obs          # 쓰는 방법은 말하지 않는다
@@ -457,12 +456,12 @@ def test_memory_write_is_refused_below_the_threshold(cfg, world):
     a.memory_open = False                         # 압박 아래
     assert not any(t["function"]["name"] == "memory_write"
                    for t in T.tools_for(cfg, memory=False))
-    r, _ = execute_tool("memory_write", {"text": "x"}, world, a, cfg, Sink(), 48.0)
+    r, _ = execute_tool("memory_write", {"text": "x"}, world, a, cfg, Sink(), KNOB)
     assert not r["ok"] and "not available yet" in r["error"]
     assert a.memory == "" and a.ap == 1.0         # 아무것도 쓰지 않고 AP 도 안 쓴다
 
     a.memory_open = True                          # 압박 위
     assert any(t["function"]["name"] == "memory_write"
                for t in T.tools_for(cfg, memory=True))
-    r, _ = execute_tool("memory_write", {"text": "x"}, world, a, cfg, Sink(), 48.0)
+    r, _ = execute_tool("memory_write", {"text": "x"}, world, a, cfg, Sink(), KNOB)
     assert r["ok"] and a.memory == "x"

@@ -15,6 +15,11 @@ from core.llm import StubClient, assistant_msg, tool_call
 from domains.meteor import prompts
 
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 # **인구가 늘어난다** (8/21). `bear_child` 는 부모를 죽이지 않으므로 초기 9명 말고도
 # 사람이 생긴다 — 초기 id 로만 만든 클라이언트 사전은 새 사람에게서 KeyError 를 낸다.
 # 없는 id 는 즉시 끝내는 스텁으로 채운다.
@@ -43,7 +48,7 @@ def _run_with_writer(cfg, tmp_path, turns=2):
                for a in ids}
     tr = StubClient([{"role": "assistant", "content": "陨石", "tool_calls": []}] * 40,
                     recorder=w.recorder(kind="translate"))
-    res = loop.run_agentic(cfg, random.Random(1), _client_for(clients, assistant_msg(tool_call("end_turn", "z", reasoning="r"))), tr, 48.0,
+    res = loop.run_agentic(cfg, random.Random(1), _client_for(clients, assistant_msg(tool_call("end_turn", "z", reasoning="r"))), tr, KNOB,
                            prompts.render_turn_open, prompts.system_for,
                            parallel=False, on_turn_end=w.on_turn_end)
     w.close({"final": res.final, "deaths": res.deaths})
@@ -192,10 +197,10 @@ def test_agent_turn_records_its_own_wall_time():
 
     cfg = config.load("configs/base.yaml")
     w = loop.init_world(cfg, itertools.count(1))
-    a = w.agents["Asla1"]; a.ap = 1.0; a.budget = 500.0
+    a = w.agents["Asla1"]; a.ap = 1.0
     lg = run_agent_turn(
         w, a, cfg, StubClient([assistant_msg(tool_call("end_turn", "1"))]),
-        Sink(), 48.0, prompts.system_for(a, None, cfg), prompts.render_observation(w, a, cfg, 48.0))
+        Sink(), KNOB, prompts.system_for(a, None, cfg), prompts.render_observation(w, a, cfg, KNOB))
     for k in ("elapsed_ms", "llm_ms", "ms_per_step"):
         assert lg[k] is not None and lg[k] >= 0, k
     assert lg["llm_ms"] <= lg["elapsed_ms"] + 1
@@ -213,9 +218,9 @@ def test_wellness_spend_accumulates_over_a_life():
     r = loop.RunResult(world=w)
     for _ in range(3):
         sink = Sink(); sink.wellness = [("Asla1", 40.0)]
-        loop._settle_agentic(w, cfg, random.Random(0), sink, None, 48.0,
+        loop._settle_agentic(w, cfg, random.Random(0), sink, None, KNOB,
                              itertools.count(500), r, itertools.count(900))
     assert w.agents["Asla1"].wellness_spent == 120.0
 
-    obs = prompts.render_observation(w, w.agents["Asla1"], cfg, 48.0)
+    obs = prompts.render_observation(w, w.agents["Asla1"], cfg, KNOB)
     assert "120" not in obs                      # 관측에는 안 나온다

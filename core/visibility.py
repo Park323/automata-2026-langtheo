@@ -52,6 +52,10 @@ FACTS: dict[str, tuple[Vis, str]] = {
     "hazard_curve":      (Vis.SECRET, "나이→사망확률. 평균만 SYSTEM 에 적고 모양은 숨긴다"),
     "wellness_gain":     (Vis.SECRET, "wellness 가 λ 를 얼마 올렸나. 본인도 모른다"),
     "threshold_truth":   (Vis.SECRET, "요격기 임계의 진값. observe_risk 는 흐린 값만 준다"),
+    "bunker_truth":      (Vis.SECRET, "벙커 임계의 진값 (8/25). 벙커가 확률에서 임계로 "
+                                      "바뀌면서 요격기와 같은 성질이 됐다 — 관측으로만 "
+                                      "흐리게 알 수 있다. 한쪽만 숨기면 그것이 곧 설계가 "
+                                      "미는 선택지가 된다"),
     "impact_turn_truth": (Vis.SECRET, "운석까지 남은 진짜 해수. 같다"),
     "growth_fn":         (Vis.SECRET, "생산배수 함수. 수입에서 추론할 뿐"),
     "inner_reasoning":   (Vis.SECRET, "타인의 내심. 로그에는 남지만 세계에는 없다"),

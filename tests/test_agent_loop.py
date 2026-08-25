@@ -13,6 +13,11 @@ from core.llm import StubClient, assistant_msg, tool_call
 from core.loop import init_world
 from domains.meteor import prompts
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 BASE = Path(__file__).resolve().parent.parent / "configs" / "base.yaml"
 
 
@@ -27,15 +32,13 @@ def world(cfg):
     # **개체 차이를 1.0 으로 눕힌다** (8/22) — 다른 기제를 재는 테스트가 사람마다 다른
     # 액수에 흔들리지 않게. 차이 자체는 test_world_rules_v2 의 전용 테스트가 본다.
     for a in w.agents.values():
-        a.income_mult = a.invest_mult = 1.0
+        a.invest_mult = 1.0
     return w
 
 
-def _run(world, cfg, agent_id, script, knob_ai=48, budget=None):
+def _run(world, cfg, agent_id, script, knob_ai=KNOB):
     agent = world.agents[agent_id]
     agent.ap = cfg.turn.action_points        # 실제 루프의 1단계(소득·AP 리셋)를 대신
-    if budget is not None:
-        agent.budget = budget
     sink = Sink()
     client = StubClient(script)
     sys_p = prompts.system_for(agent, None, cfg)
@@ -63,7 +66,7 @@ def test_speaking_stops_when_the_year_runs_out(cfg, world):
     n = int(cfg.turn.action_points / cfg.ap.speak)
     calls = [tool_call("speak", str(i), to="Asla2", text="x") for i in range(n + 1)]
     script = [assistant_msg(*calls), assistant_msg(tool_call("end_turn", "z"))]
-    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
+    agent, sink, client, log = _run(world, cfg, "Asla1", script)
     # **도구 결과를 에이전트의 대화에서 읽는다.** `_results` 는 마지막 chat 호출의
     # 스냅샷을 보는데, 이 턴은 다섯 번 말하고 AP 가 0 이 되어 **거기서 끝난다** —
     # `can_act` 가 정직해진 뒤로(#47) `end_turn` 을 시키려고 한 번 더 부르지 않는다.
@@ -79,32 +82,17 @@ def test_speaking_stops_when_the_year_runs_out(cfg, world):
 
 # ── #3 예산 고갈 ─────────────────────────────────────────────────────────────
 
-def test_budget_never_negative(cfg, world):
-    world.countries["Asla"].land = "interceptor"   # 투표 전에는 애초에 투자가 막힌다
-    inv = assistant_msg(tool_call("invest", "1", target="facility"))
-    script = [inv, inv, assistant_msg(tool_call("end_turn", "2"))]
-    # **한 번의 값에서 예산을 잡는다** — 40 으로 올렸을 때 30 이 낡았다 (8/22).
-    # 한 번은 되고 두 번은 안 되는 액수: unit × 1.5
-    agent, sink, client, log = _run(world, cfg, "Asla1", script,
-                                    budget=cfg.costs.unit * 1.5)
-    results = _results(client)
-    # 한 번의 값 1.5배로 두 번 — 두 번째가 거절된다
-    assert any((not r["ok"]) and "budget" in r.get("error", "") for r in results)
-    assert agent.budget >= 0                            # 음수 안 됨
-    assert len(sink.facility) == 1                      # 실패한 것은 sink 에 안 들어감
 
-
-# ── #4 procreate 즉시 종료 ───────────────────────────────────────────────────
+# **`test_budget_never_negative` 를 지웠다** (8/25 · AP 전면 통일) — 예산이 없다.
 
 def test_invest_facility_invalid_country(cfg, world):
     """LLM 이 국가 대신 에이전트 id(B2)를 주면 ok:False, 예산 미차감, sink 미반영."""
     world.countries["Ranoa"].land = "interceptor"
     script = [assistant_msg(tool_call("invest", "1", target="facility", amount=50, to="Ranoa2")),
               assistant_msg(tool_call("end_turn", "2"))]
-    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
+    agent, sink, client, log = _run(world, cfg, "Asla1", script)
     results = _results(client)
     assert any((not r["ok"]) and "nation" in r.get("error", "") for r in results)
-    assert agent.budget == 10000                # 검증이 차감보다 먼저
     assert sink.facility == []
 
 
@@ -118,16 +106,15 @@ def test_invest_ignores_a_stray_amount(cfg, world):
     world.countries["Asla"].land = "interceptor"
     script = [assistant_msg(tool_call("invest", "1", target="facility", amount="많이")),
               assistant_msg(tool_call("end_turn", "2"))]
-    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
+    agent, sink, client, log = _run(world, cfg, "Asla1", script)
     assert sink.facility == [("Asla", cfg.costs.unit, "Asla1")]
-    assert agent.budget == 10000 - cfg.costs.unit
 
 
 def test_speak_to_self_rejected(cfg, world):
     """자기 자신에게는 메시지를 못 보낸다 (무의미한 낭비)."""
     script = [assistant_msg(tool_call("speak", "1", to="Asla1", text="x")),
               assistant_msg(tool_call("end_turn", "2"))]
-    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
+    agent, sink, client, log = _run(world, cfg, "Asla1", script)
     assert any((not r["ok"]) and "yourself" in r.get("error", "") for r in _results(client))
     assert sink.messages == []
 
@@ -137,7 +124,7 @@ def test_malformed_tool_call_no_crash(cfg, world):
     bad = {"role": "assistant", "content": "",
            "tool_calls": [{"id": "x", "type": "function"}]}   # function 키 없음
     script = [bad, assistant_msg(tool_call("end_turn", "2"))]
-    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
+    agent, sink, client, log = _run(world, cfg, "Asla1", script)
     assert log["error"] is None                 # 예외 없이 정상 종료
 
 
@@ -145,7 +132,7 @@ def test_speak_text_coerced_to_str(cfg, world):
     """text 가 문자열이 아니어도(숫자) 크래시하지 않고 문자열로 저장된다."""
     script = [assistant_msg(tool_call("speak", "1", to="Asla2", text=123)),
               assistant_msg(tool_call("end_turn", "2"))]
-    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
+    agent, sink, client, log = _run(world, cfg, "Asla1", script)
     assert len(sink.messages) == 1
     assert sink.messages[0]["text"] == "123"    # str 강제
 
@@ -203,9 +190,8 @@ def test_learn_is_paid_in_instalments(cfg, world):
     L = cfg.costs.learn_base
     learn = assistant_msg(tool_call("learn", "1", country="Miris"))
     script = [learn, learn, assistant_msg(tool_call("end_turn", "2"))]
-    agent, sink, client, log = _run(world, cfg, "Asla2", script, budget=10000)
+    agent, sink, client, log = _run(world, cfg, "Asla2", script)
     # 한 번에 20. 정가는 L/20 번이고, 그 횟수 × 0.1 이 드는 AP 다.
-    assert agent.budget == 10000 - 2 * cfg.costs.unit
     assert [r["charged"] for r in sink.learns] == [cfg.costs.unit] * 2
     assert [r["progress_before"] for r in sink.learns] == [0.0, cfg.costs.unit]
     (rec,) = sink.learns[:1]
@@ -223,14 +209,13 @@ def test_learn_is_paid_in_instalments(cfg, world):
 def test_learn_never_takes_more_than_needed(cfg, world):
     """**마지막 한 번은 남은 만큼만 받는다** — 남는 돈이 조용히 사라지면 안 된다."""
     from core.agent_loop import Sink, execute_tool
-    a = world.agents["Asla2"]; a.ap, a.budget = 1.0, 10_000.0
+    a = world.agents["Asla2"]; a.ap = 1.0
     L = cfg.costs.learn_base
     a.lang_progress = {"fr": L - 5.0}                # 정가에 5 만 남았다
     sink = Sink()
     r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
-                        world, a, cfg, sink, 48.0)
+                        world, a, cfg, sink, KNOB)
     assert r["ok"] and r["progress"] == L and r["complete"] is True
-    assert a.budget == 10_000.0 - 5                  # 20 이 아니라 5 만 나간다
     assert sink.learns[0]["charged"] == 5
 
 
@@ -238,10 +223,10 @@ def test_learn_rejects_a_language_already_read(cfg, world):
     """Asla1 은 초기화로 zh 를 안다. 또 낼 수 없다."""
     script = [assistant_msg(tool_call("learn", "1", country="Ranoa", amount=100)),
               assistant_msg(tool_call("end_turn", "2"))]
-    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
+    agent, sink, client, log = _run(world, cfg, "Asla1", script)
     assert any((not r["ok"]) and "already read" in r.get("error", "")
                for r in _results(client))
-    assert agent.budget == 10000 and sink.learns == []
+    assert sink.learns == []
 
 
 def test_learn_uses_less_than_a_whole_turn(cfg, world):
@@ -251,7 +236,7 @@ def test_learn_uses_less_than_a_whole_turn(cfg, world):
     script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=100)),
               assistant_msg(tool_call("speak", "2", to="Asla3", text="x")),
               assistant_msg(tool_call("end_turn", "3"))]
-    agent, sink, client, log = _run(world, cfg, "Asla2", script, budget=10000)
+    agent, sink, client, log = _run(world, cfg, "Asla2", script)
     assert len(sink.learns) == 1 and len(sink.messages) == 1   # 같은 턴에 둘 다
 
 
@@ -269,31 +254,29 @@ def test_learn_action_points_scale_with_the_amount(cfg, world):
     # 정가는 딱 한 해분의 행동력이다. 여기가 학습이 몇 해 걸리는지를 정하는 자리다.
     assert n * cfg.ap.unit == cfg.turn.action_points
 
-    lump = world.agents["Asla2"]; lump.ap, lump.budget = 1.0, 10_000.0
+    lump = world.agents["Asla2"]; lump.ap = 1.0
     sink = Sink()
     for i in range(n):
         r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
-                            world, lump, cfg, sink, 48.0)
+                            world, lump, cfg, sink, KNOB)
         assert r["ok"], (i, r)
     assert lump.ap == 0.0                       # 격자에 붙어 있다 (부동소수 아님)
-    assert lump.budget == 10_000.0 - base       # 나눠 냈어도 합계는 정가 그대로
     assert r["complete"] is True                # 그리고 마지막 한 번에 끝난다
 
     # **행동력과 완성이 같은 지점에서 만난다.** 한 해를 학습에 다 쓰면 정가가 채워지므로,
     # 여기서 「AP 부족」 을 볼 수 없다 — 그건 test_learn_stops_when_action_runs_out 이 본다.
     r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
-                        world, lump, cfg, sink, 48.0)
+                        world, lump, cfg, sink, KNOB)
     assert not r["ok"] and "already" in r["error"]
 
 
 def test_learn_stops_when_action_runs_out(cfg, world):
     """AP 가 한 번 값보다 적으면 그 해에는 더 못 낸다 — 금액이 고정이라 절삭할 것이 없다."""
     from core.agent_loop import Sink, execute_tool
-    a = world.agents["Asla2"]; a.ap, a.budget = cfg.ap.unit / 2, 10_000.0
+    a = world.agents["Asla2"]; a.ap = cfg.ap.unit / 2
     r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
-                        world, a, cfg, Sink(), 48.0)
+                        world, a, cfg, Sink(), KNOB)
     assert not r["ok"] and "not enough action" in r["error"]
-    assert a.budget == 10_000.0                    # 한 푼도 안 나갔다
 
 
 # ── #11 정보 은닉 (가장 중요) ────────────────────────────────────────────────
@@ -318,7 +301,7 @@ def test_inbox_renders_delivery_failure():
 def test_prompt_hides_secrets(cfg, world):
     """프롬프트(system·관측)에 success_prob·λ·하자드·재앙까지 남은 턴이 없다."""
     a0 = world.agents["Asla1"]
-    p = prompts.system_for(a0, None, cfg) + "\n" + prompts.render_observation(world, a0, cfg, knob_ai=48)
+    p = prompts.system_for(a0, None, cfg) + "\n" + prompts.render_observation(world, a0, cfg, knob_ai=KNOB)
     for bad in FORBIDDEN:
         assert bad not in p, f"프롬프트에 금지어 '{bad}' 노출"
 
@@ -328,7 +311,7 @@ def test_tool_results_hide_progress(cfg, world):
     script = [assistant_msg(tool_call("invest", "1", target="facility", amount=50)),
               assistant_msg(tool_call("invest", "2", target="wellness", amount=30)),
               assistant_msg(tool_call("end_turn", "3"))]
-    agent, sink, client, log = _run(world, cfg, "Asla1", script, budget=10000)
+    agent, sink, client, log = _run(world, cfg, "Asla1", script)
     for r in _results(client):
         blob = json.dumps(r, ensure_ascii=False)
         for bad in ["success_prob", "lambda", "λ", "gained", "증가분", "progress"]:

@@ -103,7 +103,7 @@ T = {
         prop_none="  採決は開かれていません。何を建てるかは投票でしか決まりません",
         c_ballot="  vote",  c_ballot_note="採決で何を建てるかを選ぶ",
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
-        multi="行動力が許す限り、一年のうちに何度でも行動できます。\n使い残した行動力は翌年に残りません。",
+        multi="行動力が許す限り複数の行動ができます。\n使い残した行動力は翌年に残りません。",
         # **一年と、その中の手番。** 実測で模型がここを取り違えていた。
         steps="行動力が残っている間、その年はまだ続きます。\n"
               "一度の応答で道具をいくつも呼べます。その分はすべて、ほかの人が動く前に起こります。\n"
@@ -180,7 +180,7 @@ T = {
         open="到了 {y} 年。你 {age} 岁。行动力是 {ap:.2f}。\n请执行这一年。",
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
-        multi="只要行动力允许，一年之内可以行动多次。\n没用完的行动力不会留到第二年。",
+        multi="只要行动力允许，你可以采取多项行动。\n没用完的行动力不会留到第二年。",
         steps="只要还有行动力，这一年就还没结束。\n"
               "一次回应里可以调用多个工具，这些都会在别人行动之前发生。\n"
               "如果分几次回应来调用，中间别人就会行动。"
@@ -256,7 +256,7 @@ T = {
         open="L'an {y} est arrivé. Vous avez {age} ans. Votre action est de {ap:.2f}.\nMenez cette année.",
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
-        multi="Vous pouvez agir plusieurs fois dans l'année tant qu'il vous reste de l'action.\nL'action non dépensée ne se reporte pas à l'année suivante.",
+        multi="Vous pouvez mener plusieurs actions tant que l'action le permet.\nL'action non dépensée ne se reporte pas à l'année suivante.",
         steps="Tant qu'il vous reste de l'action, l'année n'est pas terminée.\n"
               "Vous pouvez appeler plusieurs outils dans une même réponse ; tout cela "
               "se produit avant que les autres n'agissent.\n"

@@ -27,6 +27,11 @@ from core.agent_loop import Sink
 from core.run_io import RunWriter
 from core.state import Agent, Country
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 BASE = "configs/base.yaml"
 
 
@@ -43,7 +48,7 @@ def world(cfg):
     # 그것을 그대로 두면 **다른 기제를 재는 테스트가 사람마다 다른 액수에 흔들린다.**
     # 차이 자체는 `test_world_rules_v2.py` 의 전용 테스트가 본다.
     for _a in w.agents.values():
-        _a.income_mult = _a.invest_mult = 1.0
+        _a.invest_mult = 1.0
     return w
 
 
@@ -169,13 +174,13 @@ def test_calls_record_the_real_cost_not_the_request(tmp_path, cfg, world):
     """
     from core.agent_loop import Sink, execute_tool
     world.countries["Asla"].land = "interceptor"
-    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
+    a = world.agents["Asla1"]; a.ap = 1.0
     sink = Sink()
     res, _ = execute_tool("invest", {"target": "facility", "reasoning": "r"},
-                          world, a, cfg, sink, 48.0)
+                          world, a, cfg, sink, KNOB)
     assert res["ok"] and "amount" not in res
     assert sink.facility == [("Asla", cfg.costs.unit, "Asla1")]
-    assert res["budget_left"] == 10_000.0 - cfg.costs.unit
+    assert res["ap_left"] is not None
 
 
 def test_memory_and_testament_are_not_stripped_from_calls():
@@ -249,7 +254,7 @@ def test_message_id_is_assigned_before_the_translation_runs(cfg, world):
                       "from_country": "Miris", "to_country": "Asla",
                       "text": "bonjour", "route": "ai"}]
     r = loop.RunResult(world=world)
-    loop._settle_agentic(world, cfg, random.Random(0), sink, Rec(), 48.0,
+    loop._settle_agentic(world, cfg, random.Random(0), sink, Rec(), KNOB,
                          itertools.count(500), r, itertools.count(900))
     assert seen and seen[0]["msg_id"] == 900
     assert r.messages_log[0]["msg_id"] == 900
