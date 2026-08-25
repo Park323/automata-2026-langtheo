@@ -825,11 +825,13 @@ def test_learning_progress_is_visible_without_paying_to_look(cfg, world):
     # **필요액은 어느 말이든 같다** (8/22) — 다른 것은 회당 수확이다
     L = cfg.costs.learn_base
     a = world.agents["Asla2"]
-    a.lang_progress = {"fr": 140.0, "zh": 120.0}
+    # **분모를 손으로 적지 않는다** (8/25). `140/200 = 70%` 를 박아 두었더니 `learn_base`
+    # 가 160 으로 내려간 순간 낡았다 — 「숫자를 두 군데 적으면 하나가 낡는다」.
+    a.lang_progress = {"fr": L * 0.7, "zh": L * 0.6}
     obs = prompts.render_observation(world, a, cfg, KNOB)
     # **%로 적는다** (8/25) — 목표는 늘 100% 이므로 분모가 없다
-    assert "70%" in obs                     # Miris(fr) 140/200
-    assert "60%" in obs                     # Ranoa(zh) 120/200
+    assert "70%" in obs                     # Miris(fr)
+    assert "60%" in obs                     # Ranoa(zh)
 
 
 def test_the_target_never_moves(cfg, world):

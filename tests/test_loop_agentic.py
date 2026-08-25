@@ -88,7 +88,7 @@ def test_agentic_reproducible():
     cfg = _cfg(3)
     def once():
         c = _clients({"Asla1": [assistant_msg(
-            tool_call("invest", "1", target="facility", amount=50))]})
+            tool_call("invest", "1", target="facility"))]})
         return _run(cfg, c, seed=3, parallel=True).state_log
     a, b = once(), once()
     assert a == b and a.encode() == b.encode()
@@ -131,7 +131,7 @@ def test_roundrobin_reproducible():
 
     def once():
         c = _clients({"Asla1": [assistant_msg(
-            tool_call("invest", "1", target="facility", amount=50))]})
+            tool_call("invest", "1", target="facility"))]})
         return _run(cfg, c, seed=5, sequential=True).state_log
 
     a, b = once(), once()

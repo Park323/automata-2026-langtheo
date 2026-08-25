@@ -88,7 +88,7 @@ def test_speaking_stops_when_the_year_runs_out(cfg, world):
 def test_invest_facility_invalid_country(cfg, world):
     """LLM 이 국가 대신 에이전트 id(B2)를 주면 ok:False, 예산 미차감, sink 미반영."""
     world.countries["Ranoa"].land = "interceptor"
-    script = [assistant_msg(tool_call("invest", "1", target="facility", amount=50, to="Ranoa2")),
+    script = [assistant_msg(tool_call("invest", "1", target="facility", to="Ranoa2")),
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script)
     results = _results(client)
@@ -104,7 +104,7 @@ def test_invest_ignores_a_stray_amount(cfg, world):
     치르게 된다.
     """
     world.countries["Asla"].land = "interceptor"
-    script = [assistant_msg(tool_call("invest", "1", target="facility", amount="많이")),
+    script = [assistant_msg(tool_call("invest", "1", target="facility")),
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script)
     assert sink.facility == [("Asla", cfg.costs.unit, "Asla1")]
@@ -221,7 +221,7 @@ def test_learn_never_takes_more_than_needed(cfg, world):
 
 def test_learn_rejects_a_language_already_read(cfg, world):
     """Asla1 은 초기화로 zh 를 안다. 또 낼 수 없다."""
-    script = [assistant_msg(tool_call("learn", "1", country="Ranoa", amount=100)),
+    script = [assistant_msg(tool_call("learn", "1", country="Ranoa")),
               assistant_msg(tool_call("end_turn", "2"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script)
     assert any((not r["ok"]) and "already read" in r.get("error", "")
@@ -248,7 +248,7 @@ def test_speak_records_the_languages_known_at_writing_time(cfg, world):
     from core import loop as loop_mod, messaging
     from core.llm import StubClient
 
-    script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=200)),
+    script = [assistant_msg(tool_call("learn", "1", country="Miris")),
               assistant_msg(tool_call("speak", "2", to="Miris1", text="x",
                                       route="original")),
               assistant_msg(tool_call("end_turn", "3"))]
@@ -279,41 +279,54 @@ def test_speak_records_the_languages_known_at_writing_time(cfg, world):
 
 
 def test_learn_uses_less_than_a_whole_turn(cfg, world):
-    """한 번의 납부는 한 해의 십분의 일이다 — 열 번이면 AP 를 다 쓴다."""
-    # 정가 학습이 딱 한 해분의 행동력이다
-    assert (cfg.costs.learn_base / cfg.costs.unit) * cfg.ap.unit == cfg.turn.action_points
-    script = [assistant_msg(tool_call("learn", "1", country="Miris", amount=100)),
+    """한 번의 납부로는 한 해가 끝나지 않는다 — 학습과 말하기가 같은 해에 들어간다."""
+    # **정가는 한 해보다 싸다** (8/25 · Eddie). 전에는 「딱 한 해」 였는데, 수명을
+    # 16.06 → 10.00 으로 줄인 뒤 그 비중이 6.2% → 10.0% 로 뛰었다. `learn_base` 를
+    # 160 으로 내려 0.80해로 되돌렸다. 값을 박지 않고 자릿수만 본다.
+    import math
+    calls = math.ceil(cfg.costs.learn_base / cfg.costs.unit - 1e-9)
+    assert calls * cfg.ap.unit < cfg.turn.action_points
+    script = [assistant_msg(tool_call("learn", "1", country="Miris")),
               assistant_msg(tool_call("speak", "2", to="Asla3", text="x")),
               assistant_msg(tool_call("end_turn", "3"))]
     agent, sink, client, log = _run(world, cfg, "Asla2", script)
     assert len(sink.learns) == 1 and len(sink.messages) == 1   # 같은 턴에 둘 다
 
 
-def test_learn_action_points_scale_with_the_amount(cfg, world):
+def test_learning_a_language_costs_a_fixed_number_of_calls(cfg, world):
     """**분할이 손해면 안 된다.** 정액 0.3 이었을 때 정가를 여섯 번에 나눠 내면 AP 1.8,
     한 번에 내면 0.3 이었다 — 분할을 넣어놓고 분할에 벌을 주고 있었다.
 
-    비례로 두면 나눠 내든 몰아 내든 합계가 같고, **정가 전액이 딱 한 해의 행동력**이 된다
-    (L 200 ÷ 20 = 10회 × 0.1 = 1.0). 8/20 에 L 을 600 에서 내리면서 그렇게 맞췄다 —
-    600 일 때는 세 해였고 아무도 끝내지 못했다.
-    """
-    from core.agent_loop import Sink, execute_tool
-    base = cfg.costs.learn_base
-    n = int(base / cfg.costs.unit)
-    # 정가는 딱 한 해분의 행동력이다. 여기가 학습이 몇 해 걸리는지를 정하는 자리다.
-    assert n * cfg.ap.unit == cfg.turn.action_points
+    **이름이 거짓이었다** (8/25 · Eddie). `..._scale_with_the_amount` 였는데 `learn` 에는
+    `amount` 인자가 없다 — 호출당 `ap.unit` 고정이고, 진척만 `unit × 배수` 다. 스키마에서
+    빠진 뒤에도 테스트가 `amount=100` 을 계속 넘기고 있어서 진짜 파라미터처럼 읽혔다.
 
-    lump = world.agents["Asla2"]; lump.ap = 1.0
+    그래서 비용은 **호출 수**로 정해진다 (올림):
+
+        사유 0  배수 1.0  40씩 4회  AP 0.80
+        사유 1  배수 1.5  60씩 3회  AP 0.60
+        사유 2  배수 2.0  80씩 2회  AP 0.40
+    """
+    import math
+    from core.agent_loop import Sink, execute_tool
+    n = math.ceil(cfg.costs.learn_base / cfg.costs.unit - 1e-9)
+    # 한 해 안에 들어간다 — 여기가 학습이 몇 해 걸리는지를 정하는 자리다
+    assert n * cfg.ap.unit <= cfg.turn.action_points
+
+    lump = world.agents["Asla2"]; lump.ap = cfg.turn.action_points
     sink = Sink()
     for i in range(n):
         r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
                             world, lump, cfg, sink, KNOB)
         assert r["ok"], (i, r)
-    assert lump.ap == 0.0                       # 격자에 붙어 있다 (부동소수 아님)
+    # 격자에 붙어 있다 (부동소수 아님). **0.0 을 박지 않는다** — 정가가 한 해보다 싸진
+    # 뒤로 잔액이 남는다. 남는다는 것 자체가 이 커밋의 요점이다.
+    assert lump.ap == round(cfg.turn.action_points - n * cfg.ap.unit, 3)
+    assert lump.ap > 0.0                        # 배우고도 말할 여력이 남는다
     assert r["complete"] is True                # 그리고 마지막 한 번에 끝난다
 
-    # **행동력과 완성이 같은 지점에서 만난다.** 한 해를 학습에 다 쓰면 정가가 채워지므로,
-    # 여기서 「AP 부족」 을 볼 수 없다 — 그건 test_learn_stops_when_action_runs_out 이 본다.
+    # 정가가 채워졌으므로 여기서 「AP 부족」 은 볼 수 없다 — 그건
+    # test_learn_stops_when_action_runs_out 이 본다.
     r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
                         world, lump, cfg, sink, KNOB)
     assert not r["ok"] and "already" in r["error"]
@@ -357,8 +370,8 @@ def test_prompt_hides_secrets(cfg, world):
 
 def test_tool_results_hide_progress(cfg, world):
     """invest(facility) 결과에 진척 증가분이 없다 (success_prob 역산 방지)."""
-    script = [assistant_msg(tool_call("invest", "1", target="facility", amount=50)),
-              assistant_msg(tool_call("invest", "2", target="wellness", amount=30)),
+    script = [assistant_msg(tool_call("invest", "1", target="facility")),
+              assistant_msg(tool_call("invest", "2", target="wellness")),
               assistant_msg(tool_call("end_turn", "3"))]
     agent, sink, client, log = _run(world, cfg, "Asla1", script)
     for r in _results(client):
