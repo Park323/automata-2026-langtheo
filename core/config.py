@@ -122,7 +122,20 @@ class World:
     agents_per_country: int
     total_turns: int
     epoch_turns: int
-    success_prob: float
+    success_prob: float          # 역화가 아닐 때 한 시행이 성공할 확률
+    # **투자는 잃을 수도 있다** (8/26 · Eddie). 전에는 `Binom(n, 0.3)` 이라 진척이 절대
+    # 음수가 안 됐다 — 「투자」 라고 부르면서 원금 손실이 없었다.
+    #
+    #     역화 아님 (1−q)   +Binom(n, success_prob)
+    #     역화     (q)      −Binom(n, backfire_hit)
+    #
+    # 기댓값은 **오른다** (0.30n → 0.3375n) 는데 표준편차가 2.8배가 된다. 그리고 음수
+    # 확률이 **규모와 무관하게** 15% 다 — 역화가 부호를 뒤집는 혼합분포라 분산의 큰
+    # 몫이 `n` 과 무관하기 때문이다. 「크게 투자하면 안전」 이 안 된다.
+    #
+    # 옛 스냅샷에는 이 둘이 없다. 0 이면 `Binom(n, success_prob)` 그대로다.
+    backfire_prob: float = 0.0
+    backfire_hit: float = 0.0
     # 초기 나이를 1..이 값에서 뽑는다. 전원 0살이면 한꺼번에 죽어 세계가 백지가 된다.
     init_age_max: int = 10
     # **성인 나이.** 이 나이부터 아이를 낳을 수 있고, 이 나이부터 소득을 받는다.
@@ -234,13 +247,22 @@ class Config:
 
     @property
     def k(self) -> float:
-        """진척 환산 계수 = facility.eff × world.success_prob.
+        """진척 환산 계수 = facility.eff × **한 시행의 기댓값**.
 
         임계값은 **진척 단위**다. 소득을 그대로 비교하면 안 된다 (spec 7장).
         이 프로퍼티를 반드시 경유하게 만들어라 — 단위 오류가 Phase 0 에서
         실제로 나온 결함 1번이다.
+
+        **역화가 들어오면서 기댓값이 `success_prob` 이 아니게 됐다** (8/26):
+
+            (1−q) × success_prob  −  q × backfire_hit
+            = 0.85 × 0.45 − 0.15 × 0.30 = 0.3375
+
+        여기를 안 고치면 창(★A·B·C·E)이 12.5% 낮은 기댓값으로 계산된다.
         """
-        return self.facility.eff * self.world.success_prob
+        q = self.world.backfire_prob
+        return self.facility.eff * ((1.0 - q) * self.world.success_prob
+                                   - q * self.world.backfire_hit)
 
 
 def _world_from(d: dict) -> World:

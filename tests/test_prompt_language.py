@@ -771,7 +771,7 @@ def test_every_cost_row_is_titled_by_its_tool_name():
     c = config.load("configs/base.yaml")
     w = loop.init_world(c, itertools.count(1), random.Random(1))
     w.turn = 1
-    TOOLS = ("speak", "learn", "invest", "observe_risk",
+    TOOLS = ("speak", "learn", "invest", "destroy", "observe_risk",
              "propose_vote", "vote", "memory_write")
     for a in w.agents.values():
         table = prompts.render_costs(w, a, c, 0.10)

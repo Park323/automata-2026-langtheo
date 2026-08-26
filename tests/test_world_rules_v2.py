@@ -1673,3 +1673,99 @@ def test_a_finished_interceptor_can_still_be_destroyed(cfg, world):
     assert final["outcome"] == "intercept_failed"
     assert final["survivors"] == []
     assert final["interceptor_best"] == 0.0
+
+
+def test_investment_can_lose_the_principal(cfg):
+    """**투자는 잃을 수도 있다** (8/26 · Eddie).
+
+    전에는 `Binom(n, 0.3)` 이라 진척이 절대 음수가 안 됐다 — 「투자」 라고 부르면서
+    원금 손실이 없었다. 이제 역화가 부호를 뒤집는다:
+
+        역화 아님 (1−q)   +Binom(n, success_prob)
+        역화     (q)      −Binom(n, backfire_hit)
+
+    기댓값은 **오르고**(0.30n → 0.3375n) 표준편차는 2.8배가 된다. 그리고 음수 확률이
+    **규모와 무관하다** — 혼합분포라 분산의 큰 몫이 `n` 과 무관하기 때문이다.
+    「크게 투자하면 안전」 이 안 되고, 위험이 계층과 무관하게 남는다.
+    """
+    import random as _rnd
+    import statistics as _st
+
+    rng = _rnd.Random(11)
+    q = cfg.world.backfire_prob
+    assert q > 0, "역화가 꺼져 있으면 이 세계가 아니다"
+    exp = (1 - q) * cfg.world.success_prob - q * cfg.world.backfire_hit
+    assert cfg.k == pytest.approx(cfg.facility.eff * exp)
+
+    for n in (5, 20, 41):
+        xs = [loop.draw_gain(n, cfg, rng) for _ in range(6000)]
+        assert _st.mean(xs) == pytest.approx(exp * n, rel=0.10), n
+        neg = sum(1 for x in xs if x < 0) / len(xs)
+        # 음수 확률이 규모와 무관하다 — 큰 투자도 안전해지지 않는다
+        assert abs(neg - q) < 0.03, (n, neg)
+    # 부호를 뒤집으면 파괴다 — **완전 대칭**
+    xs = [loop.draw_gain(20, cfg, rng, sign=-1) for _ in range(6000)]
+    assert _st.mean(xs) == pytest.approx(-exp * 20, rel=0.10)
+    # 그래서 파괴도 q 의 확률로 **상대를 돕는다**
+    assert abs(sum(1 for x in xs if x > 0) / len(xs) - q) < 0.03
+
+
+def test_destroy_is_indistinguishable_from_a_backfire(cfg, world):
+    """**파괴인지 역화인지 가릴 수 없다** (8/26 · Eddie).
+
+    그 나라 사람이 받는 것은 `prog_up` **하나**이고, 그 안에서 「투자 · 역화 · 파괴」 가
+    갈리지 않는다. 그것이 불확실성을 늘리고, 늘어난 불확실성이 소통을 요구한다.
+
+    **행위자에게도 결과를 안 알린다.** 투자는 `fac_gain` 으로 자기 몫을 보는데 파괴는
+    그것도 없다 — 알려주면 부호를 보고 역화 여부를 알게 되고, 그러면 파괴가 확실한
+    수단이 된다. 파괴는 끝까지 도박이어야 한다.
+    """
+    import random as _rnd
+
+    from core.agent_loop import Sink, execute_tool
+
+    world.countries["Ranoa"].land = "interceptor"
+    world.countries["Ranoa"].progress = 500.0
+    a = world.agents["Asla1"]; a.ap = 1.0
+    sink = Sink()
+    r, _ = execute_tool("destroy", {"to": "Ranoa", "reasoning": "r"},
+                        world, a, cfg, sink, KNOB)
+    # 투자와 **같은 모양**으로 답한다 — 실행 → AP 소모. 결과는 없다.
+    assert set(r) == {"ok", "ap_left"}, r
+    assert r["ap_left"] == pytest.approx(1.0 - cfg.ap.unit)
+    assert sink.destroy == [("Ranoa", cfg.costs.unit * a.invest_mult, "Asla1")]
+
+    res = loop.RunResult(world=world)
+    loop._settle_step(world, cfg, _rnd.Random(3), sink, None, None,
+                      itertools.count(900), res, {}, [])
+    assert world.countries["Ranoa"].progress < 500.0
+
+    told = [q["msg"] for q in world.inbox_queue if q["to"].startswith("Ranoa")]
+    ups = [m for m in told if "prog_up" in m]
+    assert ups, told
+    for m in ups:
+        assert m["prog_up"] < 0
+        # **누가 했는지가 없다** — 이 필드가 생기면 모호성이 통째로 무너진다
+        assert "by" not in m and "agent" not in m and "who" not in m, m
+    # 행위자에게는 아무 통지도 안 간다 (`fac_gain` 이 없다)
+    mine = [q["msg"] for q in world.inbox_queue if q["to"] == "Asla1"]
+    assert not any("fac_gain" in m or "fac_moved" in m for m in mine), mine
+
+
+def test_progress_never_falls_below_zero(cfg, world):
+    """**없는 것보다 나쁜 시설은 없다.** 바닥이 없으면 파괴가 무한히 쌓여 복구가 불가능해진다."""
+    import random as _rnd
+
+    from core.agent_loop import Sink, execute_tool
+
+    world.countries["Ranoa"].land = "interceptor"
+    world.countries["Ranoa"].progress = 3.0
+    sink = Sink()
+    for aid in ("Asla1", "Asla2", "Asla3"):
+        a = world.agents[aid]; a.ap = 1.0
+        for _ in range(8):
+            execute_tool("destroy", {"to": "Ranoa", "reasoning": "r"},
+                         world, a, cfg, sink, KNOB)
+    loop._settle_step(world, cfg, _rnd.Random(5), sink, None, None,
+                      itertools.count(900), loop.RunResult(world=world), {}, [])
+    assert world.countries["Ranoa"].progress == 0.0

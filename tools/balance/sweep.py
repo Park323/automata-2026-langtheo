@@ -27,6 +27,20 @@ POLICY_COEF = 0.6      # 전액 투입은 비현실적. 현실적 최대 투자�
 W_TARGET = 0.5         # Phase 1 캘리브레이션 목표 (spec 12.4)
 
 
+def yield_per_trial(success_prob: float, backfire_prob: float = 0.0,
+                    backfire_hit: float = 0.0) -> float:
+    """한 시행의 **기댓값**. `core.config.Config.k` 와 같은 식이어야 한다 (8/26).
+
+    역화가 들어오면서 기댓값이 `success_prob` 이 아니게 됐다:
+
+        (1−q) × success_prob − q × backfire_hit
+
+    **이 파일에는 같은 식이 여섯 군데 손으로 적혀 있었다** — 「숫자를 두 군데 적으면
+    하나가 낡는다」 의 여섯 번째 사례다. 전부 여기를 경유하게 했다.
+    """
+    return (1.0 - backfire_prob) * success_prob - backfire_prob * backfire_hit
+
+
 @dataclass
 class Cfg:
     income: float            # **한 해 용량** (AP/ap_unit × unit). 옛 소득 자리다
@@ -52,6 +66,9 @@ class Cfg:
     # ★B 가 결정적이다 — 혼자 해내면 안 되는 것은 **가장 잘 짓는 나라**다.
     # 벙커에는 안 걸린다 (요격기 전용).
     build_best: float = 1.0
+    # **역화** (8/26). 기본 0 이면 옛 세계 그대로다 (`Binom(n, success_prob)`).
+    backfire_prob: float = 0.0
+    backfire_hit: float = 0.0
 
 
 # ── 수명 ───────────────────────────────────────────────────────────
@@ -79,7 +96,8 @@ def bounds(c: Cfg):
     성장은 유도에서 뺀다. 성장은 국가 투자의 결과이고 그 돈은 요격기와 경쟁하므로,
     성장을 전제로 임계를 잡으면 "국가 투자를 안 하면 구조적으로 도달 불가" 가 된다.
     """
-    k = c.facility_eff * c.success_prob * c.build_best
+    k = c.facility_eff * yield_per_trial(c.success_prob, c.backfire_prob,
+                                    c.backfire_hit) * c.build_best
     # **나이 배수를 안 곱한다** (8/25). `age_growth` 를 없앴다 — AP 는 매년 리셋돼
     # 나이와 무관하게 같은 용량이다.
     per_turn_country = c.income * c.agents
@@ -95,7 +113,8 @@ def bounds(c: Cfg):
 def passes_asserts(c: Cfg):
     A, B, C, E = bounds(c)
     # **벙커에는 `build_best` 를 안 곱한다** — 국가 효율은 요격기 전용이다 (8/23).
-    k = c.facility_eff * c.success_prob
+    k = c.facility_eff * yield_per_trial(c.success_prob, c.backfire_prob,
+                                    c.backfire_hit)
     # **실효 소득으로 잰다** (8/22) — `bounds()` 와 같은 식이다. 여기만 안 곱하면 벙커 창이
     # 창보다 좁아져서 「전 기간을 부어도 의미 없다」 가 거짓으로 걸린다.
     eff = c.income
@@ -197,8 +216,14 @@ def simulate(c: Cfg, policy, coord: float, rng: random.Random):
                     # 하나로 모은다는 뜻이고, 합리적인 조율자는 **가장 잘 짓는 나라**를
                     # 고른다 — 그래서 host 는 `build_best` 다. 자국 투자는 나라 평균(1.0).
                     n = int(amt * eff * (c.build_best if tgt == host else 1.0))
-                    prog[tgt] += sum(1 for _ in range(n)
-                                     if rng.random() < c.success_prob)
+                    # **역화** (8/26). 부호가 뒤집힐 수 있고, 진척은 0 아래로 안 간다
+                    # (`core.loop.draw_gain` 과 같은 규칙 — 두 군데가 어긋나면 w* 가
+                    # 실제 세계와 다른 값을 잰다).
+                    if rng.random() < c.backfire_prob:
+                        g = -sum(1 for _ in range(n) if rng.random() < c.backfire_hit)
+                    else:
+                        g = sum(1 for _ in range(n) if rng.random() < c.success_prob)
+                    prog[tgt] = max(0.0, prog[tgt] + g)
         # 턴 끝 — 개인별 생존 판정. 죽으면 그 자리에 0 상태 신규
         for i in range(COUNTRIES):
             for j, a in enumerate(people[i]):
@@ -336,7 +361,8 @@ def main():
                 INITIAL_BUDGET, GROWTH_SCALE_GENS, BUNKER_DEPTH_EPOCHS, INTERCEPT_POS):
             dd = dict(d, initial_budget=ib, growth_scale=epoch_income * gsg)
             probe = Cfg(interceptor=1, bunker=1, **dd)
-            k = probe.facility_eff * probe.success_prob
+            k = probe.facility_eff * yield_per_trial(probe.success_prob,
+                                        probe.backfire_prob, probe.backfire_hit)
             A, B, C, E = bounds(probe)
             lo = max(A, B, E)
             c = Cfg(**dict(dd, bunker=epoch_income * k * bd,
@@ -373,7 +399,8 @@ def main():
     print(f"{'p':>5}{'초기예산':>9}{'벙커깊이':>9}{'임계위치':>9}{'사망수':>8}  "
           f"{'w*':>6}{'민감도':>8}{'저조율':>7}{'고조율':>7}{'정책편차':>9}")
     for c, m in scored[:a.top]:
-        kk = c.facility_eff * c.success_prob
+        kk = c.facility_eff * yield_per_trial(c.success_prob, c.backfire_prob,
+                                    c.backfire_hit)
         A, B, C, E = bounds(c)
         lo = max(A, B, E)
         pos = (c.interceptor - lo) / (C * POLICY_COEF - lo)

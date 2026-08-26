@@ -132,6 +132,28 @@ def init_world(cfg, counter: "itertools.count", rng: random.Random | None = None
                  next_idx={c.id: cfg.world.agents_per_country + 1 for c in countries.values()})
 
 
+def draw_gain(n: int, cfg, rng: random.Random, sign: int = 1) -> int:
+    """시행 `n` 번의 진척. **부호가 뒤집힐 수 있다** (8/26 · Eddie).
+
+        역화 아님 (1−q)   +Binom(n, success_prob)
+        역화     (q)      −Binom(n, backfire_hit)
+
+    기댓값은 오르고(0.30n → 0.3375n) 표준편차는 2.8배가 된다. 음수 확률은 **규모와
+    무관하게** q 다 — 역화가 부호를 뒤집는 혼합분포라 분산의 큰 몫이 `n` 과 무관하다.
+    「크게 투자하면 안전」 이 안 되고, 위험이 계층과 무관하게 남는다.
+
+    `sign=-1` 이 `destroy` 다. **완전 대칭이다** — 같은 `n`, 같은 분포, 부호만 반대.
+    그래서 파괴도 q 의 확률로 **역화해서 상대를 돕는다.** 공격자도 확신할 수 없고,
+    그것이 지목을 어렵게 만든다 (모호성이 이 대칭에서 나온다).
+
+    `backfire_prob` 이 0 이면 옛 세계 그대로다 (`Binom(n, success_prob)`).
+    """
+    if rng.random() < cfg.world.backfire_prob:
+        hits = sum(1 for _ in range(n) if rng.random() < cfg.world.backfire_hit)
+        return -sign * hits
+    return sign * sum(1 for _ in range(n) if rng.random() < cfg.world.success_prob)
+
+
 def facility_eff(c, cfg) -> float:
     """돈 1원이 시설 진척 시행 몇 번이 되는가. **세 곳에서 쓰던 식을 한 군데로 모았다.**
 
@@ -499,14 +521,27 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                 # 똑같이 간다** — 통지가 없으면 그 부재가 곧 "아직 안 정했다" 가 된다.
                 gain = 0
             else:
-                n_i = int(share * eff)
-                gain = sum(1 for _ in range(n_i) if rng.random() < cfg.world.success_prob)
-                c.progress += gain
+                gain = draw_gain(int(share * eff), cfg, rng)
+                # **0 아래로는 안 내려간다.** 없는 것보다 나쁜 시설은 없다 — 그리고
+                # 바닥이 없으면 파괴가 무한히 쌓여 복구가 불가능해진다.
+                c.progress = max(0.0, c.progress + gain)
             # 행위 **후에는** 공개한다. 확률적이라 한 건으로는 success_prob 을 못 읽고,
             # 모르면 "얼마를 더 내야 하는가" 를 판단할 근거가 아예 없다.
             result.facility_gains.append({"turn": world.turn, "agent": agent_id,
                                           "to": cid, "amount": round(share, 2),
                                           "gain": gain})
+
+    # b-2. 파괴 — 투자와 같은 방식, 부호만 반대 (8/26 · Eddie). 순차 경로와 같은 규칙.
+    for to_country, share, agent_id in sorted(sink.destroy, key=lambda x: (x[0], x[2])):
+        c = world.countries[to_country]
+        if c.land is None:
+            hit = 0
+        else:
+            hit = draw_gain(int(share * facility_eff(c, cfg)), cfg, rng, sign=-1)
+            c.progress = max(0.0, c.progress + hit)
+        result.facility_gains.append({"turn": world.turn, "agent": agent_id,
+                                      "to": to_country, "amount": round(share, 2),
+                                      "gain": hit, "kind": "destroy"})
 
     # c. wellness (수명), d. national (자본)
     for aid, amount in sink.wellness:
@@ -919,9 +954,9 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         if c.land is None:
             gain = 0
         else:
-            n_i = int(share * eff)
-            gain = sum(1 for _ in range(n_i) if rng.random() < cfg.world.success_prob)
-            c.progress += gain
+            gain = draw_gain(int(share * eff), cfg, rng)
+            # **0 아래로는 안 내려간다** (위 `_settle_agentic` 과 같은 규칙).
+            c.progress = max(0.0, c.progress + gain)
         result.facility_gains.append({"turn": world.turn, "agent": agent_id,
                                       "to": to_country, "amount": round(share, 2),
                                       "gain": gain})
@@ -934,6 +969,29 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
             _notify(world, "fac_gain", note, world.turn, actor=agent_id)
         if gain:
             prog_delta[to_country] = prog_delta.get(to_country, 0.0) + gain
+    # **파괴는 투자와 같은 자리에서, 같은 방식으로 정산한다** (8/26 · Eddie).
+    #
+    # `prog_delta` 에 **합쳐 넣는다** — 그것이 모호성이다. 그 나라 사람이 받는 것은
+    # `prog_up` 하나이고, 그 안에서 「투자 · 역화 · 파괴」 가 갈리지 않는다.
+    #
+    # **행위자에게도 결과를 안 알린다.** 투자는 `fac_gain` 으로 자기 몫을 보는데
+    # 파괴는 그것도 없다 — 알려주면 부호를 보고 역화 여부를 알게 되고, 그러면 자기
+    # 행위의 효과를 확신하게 된다. 파괴는 끝까지 도박이어야 한다.
+    dstr_delta: dict = {}
+    for to_country, share, agent_id in sorted(sink.destroy, key=lambda x: (x[0], x[2])):
+        c = world.countries[to_country]
+        if c.land is None:
+            hit = 0
+        else:
+            hit = draw_gain(int(share * facility_eff(c, cfg)), cfg, rng, sign=-1)
+            c.progress = max(0.0, c.progress + hit)
+        result.facility_gains.append({"turn": world.turn, "agent": agent_id,
+                                      "to": to_country, "amount": round(share, 2),
+                                      "gain": hit, "kind": "destroy"})
+        if hit:
+            dstr_delta[to_country] = dstr_delta.get(to_country, 0.0) + hit
+    for cid, hit in dstr_delta.items():
+        prog_delta[cid] = prog_delta.get(cid, 0.0) + hit
     for cid, gain in sorted(prog_delta.items()):
         _notify(world, "progress_change",
                 {"prog_up": gain, "now": world.countries[cid].progress},

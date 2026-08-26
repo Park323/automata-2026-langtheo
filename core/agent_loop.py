@@ -35,6 +35,9 @@ class Sink:
       정산 때 안정 정렬하면 결정론이 회복된다 (재현성 #1).
     """
     facility: list = field(default_factory=list)      # (to_country, amount, agent_id)
+    # **파괴는 투자와 완전 대칭이다** (8/26 · Eddie) — 같은 AP, 같은 양, 부호만 반대.
+    # 그래서 파괴도 역화 확률로 **상대를 돕는다.** 공격자도 확신할 수 없다.
+    destroy: list = field(default_factory=list)       # (to_country, amount, agent_id)
     wellness: list = field(default_factory=list)      # (agent_id, amount)
     national: list = field(default_factory=list)      # (country, amount, agent_id)
     messages: list = field(default_factory=list)      # 발신 dict (5장, 'from' 에 agent_id)
@@ -267,6 +270,24 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         if unchanged:
             return {"ok": True, "unchanged": True}, None
         return {"ok": True}, None      # 돈도 AP 도 안 든다 — 돌려줄 것이 없다
+
+    if name == "destroy":
+        # **투자와 완전 대칭** (8/26 · Eddie). 같은 AP, 같은 양, 부호만 반대.
+        # 대상 나라만 받는다 — `target` 이 없다 (wellness·national 을 파괴할 수는 없다).
+        to = args.get("to") or agent.country
+        if to not in world.countries:
+            return {"ok": False, "error": f"unknown nation: {to}"}, None
+        amount, ap_used = cfg.costs.unit * agent.invest_mult, cfg.ap.unit
+        if not _afford(agent.ap, ap_used):
+            return {"ok": False,
+                    "error": f"not enough action; one destroy needs {ap_used}, "
+                             f"have {agent.ap:.2f}"}, None
+        _spend(agent, ap_used)
+        sink.destroy.append((to, amount, agent.id))
+        # **투자와 같은 모양으로 답한다** — 실행 → AP 소모. 결과는 그 나라의 진척
+        # 변화로만 드러나고, **누가 했는지는 아무에게도 안 알린다.** 그것이 모호성이다:
+        # 진척이 준 것을 보고 「역화인가 파괴인가」 를 가릴 수 없다.
+        return {"ok": True, "ap_left": round(agent.ap, 3)}, None
 
     if name == "invest":
         target = args.get("target")

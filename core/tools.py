@@ -110,6 +110,18 @@ def _build(reasoning_arg: bool) -> list[dict]:
                                "Defaults to your own nation"}},
         ["target"]),
 
+    fn("destroy",
+        "Set back a nation's facility. Costs the same action as one invest and works the "
+        "same way in reverse — the same amount, the opposite sign. It can backfire: "
+        "sometimes it advances that nation's facility instead. Name any nation with "
+        "`to`, your own or another; leaving `to` out targets your own nation's. "
+        "What you set back is whatever that nation is currently building — which may "
+        "not be what you think it is, and a nation that has not yet decided what to "
+        "build has nothing to set back. Nobody is told who did it.",
+        {"to": {"type": "string", "description": "any nation id, yours or another's. "
+                                                 "Defaults to your own nation"}},
+        []),
+
     fn("learn",
         "Put one fixed amount toward learning another nation's language; one payment "
         "takes the same action as an investment. "

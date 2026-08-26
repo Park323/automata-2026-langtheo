@@ -151,6 +151,7 @@ T = {
         c_obs="  observe_risk",
         c_obs_note="   隕石までの残り年数と、interceptor・bunker に要る進捗を測る。国家投資が精度を上げる",
         c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ",
+        c_dst="  destroy", c_dst_note="どこかの国の施設を後退させる。逆に進むこともある",
         inv_hdr="invest の効果",
         inv_rule="  一度の invest でどれだけ進捗が生まれるかは、人によっても国によっても違います。\n"
                  "  この二つは別々に決まります。",
@@ -230,6 +231,7 @@ T = {
         c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 和 bunker 各需要多少进度。国家投资会提高精度",
         c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一",
+        c_dst="  destroy", c_dst_note="使某国的设施倒退。也可能反而前进",
         inv_hdr="invest 的效果",
         inv_rule="  一次 invest 能产生多少进度，因人而异，也因国而异。\n"
                  "  这两件事各自决定，互不相干。",
@@ -311,6 +313,7 @@ T = {
         c_obs="  observe_risk",
         c_obs_note="   mesure les années restantes et la progression qu'exigent un interceptor et un bunker ; l'investissement national affine",
         c_inv="  invest", c_inv_note="vers wellness · national · facility",
+        c_dst="  destroy", c_dst_note="fait reculer l'installation d'une nation ; parfois elle avance au contraire",
         inv_hdr="effets d'invest",
         inv_rule="  Ce qu'un invest fait progresser varie selon les personnes et selon les nations.\n"
                  "  Ces deux choses se décident séparément.",
@@ -563,6 +566,11 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
     #    혼자서는 못 가른다** — 가르려면 같은 나라 사람끼리 맞춰봐야 한다. 그것이
     #    `inv_rule` 의 「이 둘은 별개로 정해진다」 가 뜻하는 바다.
     lines.append(row(t["c_inv"], cfg.ap.unit, t["c_inv_note"]))
+    # **투자와 나란히 놓는다** (8/26 · Eddie). 같은 AP, 같은 양, 부호만 반대이므로 표에서도
+    # 같은 값으로 붙어 있어야 그 대칭이 보인다. 「역으로 진행될 수도 있다」 를 적는 것은
+    # 규칙이지 힌트가 아니다 — 그 15% 가 없으면 파괴가 확실한 수단이 되고, 그러면
+    # 진척이 줄어든 것을 보고 파괴를 특정할 수 있게 된다.
+    lines.append(row(t["c_dst"], cfg.ap.unit, t["c_dst_note"]))
     # **없는 도구를 설명하지 않는다.** 기억은 압박선 아래에서 목록에 없으므로 비용표에도
     # 없다 — 적어 두면 「부를 수 있다」 는 거짓이 되고, 부르면 거절당한다.
     if memory:
