@@ -166,9 +166,9 @@ function build(files){
 
   const evs = g("events.jsonl");
   const d = {
-    // **`step` 이 붙은 줄은 해 도중의 스냅샷이다** (8/26). 지금 화면은 「완결된 해」 를
-    // 그리므로 걸러낸다 — 안 그러면 한 해가 여러 번 그려진다. 스텝 재생을 붙이려면
-    // 여기서 `stepRows` 를 따로 잡으면 된다.
+    // **`step` 이 붙은 줄은 해 도중의 스냅샷이다** (8/26). 섞어 그리면 한 해가 여러 번
+    // 그려진다 — 실측에서 1해가 9명이 아니라 **54줄**(스냅샷 5회 + 턴 끝)이었다.
+    // 갈라 두고, 아래에서 **진행 중인 해에만** 마지막 스냅샷을 쓴다.
     state: g("state.jsonl").filter(r => r.step == null),
     stepRows: g("state.jsonl").filter(r => r.step != null),
     messages: g("messages.jsonl"),
@@ -176,12 +176,29 @@ function build(files){
     knob: grab("knob_ai"), seed: grab("seed"), threshold: thr,
     turns: 0, byTurn: {},
   };
-  d.turns = Math.max(1, ...d.metrics.map(m => m.turn), ...d.state.map(s => s.turn));
-  for (let t = 1; t <= d.turns; t++) d.byTurn[t] = {state:[], messages:[], events:[], metric:null};
+  // **진행 중인 해도 센다** (8/26). 스냅샷만 있는 해가 마지막 해일 수 있다 — 그것을
+  // 빼면 뷰어가 한 해 내내(2~4분) 옛 화면에 멈춘다. 스냅샷을 넣은 이유가 그것이다.
+  d.turns = Math.max(1, ...d.metrics.map(m => m.turn), ...d.state.map(s => s.turn),
+                     ...d.stepRows.map(s => s.turn));
+  for (let t = 1; t <= d.turns; t++)
+    d.byTurn[t] = {state:[], messages:[], events:[], metric:null, live:0};
   const put = (arr, key) => arr.forEach(r => {
     const b = d.byTurn[r.turn]; if (b) b[key].push(r);
   });
   put(d.state, "state"); put(d.messages, "messages"); put(evs, "events");
+  // **끝나지 않은 해는 마지막 스냅샷으로 그린다.** 순차 라운드로빈은 차례마다 즉시
+  // 정산하므로 그 상태는 일관된다 — 「아직 안 움직인 사람이 있는 해」 다.
+  // 끝난 해는 건드리지 않는다 (턴 끝 줄이 진실이고, 스냅샷은 그 앞의 스냅사진이다).
+  const lastStep = {};
+  d.stepRows.forEach(r => {
+    if (!(r.turn in lastStep) || r.step > lastStep[r.turn]) lastStep[r.turn] = r.step;
+  });
+  Object.keys(lastStep).forEach(t => {
+    const b = d.byTurn[t];
+    if (!b || b.state.length) return;                 // 이미 끝난 해는 그대로
+    b.state = d.stepRows.filter(r => r.turn == t && r.step === lastStep[t]);
+    b.live = lastStep[t];                             // 「몇 차례까지 왔나」
+  });
   d.metrics.forEach(m => { if (d.byTurn[m.turn]) d.byTurn[m.turn].metric = m; });
   return d;
 }
@@ -512,7 +529,11 @@ function render(){
   $("#scrub").value = turn;
   const m = b.metric;
   const wall = m && m.turn_wall_ms ? `  ·  ${(m.turn_wall_ms / 1000).toFixed(1)}s` : "";
-  $("#turnlab").textContent = `${FIRST_YEAR + turn - 1}년  (턴 ${turn}/${D.turns})${wall}`;
+  // **진행 중인 해임을 밝힌다** — 아직 안 움직인 사람이 있다는 뜻이고, 그것을 안 적으면
+  // 「이 해는 조용했다」 로 오독된다.
+  const live = b.live ? `  ·  진행 중 (${b.live}차례째)` : "";
+  $("#turnlab").textContent =
+    `${FIRST_YEAR + turn - 1}년  (턴 ${turn}/${D.turns})${wall}${live}`;
 }
 
 // ── 조작 ──────────────────────────────────────────────────────────────────

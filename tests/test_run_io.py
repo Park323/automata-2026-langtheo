@@ -272,3 +272,30 @@ def test_mid_turn_snapshots_are_marked_and_skipped_by_metrics(tmp_path, cfg):
             ("viewer/index.html", "r.step == null")):
         src = (run_io.ROOT / path).read_text(encoding="utf-8")
         assert needle in src, path
+
+
+def test_the_viewer_never_draws_a_turn_twice():
+    """**중간 스냅샷을 섞어 그리면 사람이 증식한다** (8/26 · Eddie 발견).
+
+    실측에서 1해가 9명이 아니라 **54줄**로 그려졌다 (스냅샷 5회 + 턴 끝 1회 = 6배).
+
+    갈라 두는 것만으로는 부족했다 — 처음엔 중간 줄을 **걸러내기만** 했는데, 그러면
+    진행 중인 해가 통째로 사라져 뷰어가 한 해 내내(2~4분) 옛 화면에 멈춘다.
+    스냅샷을 넣은 이유가 바로 그것이었으므로 정반대가 된다.
+
+    규칙은 둘이다:
+      · 끝난 해는 **턴 끝 줄**로 그린다 (스냅샷은 그 앞의 스냅사진일 뿐이다)
+      · 끝나지 않은 해는 **마지막 스냅샷**으로 그리고 「진행 중」 이라고 밝힌다
+    """
+    from core import run_io
+
+    src = (run_io.ROOT / "viewer" / "index.html").read_text(encoding="utf-8")
+    # 갈라 둔다
+    assert "g(\"state.jsonl\").filter(r => r.step == null)" in src
+    assert "stepRows" in src
+    # **진행 중인 해도 센다** — `turns` 계산에 stepRows 가 들어가야 한다
+    assert "...d.stepRows.map(s => s.turn)" in src
+    # **이미 끝난 해는 덮어쓰지 않는다** — 이 가드가 빠지면 다시 증식한다
+    assert "if (!b || b.state.length) return;" in src
+    # 진행 중임을 화면에 밝힌다
+    assert "진행 중" in src
