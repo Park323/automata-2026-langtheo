@@ -42,7 +42,12 @@ class TurnCfg:
 
 @dataclass(frozen=True)
 class AP:
-    speak: float
+    speak: float          # 자국 내 발신
+    # **국경을 넘는 값** (8/26 · Eddie). 전에는 자국과 국제-original 이 같은 값이라,
+    # 국경을 넘는 마찰이 **오직 언어뿐**이었다. 원래 의도는 발신 자체에 차등을 두는
+    # 것이었다 — AI 번역은 **언어** 마찰을 없애지 거리 마찰을 없애지 않으므로,
+    # 노브(ai)도 이 국제 프리미엄을 그대로 진다.
+    speak_intl: float
     propose_vote: float
     memory_write: float
     # **기본값을 두지 않는다.** 넷 다 기본값이 있었고 셋이 yaml 과 달랐다

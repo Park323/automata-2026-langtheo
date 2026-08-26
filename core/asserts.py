@@ -172,12 +172,14 @@ def check_all(cfg) -> list[str]:
         )
 
     # 노브 — **원문 경로보다 싸지면 경로 선택이 무의미해진다.** 전 구간에서.
-    # 돈이 사라진 뒤로 비교 대상은 `ap.speak` 다 (자국·original 발신의 AP).
+    # **비교 대상은 `ap.speak_intl` 이다** (8/26). `ap.speak`(자국) 으로 걸면 `ai` 가
+    # 국제 원문보다 싼 세계가 통과한다 — 그러면 배울 이유가 구조적으로 사라진다.
     aps = list(cfg.knob.comm_intl_ai_ap)
     for v in aps:
-        if not (v >= cfg.ap.speak):
+        if not (v >= cfg.ap.speak_intl):
             fails.append(
-                f"노브: comm_intl_ai_ap 의 값 {v} 가 ap.speak({cfg.ap.speak}) 이상이어야 한다. "
+                f"노브: comm_intl_ai_ap 의 값 {v} 가 "
+                f"ap.speak_intl({cfg.ap.speak_intl}) 이상이어야 한다. "
                 f"AI 번역이 원문보다 싸지면 아무도 배우지 않는다 — 노브가 방향을 잃는다."
             )
     # **한 해에 한 통도 못 보내면 노브가 아니라 금지다.**

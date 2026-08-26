@@ -470,7 +470,7 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
              f"{'':<{w}}{t['col_ap']:>{m}}",
              row(t["c_dom"], cfg.ap.speak,
                  t["c_dom_note"].format(cap=L[agent.native_lang])),
-             row(t["c_orig"], cfg.ap.speak, t["c_orig_note"])]
+             row(t["c_orig"], cfg.ap.speak_intl, t["c_orig_note"])]
     # **두 경로를 같은 깊이로 적는다** (8/25 · Eddie). `original` 은 네 군데서 설명되고
     # (`route` 설명 · 비고 · 나라별 줄 · SYS) `ai` 는 **이름과 가격뿐**이었다. 그러면
     #

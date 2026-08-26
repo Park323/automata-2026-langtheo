@@ -66,16 +66,17 @@ def test_newborns_do_not_mint_money(c):
 
 
 def test_the_world_holds_five_generations(c):
-    """**세계 50해 ÷ 수명 10해 = 다섯 세대** (8/25).
+    """**세계 30해 ÷ 수명 5해 = 여섯 세대** (8/26 · 세계 축소).
 
-    전에는 60/16 ≈ 3.7 세대였고 주기(20)가 기대수명(16.06)의 반올림이라고 적혀 있었다.
-    이제 주기는 `total_turns / 3` 이고 수명과 무관하다 — 두 값이 각자의 이유를 갖는다.
+    주기(`epoch_turns`)는 `total_turns / 3` 이고 **수명과 무관하다** — 그것은 「몰아치기
+    방지 기간」 이지 세대 길이가 아니다. 수명 1세대로 맞추면 ★E 바닥이 올라 세계가 15%
+    어려워진다 (임계/총용량 0.138 → 0.159).
 
     세대가 늘면 유언·상속을 타는 전달이 더 여러 번 시험된다 (spec 3.3 의 구전).
     """
     life = expected_life(c.surv_lambda, c.surv_k)
-    assert life == pytest.approx(10.0, abs=0.1)
-    assert c.total_turns / life == pytest.approx(5.0, abs=0.2)
+    assert life == pytest.approx(5.0, abs=0.1)
+    assert c.total_turns / life == pytest.approx(6.0, abs=0.2)
     assert c.epoch_turns == round(c.total_turns / 3)
 
 
@@ -89,5 +90,7 @@ def test_a_lifetime_holds_several_conversation_round_trips(c):
     ⚠ 병렬 경로는 여전히 다음 해 배달이다. `run_agentic` 의 기본값이 병렬이므로, 본실험을
       순차로 돌린다면 그 기본값도 바꿔야 한다 — 안 바꾸면 인자 없이 돌린 런이 다른 세계다.
     """
+    # 순차에서는 한 해 안에 왕복이 끝나므로 **생애 해 수가 곧 왕복 횟수**다.
+    # 세계를 30해로 줄이며 수명도 5 로 줄였다 (8/26) — 네 번이면 「몇 번」 은 된다.
     life = expected_life(c.surv_lambda, c.surv_k)
-    assert life >= 8, f"생애 {life:.1f}해 — 순차에서도 왕복 8회는 있어야 한다"
+    assert life >= 4, f"생애 {life:.1f}해 — 순차에서도 왕복 네 번은 있어야 한다"

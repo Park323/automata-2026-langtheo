@@ -77,7 +77,11 @@ def test_speaking_stops_when_the_year_runs_out(cfg, world):
     # 「not enough AP」 → 「not enough action」. **에이전트에게 AP 는 없는 말이다** —
     # 관측·비용표가 「行動力 / 行动力 / action」 이라고 부른다. 그리고 남은 값을 알려준다.
     fail = next(r for r in oks if not r["ok"])
-    assert "not enough action" in fail["error"] and "have 0.00" in fail["error"]
+    # **나머지가 0 이라고 박지 않는다** (8/26). `speak` 0.08 은 한 해 1.00 을 정수로
+    # 나누지 않으므로 12번 뒤에 0.04 가 남는다 — 남지만 **한 번 값에 못 미친다**.
+    left = round(cfg.turn.action_points - n * cfg.ap.speak, 3)
+    assert left < cfg.ap.speak
+    assert "not enough action" in fail["error"] and f"have {left:.2f}" in fail["error"]
 
 
 # ── #3 예산 고갈 ─────────────────────────────────────────────────────────────

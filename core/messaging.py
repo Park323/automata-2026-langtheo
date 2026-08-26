@@ -54,10 +54,19 @@ def ap_cost(kind: str, cfg, knob_ai: float) -> float:
     `knob_ai` 가 곧 ai 발신의 AP 다 — 돈 노브를 없애면서 짝 찾기(`comm_intl_ai` 에서
     인덱스를 찾아 `comm_intl_ai_ap` 를 고르는)가 필요 없어졌다.
 
-    자국·`original` 은 `ap.speak` 그대로다. **노브가 재려는 마찰이 AI 번역에만 있다** —
-    거기만 비싸져야 「번역이 비싸지면 배우는가」 를 잰다.
+    **세 값이 갈린다** (8/26 · Eddie):
+
+        domestic   `ap.speak`        우리끼리
+        original   `ap.speak_intl`   국경을 넘는 값 — 게다가 배워야 닿는다
+        ai         `knob_ai`         국경 값 + 기계 값
+
+    전에는 앞의 둘이 같았다. 그러면 국경을 넘는 마찰이 **오직 언어뿐**이고, 노브
+    최저 눈금에서 「AI 가 이웃과 말하는 것만큼 싸다」 로 읽힌다. AI 번역은 언어 마찰을
+    없애지 거리 마찰을 없애지 않는다.
     """
-    return knob_ai if kind == "ai" else cfg.ap.speak
+    if kind == "ai":
+        return knob_ai
+    return cfg.ap.speak if kind == "domestic" else cfg.ap.speak_intl
 
 
 # ── 도착한 글은 무슨 말인가 ────────────────────────────────────────────────────

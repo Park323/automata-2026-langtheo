@@ -1319,9 +1319,23 @@ def test_exactly_affordable_is_affordable(cfg, world):
     # 썼는데, `speak` 이 0.1 이 된 뒤로 1.0 에서 0.2 씩 빼서는 0.1 에 **닿지 못한다**.
     # 격자를 확인하는 테스트가 격자를 못 쓰고 있었다.
     left = cfg.ap.speak
-    for tool, args, step in (("invest", {"target": "wellness"}, cfg.ap.unit),
-                             ("speak", {"to": "Ranoa2", "text": "x"}, cfg.ap.speak)):
-        while round(a.ap - step, 3) >= left:
+    # **조합을 찾아서 쓴다** (8/26). 전에는 큰 단위로 내려가다 작은 단위로 마무리했는데,
+    # `invest` 0.10 과 `speak` 0.08 로 바뀐 뒤로는 그 방식이 `left` 에 **닿지 못한다**
+    # (1.00 에서 0.10 씩 빼면 0.10, 0.08 이 안 나온다). 격자를 확인하는 테스트가 격자를
+    # 못 쓰면 안 되므로, 값에서 조합을 **유도한다** — 가격이 또 바뀌어도 낡지 않는다.
+    steps = (("invest", {"target": "wellness"}, cfg.ap.unit),
+             ("speak", {"to": "Ranoa2", "text": "x"}, cfg.ap.speak))
+    need = round(cfg.turn.action_points - left, 3)
+    plan = None
+    for i in range(int(need / steps[0][2]) + 1):
+        rest = round(need - i * steps[0][2], 3)
+        j = round(rest / steps[1][2], 6)
+        if rest >= 0 and abs(j - round(j)) < 1e-9:
+            plan = [(steps[0], i), (steps[1], int(round(j)))]
+            break
+    assert plan, (need, [x[2] for x in steps])
+    for (tool, args, _step), n in plan:
+        for _ in range(n):
             assert _do(world, cfg, a, tool, args)["ok"], (tool, a.ap)
     assert a.ap == left                      # 0.19999… 이 아니라 정확히 그 값
 
