@@ -141,7 +141,7 @@ T = {
         c_ai="  speak（国際・ai）",
         c_learn="  learn（{nation} の言語）",
         c_learn_prog="   これまで {done:.0f}%",
-        c_fac_mine="  {nation} の施設にこれまで出した額: {v:.0f}",
+        c_fac_mine="  {nation} の施設に出したことがある",
         c_plain="   一度で {gain:.0f}% 進む",
         c_cheap="   自国に話せる人がいるので一度で {gain:.0f}% 進む",
         c_disc="   親が話せたので一度で {gain:.0f}% 進む",
@@ -220,7 +220,7 @@ T = {
         c_ai="  speak（国际·ai）",
         c_learn="  learn（{nation} 的语言）",
         c_learn_prog="   目前 {done:.0f}%",
-        c_fac_mine="  你至今向 {nation} 的设施投入: {v:.0f}",
+        c_fac_mine="  你曾向 {nation} 的设施投入过",
         c_plain="   一次进 {gain:.0f}%",
         c_cheap="   本国有人会说，所以一次进 {gain:.0f}%",
         c_disc="   父母会说，所以一次进 {gain:.0f}%",
@@ -301,7 +301,7 @@ T = {
         c_ai="  speak (international, ai)",
         c_learn="  learn (langue de {nation})",
         c_learn_prog="   déjà {done:.0f}%",
-        c_fac_mine="  déjà versé à l'installation de {nation} : {v:.0f}",
+        c_fac_mine="  déjà versé à l'installation de {nation}",
         c_plain="   +{gain:.0f}% par appel",
         c_cheap="   +{gain:.0f}% par appel : quelqu'un de votre nation la parle",
         c_disc="   +{gain:.0f}% par appel : votre parent la parlait",
@@ -895,7 +895,10 @@ def render_observation(world, agent, cfg, knob_ai: float,
         # **내가 어느 나라 시설에 얼마를 냈는지.** 내 행동의 합이라 상대 국가 정보를
         # 흘리지 않는다. 그 나라의 총 진척은 여전히 안 알려준다 (자국은 위에 있고,
         # 타국은 4.1).
-        *[t["c_fac_mine"].format(nation=k, v=v)
+        # **「어느 나라에 얼마 냈다」 를 뺐다** (8/26 · Eddie). 액수는 세계가 말하는 값이
+        # 아니다 — AP 가 유일한 단위이기로 했고, 그 값은 `fac_gain` 의 진척과 나누면
+        # 국가 효율이 된다. 어디에 냈는지는 자기가 한 일이라 기억에 적을 수 있다.
+        *[t["c_fac_mine"].format(nation=k)
           for k, v in sorted(agent.facility_invested.items()) if v > 0],
         "",
         t["cap"],

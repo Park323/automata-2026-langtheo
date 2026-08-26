@@ -303,12 +303,18 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             # 그보다 싸다), "타국 사정은 소통해야만 안다" 는 전제가 통째로 무너진다.
             # 정해지지 않았으면 돈은 나가고 아무 일도 일어나지 않는다 — route=original 과
             # 같은 도박이다 (spec 4.1 은닉 목록: 타국의 진척·예산·국토·언어 능력).
-            # **내가 그 나라에 낸 누적**을 함께 돌려준다. learn 이 그러는데 여기만
-            # 안 그러고 있었다 (state.Agent.facility_invested).
+            # 누적은 **우리 로그에만** 남긴다 (`state.jsonl` 의 facility_invested).
             agent.facility_invested[to] = agent.facility_invested.get(to, 0.0) + amount
-            return {"ok": True,
-                    "your_total_into": round(agent.facility_invested[to], 1),
-                    "ap_left": round(agent.ap, 3)}, None
+            # **투자의 사이클은 「실행 → AP 소모 → 진척」 이 다다** (8/26 · Eddie).
+            #
+            # `your_total_into` 를 돌려주고 있었다. 그러면 비용표에서 지운 액수가
+            # **두 번의 호출로 복원된다** (차분이 곧 한 번의 액수), 그리고 `fac_gain` 의
+            # 진척과 나누면 국가 효율이 다시 나온다. 실제로 유언에 유통됐다 —
+            # 「J'ai investi 442 unités chez Asla」 · 「J'y ai versé 104」.
+            #
+            # 진척은 여기서 돌려줄 수 없다 — 정산은 이 호출 뒤에 일어난다. `fac_gain` 이
+            # 알린다 (「進捗が 18 進みました」). 그래서 여기는 AP 만 답한다.
+            return {"ok": True, "ap_left": round(agent.ap, 3)}, None
         if target == "wellness":
             sink.wellness.append((agent.id, amount))
             return {"ok": True,                                  # λ 변화 비공개
@@ -373,9 +379,16 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         done = done_before + gain
         # 남는 것은 **내가 몰랐던 것**뿐이다. 누적 진척과 그때그때의 필요액은 턴을
         # 넘나들며 바뀌고(국내 구사자가 생기면 절반이 된다), 계산으로 알 수 없다.
+        # **학습의 사이클은 「실행 → AP 소모 → 진척 y%」 다** (8/26 · Eddie).
+        #
+        # `progress 30 · required 80 · remaining 50` 을 돌려주고 있었다. 8/25 에 비용표의
+        # 「一度で 40 たまる」 를 「25% 進む」 로 바꿨는데 **응답이 절대 수치를 그대로
+        # 돌려주고 있었다** — 게다가 `required` 는 `learn_base` 를 직접 노출하고,
+        # 사유를 알면 회당 진척까지 나눗셈으로 나온다.
+        #
+        # 목표는 늘 100% 이므로 분모를 적지 않는다 (비용표의 「これまで N%」 와 같은 형식).
         return {"ok": True,
-                "progress": round(done, 1), "required": need,
-                "remaining": round(max(0.0, need - done), 1),
+                "progress_pct": round(done / need * 100),
                 # **일정을 말하지 않는다 — 다 냈는지만 적는다.**
                 #
                 # `can_read_next_turn` 이었는데, 순차 라운드로빈이 학습을 **차례마다**

@@ -199,15 +199,18 @@ def test_learn_is_paid_in_instalments(cfg, world):
     assert [r["charged"] for r in sink.learns] == [cfg.costs.unit] * 2
     assert [r["progress_before"] for r in sink.learns] == [0.0, cfg.costs.unit]
     (rec,) = sink.learns[:1]
-    assert rec["required"] == L
-    # **응답은 내가 몰랐던 것만 담는다** — 요청한 국가·액수는 되돌려주지 않는다.
-    res = [r for r in _results(client) if "progress" in r]
-    # **회당 수확은 `costs.unit × 배율`** — Asla2 → Miris 는 도움이 없어 정가다
+    assert rec["required"] == L            # 우리 로그에는 절대 수치가 남는다
+    # **학습의 사이클은 「실행 → AP 소모 → 진척 y%」 다** (8/26 · Eddie).
+    # 전에는 `progress 30 · required 80 · remaining 50` 이었다 — 8/25 에 비용표를
+    # 「25% 進む」 로 바꿨는데 응답이 절대 수치를 그대로 돌려주고 있었고, `required` 는
+    # `learn_base` 를 직접 노출했다. 목표는 늘 100% 이므로 분모를 적지 않는다.
+    res = [r for r in _results(client) if "progress_pct" in r]
     u = cfg.costs.unit
-    assert [r["progress"] for r in res] == [u, 2 * u]   # 같은 해에도 쌓인다
-    assert res[-1]["remaining"] == L - 2 * u
+    assert [r["progress_pct"] for r in res] == [
+        round(u / L * 100), round(2 * u / L * 100)]     # 같은 해에도 쌓인다
     assert res[-1]["complete"] is False   # 일정이 아니라 사실만
-    assert "toward" not in res[0]         # 요청한 국가를 되돌려주지 않는다
+    for gone in ("progress", "required", "remaining", "toward"):
+        assert gone not in res[0], gone
 
 
 def test_learn_never_takes_more_than_needed(cfg, world):
@@ -219,7 +222,7 @@ def test_learn_never_takes_more_than_needed(cfg, world):
     sink = Sink()
     r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
                         world, a, cfg, sink, KNOB)
-    assert r["ok"] and r["progress"] == L and r["complete"] is True
+    assert r["ok"] and r["progress_pct"] == 100 and r["complete"] is True
     assert sink.learns[0]["charged"] == 5
 
 

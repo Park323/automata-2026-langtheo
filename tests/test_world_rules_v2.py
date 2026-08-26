@@ -1121,11 +1121,17 @@ def test_the_prompt_never_prints_a_foreign_gain_number(cfg, world):
 
 # ── 내가 그 나라에 낸 누적 (8/18) ───────────────────────────────────────────
 
-def test_facility_investment_returns_my_running_total(cfg, world):
-    """**`learn` 은 누적을 돌려주는데 `facility` 는 안 돌려주고 있었다.**
+def test_investment_answers_only_with_action_spent(cfg, world):
+    """**투자의 사이클은 「실행 → AP 소모 → 진척」 이 다다** (8/26 · Eddie).
 
-    실측에서 13턴에 885원을 한 나라에 나눠 낸 에이전트가 자기가 얼마 냈는지를
-    **메모로만** 알았다 — `memory_write` 로 덮이면 그마저 사라진다.
+    `your_total_into`(누적 액수)를 돌려주고 있었다. 그러면 비용표에서 지운 액수가
+    **두 번의 호출로 복원된다** — 차분이 곧 한 번의 액수이고, `fac_gain` 의 진척과
+    나누면 국가 효율이 다시 나온다. 실제로 유언에 유통됐다:
+
+        「J'ai investi 442 unités chez Asla」 · 「J'y ai versé 104」 · 「versé 294」
+
+    진척은 이 호출에서 돌려줄 수 없다 — 정산이 뒤에 온다. `fac_gain` 이 알린다.
+    그래서 응답은 **AP 하나뿐**이고, 누적은 우리 로그(`state.jsonl`)에만 남는다.
     """
     from core.agent_loop import Sink, execute_tool
     world.countries["Ranoa"].land = "interceptor"
@@ -1136,8 +1142,10 @@ def test_facility_investment_returns_my_running_total(cfg, world):
         r, _ = execute_tool("invest", {"target": "facility",
                                        "to": "Ranoa", "reasoning": "r"},
                             world, a, cfg, sink, KNOB)
-        assert r["your_total_into"] == n * cfg.costs.unit
-    assert a.facility_invested == {"Ranoa": 3 * cfg.costs.unit}
+        assert set(r) == {"ok", "ap_left"}, r
+        assert r["ap_left"] == pytest.approx(1.0 - cfg.ap.unit)
+    # 누적은 **우리 쪽**에 남는다 — 분석은 그대로 된다
+    assert a.facility_invested == {"Ranoa": 3 * cfg.costs.unit * a.invest_mult}
 
 
 def test_the_running_total_is_per_nation_and_leaks_nothing_about_them(cfg, world):
@@ -1161,14 +1169,19 @@ def test_the_running_total_is_per_nation_and_leaks_nothing_about_them(cfg, world
     assert not any("progress" in o for o in outs)
 
 
-def test_the_observation_shows_only_my_own_contributions(cfg, world):
-    """관측에도 적는다 — `learn` 진척이 그러는 것과 같다. 낸 적 없는 나라는 안 나온다."""
+def test_the_observation_names_where_i_gave_but_never_how_much(cfg, world):
+    """**어디에 냈는지는 내 일, 얼마인지는 액수다** (8/26 · Eddie).
+
+    전에는 「Ranoa の施設にこれまで出した額: 210」 이었다. 액수는 세계가 말하는 값이
+    아니고(AP 가 유일한 단위다), `fac_gain` 의 진척과 나누면 국가 효율이 된다.
+    """
     from domains.meteor import prompts
     a = world.agents["Asla1"]
     a.facility_invested = {"Ranoa": 210.0}
     world.countries["Miris"].progress = 7777.0
     obs = prompts.render_observation(world, a, cfg, KNOB)
-    assert "210" in obs and "Ranoa" in obs
+    assert "Ranoa" in obs                             # 어디에 냈는지는 적는다
+    assert "210" not in obs                           # 얼마인지는 안 적는다
     assert "7777" not in obs                          # 타국 진척은 여전히 없다
 
 
@@ -1216,7 +1229,7 @@ def test_learn_reports_completion_not_a_schedule(cfg, world):
     a.parent_langs = set()                # 배율을 정가로 고정해 계산을 단순하게
     r, _ = execute_tool("learn", {"country": "Ranoa", "reasoning": "r"},
                         world, a, cfg, sink, KNOB)
-    assert r["complete"] is True and r["remaining"] == 0.0
+    assert r["complete"] is True and r["progress_pct"] == 100
     assert not any("turn" in k for k in r)        # 일정을 말하는 필드가 없다
 
     # 그리고 순차 정산은 실제로 같은 턴에 반영한다
