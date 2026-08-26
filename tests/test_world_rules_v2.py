@@ -380,14 +380,16 @@ def test_progress_gain_is_reported_after_the_fact(cfg, world):
     by = {g["agent"]: g for g in r.facility_gains}
     assert by["Asla1"]["amount"] == 90.0 and by["Asla1"]["to"] == "Ranoa"
     assert sum(g["gain"] for g in r.facility_gains) == world.countries["Ranoa"].progress
-    # 출자자에게 다음 턴 인박스로 간다. **자국민은 액수까지, 외국인은 여부만.**
-    gains = [e for e in world.inbox_queue
-             if "fac_gain" in e["msg"] or "fac_moved" in e["msg"]]
-    assert {e["to"] for e in gains} == {"Asla1", "Ranoa2"}
-    assert all(e["deliver_turn"] == world.turn + 1 for e in gains)
-    by = {e["to"]: e["msg"] for e in gains}
-    assert "fac_gain" in by["Ranoa2"] and "fac_moved" not in by["Ranoa2"]
-    assert "fac_moved" in by["Asla1"] and "fac_gain" not in by["Asla1"]
+    # **자국민은 `impact` 로 받는다** (8/26). 그 줄이 「누가 · 얼마 · 그래서 지금 얼마」 를
+    # 다 말하므로 자기 몫 통지를 따로 안 보낸다 — 같은 값이 두 번 오던 것을 없앴다.
+    imp = [e for e in world.inbox_queue if "impact_by" in e["msg"]]
+    assert {e["msg"]["impact_by"] for e in imp} == {"Asla1", "Ranoa2"}
+    # 그 나라 사람 전원이 받는다 (행위자의 국적과 무관하게)
+    assert {e["to"] for e in imp} >= {"Ranoa1", "Ranoa2", "Ranoa3"}
+    # 외국인은 `impact` 를 못 받으므로 여부만 따로 온다
+    moved = [e for e in world.inbox_queue if "fac_moved" in e["msg"]]
+    assert {e["to"] for e in moved} == {"Asla1"}
+    assert all(e["deliver_turn"] == world.turn + 1 for e in moved)
 
 
 def test_gain_notice_reaches_a_foreign_contributor(cfg, world):
@@ -1081,13 +1083,15 @@ def test_foreign_gain_amount_is_hidden(cfg, world):
     sink = Sink()
     sink.facility = [("Ranoa", 200.0, "Asla1"), ("Ranoa", 200.0, "Ranoa2")]
     _settle(world, cfg, sink)
-    msgs = {e["to"]: e["msg"] for e in world.inbox_queue
-            if "fac_gain" in e["msg"] or "fac_moved" in e["msg"]}
-    # 외국인: 숫자가 한 글자도 없다
-    assert msgs["Asla1"] == {"msg_id": msgs["Asla1"]["msg_id"], "amount": 200.0,
+    msgs = {e["to"]: e["msg"] for e in world.inbox_queue if "fac_moved" in e["msg"]}
+    # **외국인에게는 숫자가 한 글자도 없다.** `amount` 도 뺐다 (8/26) — 액수 자체가
+    # 누출이었다.
+    assert msgs["Asla1"] == {"msg_id": msgs["Asla1"]["msg_id"],
                              "to": "Ranoa", "fac_moved": True}
-    # 자국민: 그대로 — 자국 진척 델타로 어차피 보이는 값이다
-    assert isinstance(msgs["Ranoa2"].get("fac_gain"), int)
+    # 자국민은 `impact` 로 받는다 — 그 나라 사람 전원이 같은 줄을 본다
+    imp = [e["msg"] for e in world.inbox_queue
+           if "impact_by" in e["msg"] and e["to"] == "Ranoa2"]
+    assert len(imp) == 2 and {m["impact_by"] for m in imp} == {"Asla1", "Ranoa2"}
 
 
 def test_the_notice_still_tells_whether_anything_moved(cfg, world):

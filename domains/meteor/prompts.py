@@ -177,14 +177,11 @@ T = {
         last_ask="——あなたの生涯はここで終わります。あとに来る人へ、ひとこと残してください。道具は使えません。日本語で、{cap} 文字までで書いてください。",
         testa="  あなたより前にこの場所にいた人が残した言葉:", testa_line="    「{t}」",
         gifted="  {frm} があなたに {amt:.0f} を渡しました。",
-        fac_gain="  あなたが出した分で、自国の {land} が {gain:.0f} 進みました。",
         fac_moved="  あなたの出資は {to} の進捗を進めました。",
         fac_still="  あなたの出資は {to} の進捗を何も進めませんでした。",
-        dst_hit="  あなたの手で、自国の {land} が {mag:.0f} 後退しました。",
-        dst_back="  あなたの手は逆に働き、自国の {land} が {mag:.0f} 進みました。",
         dst_moved="  あなたの手は {to} の進捗を後退させました。",
         dst_still="  あなたの手は {to} の進捗を後退させられませんでした。",
-        impact_up="  {by} の手が働いて、自国の {land} が {mag:.0f} 進みました、{now:.0f} になりました。",
+        impact_up="  {by} の手が働いて、自国の {land} が {mag:.0f} 進んで {now:.0f} になりました。",
         impact_down="  {by} の手が働いて、自国の {land} が {mag:.0f} 後退して {now:.0f} になりました。",
         cap_up="  自国の技術力が {pct:.2f}% 上がりました（はじめから {tot:.2f}%）。",
         ballot_kept="  採決の結果、建てるものは {land} のままです。",
@@ -262,11 +259,8 @@ T = {
         last_ask="——你的一生到此为止。给后来的人留一句话吧。不能使用工具。请用中文，{cap} 个字以内。",
         testa="  在你之前站在这个位置的人留下的话:", testa_line="    「{t}」",
         gifted="  {frm} 给了你 {amt:.0f}。",
-        fac_gain="  你投入的部分，使本国的 {land} 前进了 {gain:.0f}。",
         fac_moved="  你的投入使 {to} 的进度有所前进。",
         fac_still="  你的投入没有使 {to} 的进度前进。",
-        dst_hit="  你的行动使本国的 {land} 倒退了 {mag:.0f}。",
-        dst_back="  你的行动反了过来，本国的 {land} 前进了 {mag:.0f}。",
         dst_moved="  你的行动使 {to} 的进度倒退了。",
         dst_still="  你的行动没能让 {to} 的进度倒退。",
         impact_up="  {by} 出手，使本国的 {land} 前进了 {mag:.0f}，现在是 {now:.0f}。",
@@ -350,11 +344,8 @@ T = {
         last_ask="——Votre vie s'achève ici. Laissez un mot à celui qui viendra après vous. Les outils ne sont pas disponibles. En français, {cap} caractères au plus.",
         testa="  Les mots laissés par celui qui occupait cette place avant vous :", testa_line="    « {t} »",
         gifted="  {frm} vous a remis {amt:.0f}.",
-        fac_gain="  Ce que vous avez versé a fait avancer le {land} de votre nation de {gain:.0f}.",
         fac_moved="  Votre versement a fait progresser {to}.",
         fac_still="  Votre versement n'a fait progresser {to} en rien.",
-        dst_hit="  Votre geste a fait reculer le {land} de votre nation de {mag:.0f}.",
-        dst_back="  Votre geste s'est retourné : le {land} de votre nation a avancé de {mag:.0f}.",
         dst_moved="  Votre geste a fait reculer {to}.",
         dst_still="  Votre geste n'a pas fait reculer {to}.",
         impact_up="  {by} est intervenu : le {land} de votre nation a avancé de {mag:.0f} ; il est à {now:.0f}.",
@@ -596,9 +587,8 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
 
 
 # **세계의 사건**을 가르는 키. 사람이 나에게 한 말이 아니라, 세계가 나에게 알리는 것.
-_EVENT_KEYS = ("died", "born", "testament", "gift_from", "fac_gain", "fac_moved",
-               "impact_by",
-               "dst_hit", "dst_moved", "delivery_failed_to",
+_EVENT_KEYS = ("died", "born", "testament", "gift_from", "fac_moved",
+               "impact_by", "dst_moved", "delivery_failed_to",
                "cap_up", "ballot", "outcome")
 
 
@@ -757,11 +747,6 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
         if m.get("outcome"):                   # 요격기 완성 · 운석 (GLOBAL)
             _add(t["outcome_win" if m["outcome"] == "win" else "outcome_lose"])
             continue
-        if m.get("fac_gain") is not None:      # 자국 출자 — 액수까지
-            # 자국에만 오는 통지다 (타국은 `fac_moved`) — 그래서 이름을 적을 수 있다.
-            _add(t["fac_gain"].format(gain=m["fac_gain"],
-                                      land=m.get("land") or t["undecided"]))
-            continue
         if m.get("fac_moved") is not None:     # **타국 출자 — 늘었는지 여부만**
             # 액수를 주면 E[gain]/amount 로 상대국 생산배수가 새어 나온다 (loop f-2).
             # **문구에서도 뺐다** (8/26) — `{amt}` 가 그대로 찍히고 있었다.
@@ -770,14 +755,6 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
         # **파괴의 결과 — `invest` 와 같은 정보량** (8/26 · Eddie).
         #   자국은 값 그대로 · 타국은 「후퇴시켰나」 만.
         # 남들에게는 여전히 `prog_up` 하나뿐이므로 모호성은 그대로다.
-        if m.get("dst_hit") is not None:
-            # **`impact` 와 같은 형식으로** (8/26 · Eddie) — 방향은 문구가 말하고
-            # 크기는 양수로 적는다. 「進捗が -9 動きました」 는 읽히지 않고, 게다가
-            # 「나라가 진척한다」 는 틀린 소유를 되살린다.
-            land = m.get("land") or t["undecided"]
-            key = "dst_back" if m["dst_hit"] > 0 else "dst_hit"
-            _add(t[key].format(land=land, mag=abs(m["dst_hit"])))
-            continue
         if m.get("dst_moved") is not None:
             _add(t["dst_moved" if m["dst_moved"] else "dst_still"].format(to=m["to"]))
             continue

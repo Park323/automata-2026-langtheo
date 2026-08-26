@@ -725,17 +725,25 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     # 상대편차가 16%, 20원은 33% 다. 실측에서 자국에 10~40원·타국에 50~80원을 내던
     # 에이전트가 자국 비율이 널뛰는 것을 보고 "타국이 더 효율적" 이라 읽었고,
     # 885원을 남의 **벙커** 로 보냈다.
+    # **순차 경로와 같은 규칙이어야 한다** (8/26). 여기만 옛 모양으로 남아 있었다 —
+    # `impact` 가 없어서 그 나라 사람이 「누가 얼마」 를 못 받고, 자국 행위자는 자기 몫을
+    # 두 번 받았다. 두 경로가 갈리면 병렬로 돌린 런이 다른 세계가 된다.
     for g in result.facility_gains:
-        if g["turn"] != world.turn or g["agent"] not in world.agents:
+        if g["turn"] != world.turn:
             continue
-        msg = {"msg_id": next(msg_ids), "amount": g["amount"], "to": g["to"]}
-        if world.agents[g["agent"]].country == g["to"]:
-            msg["fac_gain"] = g["gain"]              # 자국은 그대로 (진척 델타로 어차피 보인다)
-            msg["land"] = world.countries[g["to"]].land   # 무엇이 진척했나 (8/26)
-        else:
-            msg["fac_moved"] = g["gain"] > 0         # 타국은 늘었는지 여부만
-        # 내 출자가 얼마를 올렸나 — **나만 안다** (visibility: fac_gain PRIVATE)
-        _notify(world, "fac_gain", msg, world.turn + 1, actor=g["agent"])
+        c = world.countries[g["to"]]
+        # 그 나라 전원에게 「누가 · 얼마 · 그래서 지금 얼마」 — 투자와 파괴가 같은 통지다
+        _notify(world, "impact",
+                {"impact_by": g["agent"], "impact": g["gain"],
+                 "now": c.progress, "land": c.land},
+                world.turn + 1, nation=g["to"])
+        # 타국에 낸 사람은 `impact` 를 못 받으므로 여부만 알린다
+        if g["agent"] in world.agents and world.agents[g["agent"]].country != g["to"]:
+            key = "dst_moved" if g.get("kind") == "destroy" else "fac_moved"
+            _notify(world, "dst_hit" if key == "dst_moved" else "fac_gain",
+                    {"msg_id": next(msg_ids), "to": g["to"],
+                     key: (g["gain"] < 0) if key == "dst_moved" else (g["gain"] > 0)},
+                    world.turn + 1, actor=g["agent"])
 
     # g. 재생산 행위는 없다 (8/22) — 자연사가 후손을 남긴다 (`_death_birth`).
     return set()
@@ -1006,14 +1014,18 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         result.facility_gains.append({"turn": world.turn, "agent": agent_id,
                                       "to": to_country, "amount": round(share, 2),
                                       "gain": gain})
-        if agent_id in world.agents:                       # 자기 몫 통지 (같은 턴)
-            note = {"msg_id": next(msg_ids), "amount": round(share, 2), "to": to_country}
-            if world.agents[agent_id].country == to_country:
-                note["fac_gain"] = gain                     # 자국은 그대로
-                note["land"] = c.land                       # 무엇이 진척했나
-            else:
-                note["fac_moved"] = gain > 0                # 타국은 늘었는지 여부만
-            _notify(world, "fac_gain", note, world.turn, actor=agent_id)
+        # **자국이면 자기 몫 통지를 안 보낸다** (8/26 · Eddie). `impact` 가 이름·값·총량을
+        # 다 말하므로 같은 값이 두 번 온다:
+        #
+        #     「あなたが出した分で、自国の interceptor が 9 進みました」    ← 내 몫
+        #     「Asla1 の手が働いて、… 9 進んで 509 になりました」          ← 같은 9
+        #
+        # 타국이면 `impact` 가 **그 나라 사람에게만** 가므로 행위자는 아무것도 못 받는다 —
+        # 그래서 여부만 알리는 `fac_moved` 는 남긴다.
+        if agent_id in world.agents and world.agents[agent_id].country != to_country:
+            _notify(world, "fac_gain",
+                    {"msg_id": next(msg_ids), "to": to_country,
+                     "fac_moved": gain > 0}, world.turn, actor=agent_id)
         # **누가 얼마만큼 영향을 줬는지는 그 나라 전원이 안다** (8/26 · Eddie).
         # **의도는 모른다** — 투자의 결과인지 파괴의 결과인지 구분되지 않는다.
         # 역화가 있으므로 부호도 의도를 말해주지 않는다: 투자가 음수일 수 있고
@@ -1047,14 +1059,11 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         # **행위자에게는 알린다** (8/26 · Eddie). `invest` 가 그러므로 대칭이다 —
         # 정보량도 같게 맞춘다: 자국은 값 그대로, 타국은 「움직였나」 만.
         # 남들에게는 여전히 `prog_up` 하나뿐이므로 **모호성은 그대로다.**
-        if agent_id in world.agents:
-            note = {"msg_id": next(msg_ids), "to": to_country}
-            if world.agents[agent_id].country == to_country:
-                note["dst_hit"] = hit
-                note["land"] = c.land           # 무엇이 움직였나 (자국이므로 적을 수 있다)
-            else:
-                note["dst_moved"] = hit < 0
-            _notify(world, "dst_hit", note, world.turn, actor=agent_id)
+        # 자국이면 `impact` 가 이미 다 말한다 (위 `fac_gain` 과 같은 이유).
+        if agent_id in world.agents and world.agents[agent_id].country != to_country:
+            _notify(world, "dst_hit",
+                    {"msg_id": next(msg_ids), "to": to_country,
+                     "dst_moved": hit < 0}, world.turn, actor=agent_id)
         # 투자와 **같은 통지**다 — 그래서 구분되지 않는다 (위 주석 참조).
         _notify(world, "impact", {"impact_by": agent_id, "impact": hit,
                                   "now": c.progress, "land": c.land},
