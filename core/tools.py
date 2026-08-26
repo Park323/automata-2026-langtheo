@@ -7,6 +7,8 @@ condition is ambiguous).
 """
 from __future__ import annotations
 
+import copy
+
 
 def _fn(name: str, description: str, properties: dict, required: list[str],
         reasoning: bool = True) -> dict:
@@ -37,11 +39,21 @@ def _fn(name: str, description: str, properties: dict, required: list[str],
 
 
 _ROUTE = {"type": "string", "enum": ["original", "ai"],
+          # **두 경로를 같은 깊이로 적는다** (8/25 · Eddie). enum 은 값이 둘인데
+          # `original` 만 설명하고 있었다 — `ai` 는 이름뿐이었고, 발신자가 그것에
+          # 대해 듣는 말은 「자기 말로 쓰라」(아래 `text`) 하나였다. 노브가 값을
+          # 매기는 대상이 진술되지 않으면 노브 효과가 「모르는 선택지를 피했다」 와
+          # 섞인다 — 단일 실험 변수가 오염된다.
+          #
+          # **기제만 적는다.** 「반드시 닿는다」 는 쓰지 않는다 — 기계가 번역한다는
+          # 사실에서 스스로 잇는다. 번역이 무엇을 잃는지는 여전히 말하지 않는다
+          # (그것이 「왜곡을 프롬프트로 주입하지 않는다」 의 내용이다).
           "description": "international only; ignored for a recipient in your own nation. "
                          "`original` sends your words untranslated. If you can handle the "
                          "recipient's national language it always lands, whatever they can "
                          "read. If you cannot, it lands only on someone who reads yours — "
-                         "and you are not told beforehand whether they do"}
+                         "and you are not told beforehand whether they do. "
+                         "`ai` sends it through a translation artificial intelligence"}
 # **경로가 언어를 정한다** (8/22).
 #
 #   ai        모국어로 써야 한다. **여기가 측정 채널이다** — 번역이 무엇을 잃는지 재려면
@@ -78,19 +90,19 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["to", "text"]),
 
     fn("invest",
-        "Put one fixed amount into a resource; the observation shows how much money and "
-        "how much action it takes. **The money is not a fee — it is the investment "
-        "itself.** How much one call moves differs from person to person; how much "
-        "progress a given sum buys differs from nation to nation. The two are set "
-        "separately. That amount is yours; you cannot see anyone else's, so ask them. "
+        "Put one fixed amount into a resource; the observation shows how much it moves "
+        "and how much action it takes. How much one call moves differs from person to "
+        "person; how much progress a given amount buys differs from nation to nation. "
+        "The two are set separately. Your amount is yours; you cannot see anyone "
+        "else's, so ask them. "
         "`national` raises your nation's technical level, which "
-        "lifts income, how much progress a facility gets out of what is put into it, and "
+        "lifts how much progress a facility gets out of what is put into it, and "
         "the precision of observe_risk — for everyone in that nation. "
         "For facility you may name any nation with `to` — your "
         "own or another; leaving `to` out puts it into your own nation's. "
-        "Money you put into a facility goes into whatever that nation is currently "
+        "What you put into a facility goes into whatever that nation is currently "
         "building — which may not be what you think it is, and a nation that has not "
-        "yet decided what to build has nothing to put it into, so the money buys "
+        "yet decided what to build has nothing to put it into, so it buys "
         "no progress. "
         "Only that nation knows which it is.",
         {"target": {"type": "string", "enum": ["wellness", "national", "facility"]},
@@ -100,7 +112,7 @@ def _build(reasoning_arg: bool) -> list[dict]:
 
     fn("learn",
         "Put one fixed amount toward learning another nation's language; one payment "
-        "takes the same action as an investment, and the cost table shows the money. "
+        "takes the same action as an investment. "
         "Give a nation id, not a language code. "
         "What you put in accumulates, and your observation shows how far along you are "
         "and how much is still needed. You can read and write the language once the "
@@ -111,13 +123,13 @@ def _build(reasoning_arg: bool) -> list[dict]:
         ["country"]),
 
     fn("observe_risk",
-        "Measure how many years remain until the meteorite strikes, and how much "
-        "progress an interceptor needs. Both readings are imprecise; your nation's "
-        "accumulated national investment is what sharpens them, and the result tells "
-        "you the typical size of its error — a single reading can be much further off "
-        "than that. Each reading is a fresh measurement and costs both money and a "
-        "large share of your action points — measuring the world takes most of a year. "
-        "What you learn is yours alone — nobody else sees it.",
+        "Measure three things: how many years remain until the meteorite strikes, and "
+        "how much progress an interceptor and a bunker each need. **All three readings "
+        "are imprecise, and you are not told by how much.** Your nation's accumulated "
+        "national investment is what sharpens them. Each reading is a fresh "
+        "measurement and costs a large share of your action points — measuring the "
+        "world takes most of a year. What you learn is yours alone — nobody else "
+        "sees it.",
         {}, []),
 
     fn("propose_vote",
@@ -127,7 +139,7 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "observation tells you which year that is. **Only people of your own nation may "
         "vote** — a foreigner cannot, no "
         "matter what they say. If a ballot is already called, calling again does nothing. "
-        "It costs no money — poverty must never decide what a nation builds — but it "
+        "It costs nothing to fund — nobody is priced out of proposing — but it "
         "takes more than half of your action points for the year.",
         {}, []),
 
@@ -136,23 +148,13 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "You cannot vote in another nation. Only in the year the ballot is held; the "
         "observation tells you which year that is. The choice with the most votes wins; "
         "`abstain` counts for neither. If the two tie, or nobody votes, your nation keeps "
-        "what it has and its progress survives. It costs no money and almost no action "
+        "what it has and its progress survives. It costs almost no action "
         "points, so voting never takes away your chance to speak on the day it matters most.",
         {"choice": {"type": "string", "enum": ["interceptor", "bunker", "abstain"]}},
         ["choice"]),
 
-    # **금액을 인자로 받는 유일한 도구다.**
-    #
-    # `invest`·`learn` 에서 금액을 뺀 이유는 비용표가 `600 · 額÷300` 처럼 두 숫자를 읽게
-    # 만들었기 때문이다. 주는 것은 다르다 — 크기가 **드는 수고를 바꾸지 않는다.** 한 번에
-    # 40 씩만 옮길 수 있으면 435 를 넘기는 데 열한 해가 걸리고, 그러면 잉여의 용처라는
-    # 이 도구의 존재 이유가 사라진다.
-    fn("give",
-        "Give money to one person. Any amount you have, in one go. It can be someone in "
-        "your nation or another. They are told who gave it and how much.",
-        {"to": {"type": "string", "description": "recipient id (e.g. Ranoa2)"},
-         "amount": {"type": "number", "description": "how much to hand over"}},
-        ["to", "amount"]),
+    # **`give` 를 없앴다** (8/25 · AP 전면 통일). 양도할 것이 없다 — 돈이 사라졌고 AP 는
+    # 「내 올해 주의력」 이라 넘길 수 없다. 나라 사이 이전은 `invest to=<타국>` 이 맡는다.
 
     fn("memory_write",
         "Overwrite your notes. They stay with you next year; nobody else sees them.",
@@ -194,12 +196,53 @@ TOOLS_NO_MEM = _drop_memory(TOOLS)
 TOOLS_NO_REASONING_NO_MEM = _drop_memory(TOOLS_NO_REASONING)
 
 
-def tools_for(cfg, memory: bool = True) -> list[dict]:
+# ── AI 번역이 없는 세계 ───────────────────────────────────────────────────────
+#
+# **기준 조건이다** (8/25). 가설은 「AI 번역 비용이 **내려가면**」 이므로, 내려가기 전의
+# 세계가 있어야 그 변화를 잴 수 있다. 노브를 아주 비싸게 두는 것과는 다르다 — 비싸면
+# 에이전트가 그 선택지를 보고 값을 재지만, 없으면 **길이 둘뿐**이다: 배우거나, 내 말로
+# 보내고 상대가 읽어주길 걸거나.
+#
+# 노브 값을 한 해 AP 위로 올려 흉내내지 않는다. `asserts` 가 그것을 막고 있고, 막는 이유가
+# 「비싼 것과 없는 것이 구분되지 않는다」 다.
+def _drop_ai(tools: list[dict]) -> list[dict]:
+    """`speak` 의 route 에서 `ai` 를 뺀다. 없는 선택지는 설명도 하지 않는다."""
+    out = []
+    for t in tools:
+        t = copy.deepcopy(t)
+        if t["function"]["name"] == "speak":
+            pr = t["function"]["parameters"]["properties"]["route"]
+            pr["enum"] = [r for r in pr["enum"] if r != "ai"]
+            pr["description"] = (
+                "international only; ignored for a recipient in your own nation. "
+                "`original` sends your words untranslated. If you can handle the "
+                "recipient's national language it always lands, whatever they can "
+                "read. If you cannot, it lands only on someone who reads yours — "
+                "and you are not told beforehand whether they do")
+        out.append(t)
+    return out
+
+
+TOOLS_NO_AI = _drop_ai(TOOLS)
+TOOLS_NO_AI_NO_MEM = _drop_memory(TOOLS_NO_AI)
+TOOLS_NO_REASONING_NO_AI = _drop_ai(TOOLS_NO_REASONING)
+TOOLS_NO_REASONING_NO_AI_NO_MEM = _drop_memory(TOOLS_NO_REASONING_NO_AI)
+
+
+def tools_for(cfg, memory: bool = True, ai: bool = True) -> list[dict]:
     """모델에게 실어 보낼 도구 목록.
 
     `memory` 는 「기억을 쓸 수 있는 상태인가」 다 — 호출부가 `under_pressure()` 로 정한다.
+    `ai`   는 「이 세계에 AI 번역이 있는가」 다 — `knob_ai is not None` 이 그 뜻이다.
+
+    **여덟 벌을 미리 만들어 둔다.** 토큰 회계가 `id()` 로 캐시하므로 (`_TOOL_TOKENS_BY_ID`)
+    호출마다 새 리스트를 만들면 조회가 빗나가고 문맥 예산이 조용히 샌다.
     """
     reasoning = getattr(cfg.llm, "tool_reasoning", True)
     if reasoning:
-        return TOOLS if memory else TOOLS_NO_MEM
-    return TOOLS_NO_REASONING if memory else TOOLS_NO_REASONING_NO_MEM
+        if ai:
+            return TOOLS if memory else TOOLS_NO_MEM
+        return TOOLS_NO_AI if memory else TOOLS_NO_AI_NO_MEM
+    if ai:
+        return TOOLS_NO_REASONING if memory else TOOLS_NO_REASONING_NO_MEM
+    return TOOLS_NO_REASONING_NO_AI if memory else TOOLS_NO_REASONING_NO_AI_NO_MEM

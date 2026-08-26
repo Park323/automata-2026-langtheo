@@ -27,6 +27,11 @@ from core.agent_loop import Sink
 from core.run_io import RunWriter
 from core.state import Agent, Country
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 BASE = "configs/base.yaml"
 
 
@@ -43,7 +48,7 @@ def world(cfg):
     # 그것을 그대로 두면 **다른 기제를 재는 테스트가 사람마다 다른 액수에 흔들린다.**
     # 차이 자체는 `test_world_rules_v2.py` 의 전용 테스트가 본다.
     for _a in w.agents.values():
-        _a.income_mult = _a.invest_mult = 1.0
+        _a.invest_mult = 1.0
     return w
 
 
@@ -169,13 +174,13 @@ def test_calls_record_the_real_cost_not_the_request(tmp_path, cfg, world):
     """
     from core.agent_loop import Sink, execute_tool
     world.countries["Asla"].land = "interceptor"
-    a = world.agents["Asla1"]; a.ap, a.budget = 1.0, 10_000.0
+    a = world.agents["Asla1"]; a.ap = 1.0
     sink = Sink()
     res, _ = execute_tool("invest", {"target": "facility", "reasoning": "r"},
-                          world, a, cfg, sink, 48.0)
+                          world, a, cfg, sink, KNOB)
     assert res["ok"] and "amount" not in res
     assert sink.facility == [("Asla", cfg.costs.unit, "Asla1")]
-    assert res["budget_left"] == 10_000.0 - cfg.costs.unit
+    assert res["ap_left"] is not None
 
 
 def test_memory_and_testament_are_not_stripped_from_calls():
@@ -249,7 +254,7 @@ def test_message_id_is_assigned_before_the_translation_runs(cfg, world):
                       "from_country": "Miris", "to_country": "Asla",
                       "text": "bonjour", "route": "ai"}]
     r = loop.RunResult(world=world)
-    loop._settle_agentic(world, cfg, random.Random(0), sink, Rec(), 48.0,
+    loop._settle_agentic(world, cfg, random.Random(0), sink, Rec(), KNOB,
                          itertools.count(500), r, itertools.count(900))
     assert seen and seen[0]["msg_id"] == 900
     assert r.messages_log[0]["msg_id"] == 900
@@ -312,3 +317,109 @@ def test_the_counter_does_not_leak_under_parallel_writes(tmp_path, cfg):
     rows = _rows(w, "raw_calls")
     assert w.counts["raw"] == N * T == len(rows)
     assert len({r["call_id"] for r in rows}) == N * T      # 겹치지 않는다
+
+
+def test_the_config_snapshot_records_the_model_that_actually_ran(tmp_path):
+    """**스냅샷이 거짓을 적고 있었다** (8/25 · Eddie).
+
+    러너의 손잡이 다섯 중 `reasoning_effort`·`tool_reasoning`·`provider`·`max_tokens` 는
+    `raw` 를 거쳐 스냅샷에 남았는데, **모델 둘만** 클라이언트로 바로 갔다:
+
+        agent_model = args.agent_model or cfg.llm.agent_model    # raw 를 안 거친다
+
+    그래서 `runs/noai50` 은 deepseek-v4-flash 로 돌았는데 `config_snapshot.yaml` 에는
+    qwen3.6-35b-a3b 이 적혀 있었다. **산출물이 어느 모델의 것인지 알 수 없다** — 스냅샷은
+    재현의 유일한 근거이므로 이건 지표 오염보다 나쁘다.
+
+    이 테스트는 러너의 그 줄을 직접 흉내낸다 — 손잡이가 늘 때 여기서 걸린다.
+    """
+    import yaml
+    from core import config as cfgmod, run_io
+
+    raw = yaml.safe_load((run_io.ROOT / "configs" / "base.yaml").read_text(encoding="utf-8"))
+    OVERRIDE = "some/other-model"
+    # 러너가 하는 것과 같은 순서: 오버라이드 → raw 되쓰기 → cfg 재생성
+    agent_model = OVERRIDE or raw["llm"]["agent_model"]
+    raw["llm"]["agent_model"] = agent_model
+    cfg = cfgmod.from_dict(raw)
+
+    assert cfg.llm.agent_model == OVERRIDE
+    # 스냅샷은 `raw` 를 적는다 — 그러니 `raw` 가 진실이어야 한다
+    assert raw["llm"]["agent_model"] == OVERRIDE
+
+    # 러너 코드가 실제로 되쓰는지 본다 (문자열 검사가 아니라 구조 검사)
+    src = (run_io.ROOT / "scripts" / "smoke_3turns.py").read_text(encoding="utf-8")
+    for k in ("agent_model", "translate_model"):
+        assert f'raw["llm"]["{k}"] = {k}' in src, f"{k} 가 raw 로 되쓰이지 않는다"
+
+
+def test_the_translator_gets_its_own_provider_pin():
+    """**번역기만 업체 고정이 없었다** (8/26 · Eddie).
+
+    에이전트 클라이언트는 `provider=cfg.llm.provider` 를 받는데 번역기는 안 받았다.
+    `260826-002-ai010` 의 번역 375콜이 이렇게 흩어졌다:
+
+        DeepInfra 107 (fp8) · Mistral 93 (unknown) · Parasail 21 (bf16)
+
+    429 가 154건 났고 재시도로 244통 중 221통을 회수했지만 23통(9.4%)이 죽었다.
+    그런데 **429 보다 양자화가 심각하다** — 번역 왜곡이 이 실험의 종속변수다
+    (지표 4c·4d·7). 그 왜곡을 만드는 기계가 런 중간에 세 번 바뀌면, 파일럿에서
+    「3언어 분산 최소」 로 이 모델을 고른 근거가 그 런에 적용되지 않는다.
+
+    에이전트 모델 provenance 와 같은 병이다 — **손잡이 하나가 조용히 빠졌다.**
+    그래서 여기서도 값이 아니라 **배선을 구조로** 본다.
+    """
+    from core import config as cfgmod, run_io
+
+    cfg = cfgmod.load(str(run_io.ROOT / "configs" / "base.yaml"))
+    assert cfg.llm.translate_provider, "번역기 업체 고정이 config 에 없다"
+    # **폴백은 끈다** (8/26 · 재현성). `true` 면 「목록 밖으로도 나갈 수 있다」 는 뜻이라
+    # 고정이 아니라 선호다 — 실제로 샜다 (`tool_choice: required` 일 때 목록에 없는
+    # Sail Research 로 갔다). 목록 안 셋은 폴백을 꺼도 순서대로 시도하므로 여유가 있고,
+    # 셋 다 막히면 429 폭풍 차단기가 런을 깨끗하게 세운다.
+    for pv in (cfg.llm.provider, cfg.llm.translate_provider):
+        assert pv.get("allow_fallbacks") is False, pv
+        assert pv.get("order"), pv
+
+    src = (run_io.ROOT / "scripts" / "smoke_3turns.py").read_text(encoding="utf-8")
+    assert "provider=cfg.llm.translate_provider" in src, \
+        "러너가 번역기에 provider 를 안 넘긴다"
+    # 에이전트 쪽 것을 잘못 넘기지 않는다 — 둘은 다른 모델이라 업체 목록도 다르다
+    tr = src[src.index("translator = CountingClient("):]
+    tr = tr[:tr.index('"translate")')]
+    assert "provider=cfg.llm.provider" not in tr, "번역기에 에이전트용 업체 목록이 갔다"
+
+
+def test_the_summary_records_which_provider_actually_answered(tmp_path):
+    """**설정은 요청이고 이것은 결과다** (8/26 · Eddie · 재현성).
+
+    둘이 어긋날 수 있고, 실제로 어긋났다:
+
+        260826-002-ai010   번역기에 `provider` 가 아예 안 갔다 → 세 업체로 흩어짐
+        260826-004(폐기)   `tool_choice: required` 가 `order` 를 덮어씀 → Sail Research
+
+    **어느 쪽도 `summary.json` 만 봐서는 알 수 없었다** — 30MB 짜리 `raw_calls.jsonl` 을
+    열어야 했다. 업체가 바뀌면 양자화가 바뀌고(fp8 / bf16 / unknown), 번역 왜곡이
+    종속변수이므로 그것은 곧 다른 세계다. 재현하려면 이 값을 먼저 봐야 한다.
+    """
+    from core import run_io
+
+    # **진짜 `runs/` 에 쓰지 않는다.** 처음에 `root` 를 안 넘겨서 테스트를 돌릴 때마다
+    # `runs/t_prov` 가 생겼고, 실제 런 목록에 섞여 헷갈렸다 (Eddie 가 발견).
+    w = run_io.RunWriter("t_prov", cfg_raw={}, knob_ai=None, seed=1, root=tmp_path)
+    try:
+        w.raw({"kind": "agent", "response": {"provider": "GMICloud"}})
+        w.raw({"kind": "agent", "response": {"provider": "GMICloud"}})
+        w.raw({"kind": "translate", "response": {"provider": "DeepInfra"}})
+        w.raw({"kind": "translate", "error": "HTTP 429"})       # 실패는 "—"
+        assert w.providers == {"agent/GMICloud": 2,
+                               "translate/DeepInfra": 1,
+                               "translate/—": 1}
+        # 종류가 갈려 있어야 한다 — 에이전트와 번역기는 **다른 모델**이라 업체도 다르다
+        assert all("/" in k for k in w.providers)
+    finally:
+        w.close()
+
+    src = (run_io.ROOT / "scripts" / "smoke_3turns.py").read_text(encoding="utf-8")
+    # 정상 종료와 중단 **양쪽** 요약에 실린다 — 중단된 런이야말로 업체를 알아야 한다
+    assert src.count('"providers": writer.providers') == 2

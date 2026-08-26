@@ -18,51 +18,21 @@ class ConfigError(Exception):
 
 @dataclass(frozen=True)
 class Knob:
-    comm_intl_ai: tuple[int, ...]   # 유일한 실험 변수 (리스트) — ai 경로 발신의 **돈** 비용
-    # **ai 경로 발신이 먹는 AP** — comm_intl_ai 와 같은 순서로 짝지어진다 (8/25).
-    # 노브를 돈으로만 매기면 예산 240 위에서 무력해진다 (inh30 실측: 65% 가 무력). 돈이
-    # 안 귀하고 AP 가 귀하기 때문 — 예산 240 이면 5회 발신 값이라 그 위는 AP 만 묶는다.
-    # AP 로도 물려 예산과 무관하게 물게 한다. 비면(구버전 config) speak 기본값으로 떨어진다.
-    comm_intl_ai_ap: tuple[float, ...] = ()
-
+    # **유일한 실험 변수 — 이제 AP 다** (8/25). 돈으로 매기던 `comm_intl_ai` 를 지웠다.
+    comm_intl_ai_ap: tuple
 
 @dataclass(frozen=True)
 class Costs:
-    comm_domestic: float
-    comm_intl_learner: float
-    learn_base: float
-    propose_vote: float
-    observe_risk: float = 20.0
-    unit: float = 20.0             # 한 번의 invest·learn 이 나가는 돈 (4.4)
-    # **할인이 아니라 가속이다** (8/22). 필요액을 깎으면 **목표가 움직인다** — 반쯤 낸
-    # 학습이 갑자기 완성되는 경로가 생긴다. 이제 필요액은 고정이고 회당 수확이 오른다.
-    # 사유 하나마다 `+learn_speedup` 배 (곱이 아니라 합 — ×1.5 를 두 번 곱하면 2.25 다).
-    learn_speedup: float = 0.5
-
+    # **가격이 아니라 양이다** (8/25 · AP 전면 통일). 돈 항목 넷을 지웠다
+    # (comm_domestic · comm_intl_learner · observe_risk · propose_vote) — `ap.*` 가 대신한다.
+    learn_base: float          # 한 언어를 익히기까지 쌓아야 하는 **진척**
+    learn_speedup: float       # 사유 하나당 배속 +
+    unit: float                # 한 번의 invest·learn 이 옮기는 **양**
 
 @dataclass(frozen=True)
 class Thresholds:
     interceptor: float
-    bunker_scale: float
-
-
-@dataclass(frozen=True)
-class Income:
-    per_turn: float
-    initial_budget: float
-    # **나이가 들면 더 번다** (8/22). 성인 나이 이후 한 해마다 `per_turn × 이 값` 씩.
-    # 말년에 **소비가 못 따라가게** 하는 것이 목적이다 — 한 해에 쓸 수 있는 돈은 행동력이
-    # 묶으므로(invest 40원·0.2AP → 상한 200), 나이 16 을 넘기면 잉여가 강제로 쌓인다.
-    # 그 잉여의 용처가 `give` 다 — 재생산 행위를 없앤 뒤로 **유일한** 용처다.
-    age_growth: float = 0.0
-    # **사람마다 다르게 번다** (8/22). 태어날 때 이 단계들에서 하나를 뽑는다.
-    #
-    # **평균이 1.0 이어야 한다** — 임계값 창이 `per_turn × n × total` 에서 나오므로,
-    # 평균이 1 이 아니면 창이 어긋난다 (`tests/test_config.py` 가 본다).
-    #
-    # 이산인 이유는 **말로 전할 수 있기 때문**이다. 「나는 한 번에 56 옮긴다」 가 메시지가
-    # 되고 그걸 실제로 말하는지 채점할 수 있다 — 연속 분포로는 안 된다.
-    spread: tuple = (1.0,)
+    bunker: float
 
 
 @dataclass(frozen=True)
@@ -115,7 +85,6 @@ class Wellness:
 @dataclass(frozen=True)
 class Facility:
     eff: float
-    cap_per_turn: float
     transition_requires_vote: bool
     transition_forfeits_progress: bool
     # 개체별 「한 번에 옮기는 액수」 배수를 뽑는 단계들. 소득 배수와 **독립**이다.
@@ -153,7 +122,6 @@ class World:
     init_age_max: int = 10
     # **성인 나이.** 이 나이부터 아이를 낳을 수 있고, 이 나이부터 소득을 받는다.
     # 그전에는 부모가 주는 돈이 전부다.
-    adult_age: int = 10
 
 
 @dataclass(frozen=True)
@@ -203,9 +171,37 @@ class LLM:
     # 사고를 하고 그건 api_reasoning 으로 남는다. 끄면 그 사고가 reasonings 스트림에
     # 들어가 지표 4 가 계속 읽을 수 있다 (spec 12.1).
     tool_reasoning: bool = True
+    # 도구 호출을 강제할 것인가. **"required" 는 프로바이더 선택을 덮어쓴다** (8/25) —
+    # 업체 전부가 `supported_parameters` 에 `tool_choice` 를 신고하지만 실제로 `required`
+    # 를 받는 곳은 적고, OpenRouter 가 실제 지원으로 걸러내면서 우리 `order` 를 통째로
+    # 건너뛴다. 실측: 같은 요청에서 `required` → Sail Research 21초, 떼면 GMICloud 5.8초.
+    #
+    # 애초에 `required` 는 **사고를 껐을 때** 넣은 우회책이었다 (8/16 · d10ca2e) —
+    # 「모델이 content 에 숙고를 쏟고 그대로 끝낸다 · 턴의 2~7% 가 날아갔다」. 사고를
+    # 되켰으므로 숙고는 reasoning 채널로 간다. 안전망은 그대로다:
+    # `_recover_tool_calls` 가 content 에서 도구 호출을 파싱하고, 실패하면 `no_tool_call`
+    # 로 로그에 남는다 — 조용히 사라지지 않는다.
+    tool_choice: str = "auto"
     # 프로바이더 라우팅. OpenRouter 는 같은 모델을 여러 업체가 서빙하고 **가격이
     # 다르다.** {"order": [...]} 로 우선순위를, {"only": [...]} 로 고정한다.
     provider: dict | None = None
+    # **번역기는 따로 고정한다** (8/26 · Eddie). 에이전트 클라이언트만 `provider` 를
+    # 받고 번역기는 안 받고 있었다 — 375콜이 DeepInfra 107 · Mistral 93 · Parasail 21
+    # 로 흩어졌고 429 154건이 났다. 그런데 **429 보다 심각한 것은 양자화다**:
+    #
+    #     DeepInfra  fp8   ·  Parasail  bf16  ·  Mistral  unknown
+    #
+    # 번역 왜곡이 이 실험의 **종속변수**다 (지표 4c·4d·7). 그 왜곡을 만드는 기계가 런
+    # 중간에 세 번 바뀌면 파일럿에서 「3언어 분산 최소」 로 이 모델을 고른 근거가 이
+    # 런에 적용되지 않는다. 에이전트 쪽에는 그 논리를 적용해 놓고 번역기만 빠졌다.
+    translate_provider: dict | None = None
+    # **429 폭풍이면 런을 세운다** (8/26 · Eddie). 재시도를 다 쓴 429 가 이만큼 쌓이면
+    # `RateLimitStorm` 으로 런을 끝낸다. 중간에 회수된 429 는 안 센다 — 시간만 먹었지
+    # 데이터를 안 상하게 한다 (`260826-002-ai010`: 154건 중 실제 손실 23건).
+    #
+    # 죽은 번역은 **세계에 뚫린 구멍**이고 되돌릴 수 없다. 그럴 바에는 세우고 나중에
+    # 이어한다 — 매해 복원점이 있으므로 이어붙이는 값이 싸다. 0 이면 끈다.
+    rate_limit_abort: int = 5
 
 
 @dataclass(frozen=True)
@@ -218,7 +214,6 @@ class Config:
     knob: Knob
     costs: Costs
     thresholds: Thresholds
-    income: Income
     turn: TurnCfg
     ap: AP
     growth: Growth
@@ -267,12 +262,9 @@ def _world_from(d: dict) -> World:
 def from_dict(d: dict) -> Config:
     """assert 없이 dict 를 Config 로 만든다. (break 테스트가 이걸로 변형본을 만든다)"""
     return Config(
-        knob=Knob(comm_intl_ai=tuple(d["knob"]["comm_intl_ai"]),
-                  comm_intl_ai_ap=tuple(d["knob"].get("comm_intl_ai_ap", ()))),
+        knob=Knob(comm_intl_ai_ap=tuple(d["knob"]["comm_intl_ai_ap"])),
         costs=Costs(**d["costs"]),
         thresholds=Thresholds(**d["thresholds"]),
-        income=Income(**{**d["income"],
-                        "spread": tuple(d["income"].get("spread", (1.0,)))}),
         turn=TurnCfg(**d["turn"]),
         ap=AP(**d["ap"]),
         growth=Growth(**d["growth"]),

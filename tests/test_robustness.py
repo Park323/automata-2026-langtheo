@@ -18,6 +18,11 @@ from core import config, llm, messaging
 from core.llm import LLMCallError
 
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 # ── 벽시계 상한 ─────────────────────────────────────────────────────────────────
 
 class _SlowOpener:
@@ -166,13 +171,13 @@ def test_the_agent_turn_also_only_swallows_declared_failures(cfg):
     a = world.agents["Asla1"]
     a.ap = cfg.turn.action_points          # 실제 루프의 1단계(소득·AP 리셋)를 대신한다.
                                            # 0 이면 `can_act` 가 먼저 막아 API 를 안 부른다 (#47)
-    obs = prompts.render_observation(world, a, cfg, 48.0)
+    obs = prompts.render_observation(world, a, cfg, KNOB)
 
     class _Api:
         def chat(self, *ar, **kw):
             raise LLMCallError("HTTP 503 Service Unavailable")
 
-    lg = run_agent_turn(world, a, cfg, _Api(), Sink(), 48.0, prompts.system_for(a, None, cfg), obs)
+    lg = run_agent_turn(world, a, cfg, _Api(), Sink(), KNOB, prompts.system_for(a, None, cfg), obs)
     assert lg["ended_by"] == "error" and "LLMCallError" in lg["error"]
 
     class _Bug:
@@ -180,7 +185,7 @@ def test_the_agent_turn_also_only_swallows_declared_failures(cfg):
             raise AttributeError("NoneType has no attribute 'get'")
 
     with pytest.raises(AttributeError):
-        run_agent_turn(world, a, cfg, _Bug(), Sink(), 48.0, prompts.system_for(a, None, cfg), obs)
+        run_agent_turn(world, a, cfg, _Bug(), Sink(), KNOB, prompts.system_for(a, None, cfg), obs)
 
 
 def test_engine_fault_is_counted_apart_from_metric_9(cfg):
@@ -249,9 +254,9 @@ def test_malformed_response_kills_only_that_agent(cfg):
             return {"unexpected": True}
 
     w = loop.init_world(cfg, itertools.count(1))
-    a = w.agents["Asla1"]; a.ap, a.budget = 1.0, 500.0
-    lg = run_agent_turn(w, a, cfg, _Weird(), Sink(), 48.0,
-                        prompts.system_for(a, None, cfg), prompts.render_observation(w, a, cfg, 48.0))
+    a = w.agents["Asla1"]; a.ap = 1.0
+    lg = run_agent_turn(w, a, cfg, _Weird(), Sink(), KNOB,
+                        prompts.system_for(a, None, cfg), prompts.render_observation(w, a, cfg, KNOB))
     assert lg["ended_by"] == "error" and "malformed response" in lg["error"]
 
 
@@ -330,7 +335,7 @@ def test_the_failing_agent_is_named_in_the_traceback(cfg):
 
     bug = _Bug()
     with pytest.raises(AttributeError) as ei:
-        loop.run_agentic(cfg, random.Random(1), lambda aid: bug, bug, 48.0,
+        loop.run_agentic(cfg, random.Random(1), lambda aid: bug, bug, KNOB,
                          render_obs=prompts.render_turn_open,
                          system_prompt=prompts.system_for,
                          parallel=True, sim_turns=1)
@@ -380,3 +385,77 @@ def test_every_file_open_declares_utf8():
             bad.append("{}:{} {}()".format(
                 path.relative_to(root).as_posix(), node.lineno, name))
     assert not bad, "인코딩 없이 파일을 연다 (cp949 로 열린다): " + " · ".join(bad)
+
+
+def test_a_rate_limit_storm_stops_the_run():
+    """**429 폭풍은 런을 세운다** (8/26 · Eddie).
+
+    `LLMCallError` 는 상류가 잡아 그 에이전트의 차례를 끝내거나 메시지 하나를 미전달로
+    떨어뜨린다. 그 설계 덕에 런은 안 죽는데, 429 폭풍에서는 그것이 **독**이다:
+
+        260826-002-ai010   번역 429 154건 · 244통 중 23통(9.4%)이 죽었다
+                           런은 절뚝이며 50해를 다 갔고 3시간 33분이 걸렸다
+
+    죽은 번역은 **세계에 뚫린 구멍**이고 되돌릴 수 없다. 세우고 이어하는 편이 낫다 —
+    매해 복원점이 있으므로 이어붙이는 값이 싸다 (8/25).
+
+    그래서 `RateLimitStorm` 은 `LLMCallError` 의 자식이 **아니다.** 이 테스트는 그
+    무관함이 실제로 상류의 그물을 통과하는지 본다 — 구조가 아니라 **동작**으로.
+    """
+    from core.llm import LLMCallError, RateLimitGuard, RateLimitStorm
+
+    g = RateLimitGuard(limit=3)
+    # 재시도를 다 쓴 429 만 센다. 한도 전에는 조용하다.
+    g.exhausted("m"); g.exhausted("m")
+    assert g.count == 2
+    with pytest.raises(RateLimitStorm) as ei:
+        g.exhausted("m")
+    assert "한도 3" in str(ei.value) and "--resume" in str(ei.value)
+
+    # **상류의 그물이 이것을 잡으면 안 된다** — 셋 다 `LLMCallError` 만 잡는다
+    assert not issubclass(RateLimitStorm, LLMCallError)
+    storm = RateLimitStorm("x")
+    for net in (LLMCallError,):
+        try:
+            raise storm
+        except net:                       # pragma: no cover — 잡히면 실패다
+            pytest.fail("LLMCallError 그물이 폭풍을 삼켰다")
+        except RateLimitStorm:
+            pass
+
+    # 끄기: limit 0 이면 아무리 쌓여도 안 던진다 (짧은 테스트·재현용)
+    off = RateLimitGuard(limit=0)
+    for _ in range(50):
+        off.exhausted("m")
+    assert off.count == 0
+
+
+def test_the_last_words_net_lets_the_storm_through(cfg):
+    """**넓은 그물이 런을 세워야 하는 예외를 삼키고 있었다** (8/26).
+
+    `_last_words` 는 「유언은 있으면 좋은 것」 이라 `except Exception` 으로 넓게 친다.
+    그 넓이가 `RateLimitStorm` 까지 먹으면, 폭풍이 하필 유언 호출에 걸렸을 때 런이
+    조용히 계속된다.
+    """
+    from core import loop
+    from core.llm import RateLimitStorm
+
+    class Storming:
+        def chat(self, *a, **k):
+            raise RateLimitStorm("429 폭풍")
+
+    import itertools as _it, random as _rnd
+    world = loop.init_world(cfg, _it.count(1), _rnd.Random(0))
+    a = world.agents["Asla2"]
+    # **`system_prompt` 는 호출 가능해야 한다** — 문자열을 주면 첫 줄에서 빠져나가
+    # 이 테스트가 아무것도 안 본다 (처음에 그렇게 썼다가 잡혔다).
+    from domains.meteor import prompts as _p
+    with pytest.raises(RateLimitStorm):
+        loop._last_words(world, a, cfg, lambda _id: Storming(), _p.system_for)
+
+    # 대조 — 보통 실패는 여전히 삼킨다 (유언이 없을 뿐 런은 계속된다)
+    class Broken:
+        def chat(self, *a, **k):
+            raise RuntimeError("보통 실패")
+
+    assert loop._last_words(world, a, cfg, lambda _id: Broken(), _p.system_for) == ""

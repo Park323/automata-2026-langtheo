@@ -48,35 +48,16 @@ def classify(from_country: str, to_country: str, requested_route: str | None) ->
     return "original" if requested_route == "original" else "ai"
 
 
-def cost(kind: str, cfg, knob_ai: float) -> float:
-    """경로별 발신 **돈** 비용. knob_ai 는 이번 런의 comm_intl_ai 선택값."""
-    return {
-        "domestic": cfg.costs.comm_domestic,
-        "original": cfg.costs.comm_intl_learner,
-        "ai": knob_ai,
-    }[kind]
-
-
-def ai_ap(cfg, knob_ai: float) -> float:
-    """ai 경로 발신이 먹는 **AP**. knob_ai(돈 값)에 짝지어진 `comm_intl_ai_ap` 를 찾는다.
-
-    노브를 돈으로만 매기면 예산 240 위에서 무력해진다 (8/25). AP 는 매년 1.0 로 리셋돼
-    예산과 무관하게 귀하므로 AP 로도 물린다. `comm_intl_ai_ap` 가 비었으면(구버전 config)
-    speak 기본값으로 떨어진다 — 옛 런은 그대로 재현된다.
-    """
-    aps = getattr(cfg.knob, "comm_intl_ai_ap", ()) or ()
-    if not aps:
-        return cfg.ap.speak
-    knobs = list(cfg.knob.comm_intl_ai)
-    try:
-        return aps[knobs.index(knob_ai)]
-    except (ValueError, IndexError):
-        return cfg.ap.speak
-
-
 def ap_cost(kind: str, cfg, knob_ai: float) -> float:
-    """경로별 발신 **행동력**. ai 만 노브에 따라 오르고, 자국·original 은 speak 기본값이다."""
-    return ai_ap(cfg, knob_ai) if kind == "ai" else cfg.ap.speak
+    """경로별 발신 **행동력**. 이제 이것이 발신의 유일한 비용이다 (8/25 · AP 전면 통일).
+
+    `knob_ai` 가 곧 ai 발신의 AP 다 — 돈 노브를 없애면서 짝 찾기(`comm_intl_ai` 에서
+    인덱스를 찾아 `comm_intl_ai_ap` 를 고르는)가 필요 없어졌다.
+
+    자국·`original` 은 `ap.speak` 그대로다. **노브가 재려는 마찰이 AI 번역에만 있다** —
+    거기만 비싸져야 「번역이 비싸지면 배우는가」 를 잰다.
+    """
+    return knob_ai if kind == "ai" else cfg.ap.speak
 
 
 # ── 도착한 글은 무슨 말인가 ────────────────────────────────────────────────────
@@ -135,12 +116,28 @@ def direct_works(sender_known_langs, recipient_known_langs,
       모국어로 보내면서 통했다고 적는 허구였다. 8/22 에 경로별 언어 규칙이 들어오면서
       그 근거가 사라졌다: 이제 **아는 말의 나라에는 그 말로 쓰라고 안내한다**
       (`render_costs` 의 나라별 줄). 안내대로 쓰면 첫 갈래로 통하고, 어기면 통하지 않는다.
-      어긴 사실이 로그에 남는 것이 관측이다 — 본문 언어를 강제로 검사하지는 않는다.
+      어긴 사실이 로그에 남는 것이 관측이다 — 도구 호출을 거절하지는 않는다.
+
+    ⚠ **배우지 않은 말로는 쓸 수 없다** (8/25 · Eddie). 위 `writer` 갈래의 주석은
+      「발신자가 **배워서** 그 말로 썼다」 인데 코드는 배웠는지를 안 봤다. LLM 은
+      `known_langs` 에 없는 말도 물리적으로 써낼 수 있으므로, 학습을 건너뛰고 도달했다:
+
+          Ranoa2(zh) → Miris1(fr)   안내대로 zh 로 쓰면  90자 · 미전달
+                                    안 배운 fr 로 쓰면  400자 · **전달**
+
+      규칙을 지키면 안 닿고 어기면 닿았다. 그것도 4.4배 긴 글로. `learn` 의 값이 0 이
+      되고, 가설의 연쇄(학습자 감소 → 왜곡을 못 알아챔)가 여기서 끊긴다. 이것을 막고
+      있던 유일한 것은 「어느 나라가 어떤 말을 쓰는지 모른다」 였는데, 모르는 것에
+      기대는 것은 규칙이 아니다.
 
     그 규칙이 있던 이유(「이중언어자가 받는 데만 쓸모가 있었다」)는 그대로 해결된다.
     아는 말로 쓰면 상대의 모국어이므로 **반드시** 통한다.
     """
     body = body_lang or from_lang
+    # **쓸 수 없는 말로 쓴 글은 통하지 않는다.** 거절이 아니라 실패다 — 어긴 사실이
+    # 로그에 남아야 관측이 된다.
+    if body not in sender_known_langs:
+        return False, ""
     if body in recipient_known_langs:
         # 누구 덕인지는 **그 글이 무슨 말인지**가 정한다. 상대의 국어면 발신자가 배워서
         # 그 말로 쓴 것이고(writer), 아니면 상대가 그 말을 배운 것이다(reader).
@@ -151,7 +148,7 @@ def direct_works(sender_known_langs, recipient_known_langs,
 # ── 전달 형태 만들기 (spec 5.1 · 5.2 · 5.4) ───────────────────────────────────
 
 def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai: float,
-                    sender_known_langs=frozenset(), log_tag: dict | None = None) -> dict:
+                    sender_known_langs=None, log_tag: dict | None = None) -> dict:
     """발신 메시지 하나를 처리해 전달 결과를 만든다.
 
     반환:
@@ -165,14 +162,42 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
     """
     from_lang = sent["from_lang"]
     to_lang = sent["to_lang"]
-    text_sent, chars_cut = truncate(sent["text"], from_lang, cfg)
+    # **기본값은 「적어도 모국어」 다** (8/25). 전에는 `frozenset()` 이었는데, 쓰기 권한을
+    # 보게 된 순간 그 기본값은 「아무 말도 쓸 수 없다」 가 되어 **모든 발신이 실패한다.**
+    # 안 넘기고 부르면 조용히 그렇게 됐다 — 모국어는 누구나 쓸 수 있는 사실이므로
+    # 그것을 바닥으로 둔다. 「아무것도 못 쓴다」 를 원하면 명시적으로 `frozenset()`.
+    if sender_known_langs is None:
+        sender_known_langs = {from_lang}
     kind = classify(sent["from_country"], sent["to_country"], sent.get("route"))
     reader = can_read(recipient_known_langs, from_lang)
     # **판정보다 먼저 「이 글이 무슨 말인가」 를 정한다** (#44). 전에는 전달 여부를
     # `from_lang`(발신자 모국어)으로만 보고 본문이 실제 무슨 말인지 안 봤다 — `original`
     # 이 「다룰 수 있는 아무 말」 을 허용하므로, 제3의 언어로 쓰면 아무도 못 읽는 글이
     # 전달되고 라벨이 「상대가 당신 말을 다뤄서 통했다」 는 거짓 사유를 댔다.
-    body_lang = detect_lang(text_sent, from_lang)
+    #
+    # **절단도 그 언어로 한다** (8/25). 전에는 `from_lang` 상한으로 잘랐다 — `original`
+    # 로 상대 언어를 쓰면 **정보량 등가가 무너진다.** 상한은 파일럿에서 「fr 기준 비례
+    # 배분」 으로 유도한 값(fr 400 / ja 130 / zh 90)이고, 같은 내용을 담는 글자 수다.
+    #
+    #     fr 화자가 zh 로 쓰면   90 자리에 400 자  →  4.44배
+    #     zh 화자가 fr 로 쓰면  400 자리에  90 자  →  0.23배
+    #
+    # #44 와 **같은 병**이다: `from_lang` 으로 판정하고 본문을 안 봤다.
+    #
+    # 절단 **전**의 글로 언어를 잰다 — 자른 뒤에 재면 잘린 조각이 다른 언어로 보일 수 있다.
+    body_lang = detect_lang(sent["text"], from_lang)
+    wrote_unknown = body_lang not in sender_known_langs
+    # **그 말의 예산은 그 말을 구사할 때만 받는다** (8/25 · Eddie).
+    #
+    # `original` 은 쓰기 권한이 없으면 아예 닿지 않으므로(`direct_works`) 상한이 무의미
+    # 하다. 그런데 `ai` 는 **늘 닿는다** — 절단은 분기보다 먼저 일어나므로, 모국어로
+    # 쓰라는 안내를 어기고 fr 로 400자를 쓰면 노브 값만 내고 4.44배 정보를 실었다.
+    # 학습을 우회하는 것은 아니라 가설을 깨지는 않지만, 길이 규칙이 뚫린다.
+    #
+    # 규칙은 하나로 적는다: **절단은 쓰여진 말의 것이고, 구사하지 못하는 말로 썼다면
+    # 자기 말의 것이다.** 「fr 로 쓰면 400」 이 아니라 「fr 을 구사하면 400」 이다.
+    cap_lang = from_lang if wrote_unknown else body_lang
+    text_sent, chars_cut = truncate(sent["text"], cap_lang, cfg)
     direct, direct_by = direct_works(sender_known_langs, recipient_known_langs,
                                      from_lang, to_lang, body_lang)
 
@@ -183,8 +208,13 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
         "text_sent": text_sent,                # 절단 후. 번역 입력이자 채점 기준선
         "text_delivered": None,                # 수신자가 실제로 본 것 (아래에서 채움)
         "translate_instruction": sent.get("translate_instruction"),
-        "len_written": len(sent["text"]), "len_limit": cfg.length.message_max_chars[from_lang],
+        # **적용된 상한을 적는다** — 쓰여진 말의 것이고, 구사하지 못하는 말이면 내 말의 것
+        "len_written": len(sent["text"]),
+        "len_limit": cfg.length.message_max_chars[cap_lang],
         "truncated": chars_cut > 0, "chars_cut": chars_cut,
+        # 배우지 않은 말로 썼는가. **따로 셀 수 있어야 한다** — 안내를 어긴 빈도 자체가
+        # 관측값이다 (모델이 규칙을 지키는지).
+        "wrote_unknown_lang": wrote_unknown,
         "reader": reader,                      # 수신자가 발신 언어를 읽는가
         "direct_ok": direct,                   # 원문 직통이 통하는가 (읽기 OR 쓰기)
         "direct_by": direct_by or None,        # "reader" | "writer" — 누구의 학습 덕인가
@@ -222,7 +252,12 @@ def process_message(sent: dict, recipient_known_langs, cfg, translator, knob_ai:
                  "original": None, "unreadable": True}
         # **원인을 붙인다.** 이 경로의 실패는 세계의 사실이다 — 내가 그 나라 말을
         # 모르고 상대도 내 말을 못 읽었다. route=original 의 도박이 정보를 주는 지점이다.
-        notice = {"type": "delivery_failed", "to": sent["to"], "reason": "unreadable"}
+        # **사유를 가른다.** 「상대가 못 읽었다」 와 「내가 쓸 수 없는 말로 썼다」 는
+        # 다른 사실이고, 섞으면 지표 9(미전달률)가 오염된다 — `translate_failed` 를 따로
+        # 둔 것과 같은 이유다. 발신자에게도 다른 얘기다: 앞은 도박이 빗나간 것이고
+        # 뒤는 안내를 어긴 것이다.
+        notice = {"type": "delivery_failed", "to": sent["to"],
+                  "reason": "not_your_language" if wrote_unknown else "unreadable"}
         return {"kind": kind, "delivered": False, "inbox": inbox,
                 "sender_notice": notice, "meta": meta}
 

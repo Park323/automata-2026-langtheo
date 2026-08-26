@@ -21,6 +21,11 @@ import pytest
 from core import config, loop, visibility
 from core.visibility import Vis
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 BASE = "configs/base.yaml"
 
 
@@ -37,7 +42,7 @@ def world(cfg):
     # 그것을 그대로 두면 **다른 기제를 재는 테스트가 사람마다 다른 액수에 흔들린다.**
     # 차이 자체는 `test_world_rules_v2.py` 의 전용 테스트가 본다.
     for _a in w.agents.values():
-        _a.income_mult = _a.invest_mult = 1.0
+        _a.invest_mult = 1.0
     return w
 
 
@@ -139,7 +144,7 @@ def test_the_obituary_is_the_only_way_age_gets_out(cfg, world):
     # 누출이 아니라 검사의 착시다. 겹치지 않는 값으로 옮겨 두고 본다.
     for i, a in enumerate(world.agents.values()):
         a.age = 40 + i
-    obs = prompts.render_observation(world, world.agents["Asla1"], cfg, 48.0)
+    obs = prompts.render_observation(world, world.agents["Asla1"], cfg, KNOB)
     for aid, a in world.agents.items():
         if aid == "Asla1":
             continue
@@ -230,7 +235,7 @@ def test_no_secret_value_reaches_any_rendered_string(cfg):
         world=dataclasses.replace(cfg.world, success_prob=0.4321),
         survival=dataclasses.replace(cfg.survival, lambda_base=1234.5, k=77),
         thresholds=dataclasses.replace(cfg.thresholds, interceptor=987654,
-                                       bunker_scale=876543),
+                                       bunker=876543),
         growth=dataclasses.replace(cfg.growth, growth_coef=0.9753),
     )
     world = loop.init_world(probe, itertools.count(1), random.Random(1))
@@ -238,11 +243,11 @@ def test_no_secret_value_reaches_any_rendered_string(cfg):
     world.countries["Asla"].land = "interceptor"
     world.countries["Asla"].national_capital = 5000.0
     a = world.agents["Asla1"]
-    a.ap, a.budget = 1.0, 500.0
+    a.ap = 1.0
     a.lam = 1234.5                                  # 개인의 λ
 
-    seen = [prompts.system_for(a, world, probe, 48.0),
-            prompts.render_turn_open(world, a, probe, 48.0, [])]
+    seen = [prompts.system_for(a, world, probe, KNOB),
+            prompts.render_turn_open(world, a, probe, KNOB, [])]
     sink = Sink()
     for name, args in (("observe_risk", {"reasoning": "r"}),
                        ("invest", {"target": "wellness", "reasoning": "r"}),
@@ -251,10 +256,10 @@ def test_no_secret_value_reaches_any_rendered_string(cfg):
                        ("learn", {"country": "Miris", "reasoning": "r"}),
                        ("speak", {"to": "Asla2", "text": "x", "reasoning": "r"})):
         a.ap = 1.0
-        r, _ = execute_tool(name, args, world, a, probe, sink, 48.0)
+        r, _ = execute_tool(name, args, world, a, probe, sink, KNOB)
         seen.append(json.dumps(r, ensure_ascii=False))
     # 사건도 — 이 판에서 생긴 것 전부
-    loop._settle_step(world, probe, random.Random(0), sink, None, 48.0,
+    loop._settle_step(world, probe, random.Random(0), sink, None, KNOB,
                       itertools.count(900), loop.RunResult(world=world), {}, [])
     for e in world.inbox_queue:
         seen.append(prompts.render_events(world.agents[e["to"]], [e["msg"]]))
@@ -275,8 +280,8 @@ def test_the_audit_would_actually_catch_a_leak(cfg):
     world = loop.init_world(probe, itertools.count(1), random.Random(1))
     world.turn = 3
     # 임계를 관측에 실으면 (옛 설계가 그랬다) 그 숫자가 문자열에 나타난다
-    leaked = prompts.render_observation(world, world.agents["Asla1"], probe, 48.0) \
+    leaked = prompts.render_observation(world, world.agents["Asla1"], probe, KNOB) \
         + f"\n  interceptor に要る進捗: {probe.thresholds.interceptor}"
     assert "987654" in leaked                        # 그물이 잡을 수 있는 모양이다
-    clean = prompts.render_observation(world, world.agents["Asla1"], probe, 48.0)
+    clean = prompts.render_observation(world, world.agents["Asla1"], probe, KNOB)
     assert "987654" not in clean                     # 지금은 안 새고 있다

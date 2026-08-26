@@ -8,6 +8,11 @@ import pytest
 from core import config, messaging
 from core.llm import StubClient
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 BASE = Path(__file__).resolve().parent.parent / "configs" / "base.yaml"
 
 
@@ -41,7 +46,7 @@ def test_truncate_before_translate(cfg):
     """8. 번역 입력도 잘린 것(400자)이어야 한다."""
     m = messaging.process_message(_sent(from_lang="fr", to_lang="zh", text="a" * 401),
                                   recipient_known_langs={"zh"}, cfg=cfg,
-                                  translator=_translator(), knob_ai=48)
+                                  translator=_translator(), knob_ai=KNOB)
     assert m["meta"]["chars_cut"] == 1
     assert len(m["meta"]["text_sent"]) == 400
     assert "a" * 400 in m["meta"]["translate_prompt"]
@@ -57,17 +62,14 @@ def test_classify(cfg):
     assert messaging.classify("Asla", "Ranoa", "ai") == "ai"
 
 
-def test_cost(cfg):
-    assert messaging.cost("domestic", cfg, 48) == cfg.costs.comm_domestic
-    assert messaging.cost("original", cfg, 48) == cfg.costs.comm_intl_learner
-    assert messaging.cost("ai", cfg, 48) == 48
 
+# **`test_cost` 를 지웠다** (8/25 · AP 전면 통일) — 발신의 돈 비용이 없다.
 
 def test_original_fail_when_cannot_read(cfg):
     """6. original 인데 수신자가 발신 언어를 모르면 본문 미전달 + 발신자 실패 통지."""
     m = messaging.process_message(_sent(route="original"),
                                   recipient_known_langs={"zh"},   # ja 를 모름
-                                  cfg=cfg, translator=None, knob_ai=48)
+                                  cfg=cfg, translator=None, knob_ai=KNOB)
     assert m["delivered"] is False
     assert m["inbox"]["text"] is None
     assert m["inbox"]["unreadable"] is True
@@ -78,7 +80,7 @@ def test_original_fail_when_cannot_read(cfg):
 def test_original_success_when_can_read(cfg):
     m = messaging.process_message(_sent(route="original"),
                                   recipient_known_langs={"zh", "ja"},
-                                  cfg=cfg, translator=None, knob_ai=48)
+                                  cfg=cfg, translator=None, knob_ai=KNOB)
     assert m["delivered"] is True
     assert m["inbox"]["text"] == "본문"
     # **통역 없이 닿았다는 표시가 붙는다.** 전에는 라벨이 없어 국내 메시지와 같은
@@ -102,13 +104,13 @@ def test_ai_route_never_shows_the_original(cfg):
     """
     for known in ({"zh", "ja"}, {"zh"}):          # 발신 언어를 알든 모르든
         r = messaging.process_message(_sent(route="ai"), recipient_known_langs=known,
-                                      cfg=cfg, translator=_translator("译文"), knob_ai=48)
+                                      cfg=cfg, translator=_translator("译文"), knob_ai=KNOB)
         assert r["inbox"]["label"] == messaging.AI_LABEL
         assert r["inbox"]["text"] == "译文"
         assert r["inbox"]["original"] is None
     # meta.reader 는 남는다 — 채점기가 "읽을 수 있었는데도 ai 를 받았다" 를 구분해야 한다
     r = messaging.process_message(_sent(route="ai"), recipient_known_langs={"zh", "ja"},
-                                  cfg=cfg, translator=_translator("译文"), knob_ai=48)
+                                  cfg=cfg, translator=_translator("译文"), knob_ai=KNOB)
     assert r["meta"]["reader"] is True
 
 
@@ -282,22 +284,21 @@ def test_a_missing_recipient_says_which_field_is_missing(cfg):
     from core.loop import init_world
     world = init_world(cfg, itertools.count(1), random.Random(1))
     a = world.agents["Miris1"]
-    a.ap, a.budget = 1.0, 1000.0
+    a.ap = 1.0
 
     r, _ = execute_tool("speak", {"route": "ai", "text": "Bonjour Ranoa1 !"},
-                        world, a, cfg, Sink(), 48.0)
+                        world, a, cfg, Sink(), KNOB)
     assert not r["ok"]
     assert "`to`" in r["error"]                       # 어느 칸인지 말한다
     assert "inside the text does not send it" in r["error"]   # 오해를 집는다
     assert "unknown recipient" not in r["error"]      # 다른 실패와 섞이지 않는다
 
     r, _ = execute_tool("speak", {"to": "Ranoa9", "text": "x"},
-                        world, a, cfg, Sink(), 48.0)
+                        world, a, cfg, Sink(), KNOB)
     assert not r["ok"] and "unknown recipient: Ranoa9" in r["error"]
     assert "list of people" in r["error"]             # 어디를 보라고 말한다
 
     # 둘 다 **돈도 AP 도 물리지 않는다** — 검증이 과금보다 먼저다
-    assert a.ap == 1.0 and a.budget == 1000.0
 
 
 
@@ -312,7 +313,7 @@ def test_the_delivered_language_is_the_one_actually_written(cfg):
     m = messaging.process_message(
         _sent(from_lang="fr", from_country="Miris", to="Asla1", to_country="Asla",
               to_lang="ja", route="original", text="こんにちは、協力しましょう"),
-        recipient_known_langs={"ja"}, cfg=cfg, translator=None, knob_ai=48,
+        recipient_known_langs={"ja"}, cfg=cfg, translator=None, knob_ai=KNOB,
         sender_known_langs={"fr", "ja"})
     assert m["delivered"] is True
     assert m["meta"]["delivered_lang"] == "ja", m["meta"]["delivered_lang"]
@@ -321,7 +322,7 @@ def test_the_delivered_language_is_the_one_actually_written(cfg):
     m2 = messaging.process_message(
         _sent(from_lang="fr", from_country="Miris", to="Asla1", to_country="Asla",
               to_lang="ja", route="original", text="Bonjour, coopérons"),
-        recipient_known_langs={"ja"}, cfg=cfg, translator=None, knob_ai=48,
+        recipient_known_langs={"ja"}, cfg=cfg, translator=None, knob_ai=KNOB,
         sender_known_langs={"fr", "ja"})
     assert m2["meta"]["delivered_lang"] == "fr"
 
@@ -337,12 +338,17 @@ def test_a_third_language_body_does_not_get_through(cfg):
 
     셋을 한자리에서 본다. 앞의 둘은 그대로 통해야 하고, 셋째만 막혀야 한다.
     """
-    # 발신자 Asla1 은 ja(모국어)와 zh 를 다룬다 · 수신자 Miris2 는 fr(모국어)과 ja 를 읽는다
+    # 발신자 Asla1 은 ja(모국어)·zh·fr 를 다룬다 · 수신자 Miris2 는 fr(모국어)과 ja 를 읽는다
+    #
+    # **fr 을 넣는다** (8/25). ②의 주석은 「내가 **배워서** 그 말로 쓴 것이다」 인데
+    # `sender_known_langs` 에 fr 이 없었다 — 픽스처가 스스로 모순이었고, 쓰기 권한을
+    # 보게 되자 드러났다. ③(zh)은 여전히 「쓸 수는 있지만 상대가 못 읽는다」 다.
     common = dict(from_lang="ja", from_country="Asla", to="Miris2", to_country="Miris",
                   to_lang="fr", route="original")
     send = lambda text: messaging.process_message(
         _sent(**common, text=text), recipient_known_langs={"fr", "ja"},
-        cfg=cfg, translator=None, knob_ai=48, sender_known_langs={"ja", "zh"})
+        cfg=cfg, translator=None, knob_ai=KNOB,
+        sender_known_langs={"ja", "zh", "fr"})
 
     # ① 내 말(ja)로 썼다 — 상대가 ja 를 읽는다
     m = send("こんにちは")
@@ -398,10 +404,145 @@ def test_there_is_only_one_direct_label_now(cfg):
             m = messaging.process_message(
                 _sent(from_lang=f, from_country="Asla", to="B1", to_country="Miris",
                       to_lang=t, route="original", text=TEXT[body]),
-                recipient_known_langs=rk, cfg=cfg, translator=None, knob_ai=48,
+                recipient_known_langs=rk, cfg=cfg, translator=None, knob_ai=KNOB,
                 sender_known_langs={f, body})
             if m["delivered"]:
                 assert m["inbox"]["label"] == messaging.DIRECT_READ_LABEL
                 assert m["meta"]["delivered_lang"] in rk
                 seen.add(m["meta"]["direct_by"])
     assert seen == {"reader", "writer"}          # 두 갈래 다 여전히 일어난다
+
+
+def test_the_cut_ignores_the_recipient_entirely(cfg):
+    """**절단은 오직 쓰여진 말로 한다** (8/25 · Eddie).
+
+    안내는 나라마다 쓸 말을 하나씩 정해 준다 (「Ranoa へ — 中国語で書けば必ず届く」).
+    그래서 상한을 **행선지**에서 끌어오고 싶어지는데, 그러면 안 된다 — 수신자가 zh 와
+    ja 를 둘 다 읽으면 `original` 을 ja 로 써도 닿고, 그때 걸리는 상한은 ja 의 130 이다.
+    행선지에서 끌어오면 90 으로 잘려 40자가 사라진다.
+
+    상한은 **글자의 성질**이다 (같은 내용을 담는 글자 수). 누가 읽는지와 무관하다.
+    """
+    L = cfg.length.message_max_chars
+    body_char = {"ja": "あ", "zh": "你", "fr": "a"}
+    for body in ("ja", "zh", "fr"):
+        seen = set()
+        for to_country, to_lang in (("Ranoa", "zh"), ("Miris", "fr"), ("Asla", "ja")):
+            for reads in (frozenset({to_lang}), frozenset({"ja", "zh", "fr"})):
+                sent = _sent(from_lang="ja", from_country="Asla", to="X1",
+                             to_country=to_country, to_lang=to_lang,
+                             route="original", text=body_char[body] * (L[body] + 60))
+                m = messaging.process_message(
+                    sent, reads, cfg, None, None,
+                    sender_known_langs={"ja", "zh", "fr"})
+                seen.add((m["meta"]["len_limit"], m["meta"]["chars_cut"],
+                          len(m["meta"]["text_sent"])))
+        # 수신국·수신자 능력을 다 흔들어도 **하나**여야 한다
+        assert seen == {(L[body], 60, L[body])}, (body, seen)
+
+
+def test_the_ai_route_gives_no_length_bonus_for_a_language_you_lack(cfg):
+    """**그 말의 예산은 그 말을 구사할 때만 받는다** (8/25 · Eddie).
+
+    `original` 은 쓰기 권한이 없으면 아예 닿지 않으니 상한이 무의미하다. 그런데 `ai` 는
+    **늘 닿는다** — 절단이 분기보다 먼저 일어나므로, 모국어로 쓰라는 안내를 어기고 fr 로
+    400자를 쓰면 노브 값만 내고 4.44배 정보를 실을 수 있었다. 학습 우회는 아니라 가설을
+    깨지는 않지만 길이 규칙이 뚫린다.
+
+    「fr 로 쓰면 400」 이 아니라 **「fr 을 구사하면 400」** 이다.
+    """
+    L = cfg.length.message_max_chars
+
+    def send(known, n):
+        sent = _sent(from_lang="zh", from_country="Ranoa", to="M1",
+                     to_country="Miris", to_lang="fr", route="ai", text="a" * n)
+        return messaging.process_message(sent, {"fr"}, cfg, _translator("traduit"),
+                                         KNOB, sender_known_langs=known)
+
+    # fr 을 모른다 → 내 말(zh)의 90 이 걸린다. 400 을 써도 90 만 간다.
+    bad = send({"zh"}, L["fr"])
+    assert bad["meta"]["wrote_unknown_lang"] is True
+    assert bad["meta"]["len_limit"] == L["zh"]
+    assert len(bad["meta"]["text_sent"]) == L["zh"]
+    assert bad["delivered"] is True            # ai 는 늘 닿는다 — 그 계약은 그대로
+
+    # fr 을 배웠다 → 그 말의 400 을 받는다
+    ok = send({"zh", "fr"}, L["fr"])
+    assert ok["meta"]["wrote_unknown_lang"] is False
+    assert ok["meta"]["len_limit"] == L["fr"]
+    assert ok["meta"]["truncated"] is False
+
+
+def test_you_cannot_write_a_language_you_have_not_learned(cfg):
+    """**배우지 않은 말로는 쓸 수 없다** (8/25 · Eddie).
+
+    `direct_works` 의 `writer` 갈래는 「발신자가 **배워서** 그 말로 썼다」 인데, 코드는
+    배웠는지를 안 봤다. LLM 은 `known_langs` 에 없는 말도 물리적으로 써낼 수 있으므로
+    학습을 건너뛰고 도달했다 — 그것도 더 긴 글로:
+
+        zh 화자 → fr 나라   안내대로 zh 로 쓰면   90자 · 미전달
+                            안 배운 fr 로 쓰면   400자 · **전달**
+
+    규칙을 지키면 안 닿고 어기면 닿았다. `learn` 의 값이 0 이 되고 가설의 연쇄가 끊긴다.
+
+    막는 방식은 **거절이 아니라 실패**다 — 어긴 사실이 로그에 남아야 관측이 된다.
+    """
+    def send(known, text):
+        sent = _sent(from_lang="zh", from_country="Ranoa", to="M1",
+                     to_country="Miris", to_lang="fr", route="original", text=text)
+        return messaging.process_message(sent, {"fr"}, cfg, None, None,
+                                         sender_known_langs=known)
+
+    # 안 배운 fr 로 썼다 — 통하지 않는다. 사유가 「상대가 못 읽었다」 와 갈린다.
+    bad = send({"zh"}, "Bonjour")
+    assert bad["delivered"] is False
+    assert bad["meta"]["wrote_unknown_lang"] is True
+    assert bad["sender_notice"]["reason"] == "not_your_language"
+
+    # 배운 뒤에는 같은 글이 통한다 — 학습이 정확히 이 문을 연다
+    ok = send({"zh", "fr"}, "Bonjour")
+    assert ok["delivered"] is True
+    assert ok["meta"]["direct_by"] == "writer"
+    assert ok["meta"]["wrote_unknown_lang"] is False
+
+    # 내 말(zh)로 쓰면 쓰기는 되고, 상대가 못 읽어서 실패한다 — 다른 사유다
+    mine = send({"zh"}, "你好朋友")
+    assert mine["delivered"] is False
+    assert mine["meta"]["wrote_unknown_lang"] is False
+    assert mine["sender_notice"]["reason"] == "unreadable"
+
+
+def test_the_length_cap_follows_the_body_language_not_the_sender(cfg):
+    """**상한은 쓴 말의 것이다** (8/25).
+
+    상한(fr 400 / ja 130 / zh 90)은 파일럿에서 「fr 기준 비례 배분」 으로 유도했다 —
+    **같은 내용을 담는 글자 수**다. `from_lang`(발신자 모국어)으로 자르면 `original` 로
+    상대 언어를 쓸 때 그 등가가 무너진다:
+
+        fr 화자가 zh 로 쓰면   90 자리에 400 자  →  4.44배
+        zh 화자가 fr 로 쓰면  400 자리에  90 자  →  0.23배
+
+    #44 와 같은 병이다 — `from_lang` 으로 판정하고 본문을 안 봤다.
+    """
+    L = cfg.length.message_max_chars
+    body_char = {"ja": "あ", "zh": "你", "fr": "a"}
+
+    def send(from_lang, to_lang, body_lang, n):
+        sent = _sent(from_lang=from_lang, from_country="Asla", to="B1",
+                     to_country="Miris", to_lang=to_lang, route="original",
+                     text=body_char[body_lang] * n)
+        return messaging.process_message(sent, {to_lang}, cfg, None, None,
+                                         sender_known_langs={from_lang, body_lang})
+
+    # 상한이 **본문 언어**의 것이고, 실제로 그 길이로 잘린다
+    for from_lang in ("ja", "zh", "fr"):
+        for body_lang in ("ja", "zh", "fr"):
+            m = send(from_lang, "fr" if body_lang != "fr" else "ja",
+                     body_lang, max(L.values()) + 50)["meta"]
+            assert m["len_limit"] == L[body_lang], (from_lang, body_lang, m["len_limit"])
+            assert len(m["text_sent"]) == L[body_lang], (from_lang, body_lang)
+
+    # **절단 전의 글로 언어를 잰다** — 자른 뒤에 재면 잘린 조각이 다른 언어로 보일 수 있다
+    m = send("fr", "zh", "zh", 500)["meta"]
+    assert m["chars_cut"] == 500 - L["zh"]
+    assert m["delivered_lang"] == "zh"

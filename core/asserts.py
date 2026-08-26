@@ -7,6 +7,19 @@
 from __future__ import annotations
 
 
+def capacity_per_year(cfg) -> float:
+    """한 사람이 한 해에 시설로 옮길 수 있는 **최대 투자량**.
+
+    AP 를 전부 `invest` 에 쏟았을 때다. 돈이 사라진 뒤로 이것이 유일한 천장이다 —
+    전에는 소득(`income.per_turn × 나이배수`)이 더 낮은 천장이었다.
+
+        (action_points / ap.unit) × costs.unit = 5회 × 40 = 200
+
+    개체 배수(`throughput_spread`)는 평균이 정확히 1.0 이라 여기 안 곱한다.
+    """
+    return (cfg.turn.action_points / cfg.ap.unit) * cfg.costs.unit
+
+
 def window(cfg) -> tuple[float, float, float, float]:
     """요격기 임계가 놓여야 할 창. 전부 진척 단위로 환산해 반환한다. (A, B, C, E)
 
@@ -22,19 +35,22 @@ def window(cfg) -> tuple[float, float, float, float]:
     ⚠ E 는 양변에 같은 정책계수(0.6)를 쓴다. 전력 기준으로 걸면 하한이
       (T−E)/T × C 가 되어 상한 C×0.6 을 넘고 **창이 닫힌다.**
     """
-    # **나이 배수를 창에 반영한다** (8/22). 소득이 나이와 함께 오르므로 「한 나라의 전
-    # 기간 총소득」 이 `per_turn × n × total` 보다 크다 — 그 값을 그대로 쓰면 창이 실제보다
-    # 좁아지고, 임계가 「도달 가능」 쪽에 붙는다.
+    # **창은 행동력 용량에서 나온다** (8/25 · AP 전면 통일). 전에는 소득이었다.
     #
-    # 배수는 **정상 연령분포**에서 잡는다: 나이 a 에 살아 있을 확률 ∝ S(a).
-    per_turn = cfg.income.per_turn * mean_age_multiplier(cfg)
+    #   한 사람 한 해 = (action_points / ap.unit) 회 × costs.unit
+    #                 = 5회 × 40 = 200 투자량
+    #
+    # 나이 배수(`mean_age_multiplier`)는 더는 안 곱한다 — `age_growth` 를 없앴다. AP 는
+    # 매년 1.0 으로 리셋되므로 나이와 무관하게 누구나 같은 용량을 갖는다.
+    #
+    # 개체 배수(`throughput_spread`)는 평균이 정확히 1.0 이라 곱해도 그대로다.
+    per_turn = capacity_per_year(cfg)
     n = cfg.world.agents_per_country
     total = cfg.world.total_turns
     epoch = cfg.world.epoch_turns
 
-    # 성장을 뺀 소득 (임계 유도용)
-    nation_all = per_turn * n * total          # 한 나라의 전 기간 총소득
-    nation_epoch = per_turn * n * epoch        # 한 나라의 한 주기 소득
+    nation_all = per_turn * n * total          # 한 나라가 전 기간에 옮길 수 있는 최대량
+    nation_epoch = per_turn * n * epoch        # 한 주기
 
     # **가장 효율 좋은 나라를 기준으로 잡는다** (8/23). 나라마다 요격기 진척 속도가
     # 다르므로(`facility.build_spread`), 네 조건이 모두 「최선의 나라에 몰아줬을 때」 로
@@ -48,9 +64,9 @@ def window(cfg) -> tuple[float, float, float, float]:
     #   고를 때의 얘기다. 네 조건이 같은 배수로 곱해지므로 창은 통째로 평행이동한다.
     best = max(cfg.facility.build_spread)
 
-    def to_progress(income_amount: float) -> float:
-        # 진척 단위 = 소득 × facility.eff × success_prob × 최선 국가 효율
-        return income_amount * cfg.k * best
+    def to_progress(amount: float) -> float:
+        # 진척 단위 = 투자량 × facility.eff × success_prob × 최선 국가 효율
+        return amount * cfg.k * best
 
     a = to_progress(3 * nation_epoch)                      # 마지막 한 주기 3국 전력
     b = to_progress(nation_all)                            # 한 나라의 전 기간 총력
@@ -59,36 +75,12 @@ def window(cfg) -> tuple[float, float, float, float]:
     return (a, b, c, e)
 
 
-def mean_age_multiplier(cfg) -> float:
-    """정상 연령분포에서 본 소득 나이 배수의 평균.
-
-    나이 a 에 살아 있을 확률은 생존함수 S(a) 에 비례한다. 소득이 성인 나이 이후 한 해마다
-    `age_growth` 씩 오르므로, 한 사람이 평균적으로 받는 배수는 그 가중평균이다.
-
-        age_growth 0.20 · adult_age 10 → 평균 1.224
-        age_growth 0.10 · adult_age  5 → 평균 1.363   ← 지금 값
-
-    **손으로 적지 않는다.** `age_growth` 나 수명을 바꾸면 이 값이 따라 움직여야 하고,
-    그러지 않으면 임계값 창이 조용히 어긋난다.
-    """
-    from core import survival as _s
-    g = cfg.income.age_growth
-    if g <= 0:
-        return 1.0
-    lam, k = cfg.survival.lambda_base, cfg.survival.k
-    horizon = int(lam * 3) + 1
-    w = [_s.survival(a, lam, k) for a in range(horizon)]
-    tot = sum(w) or 1.0
-    return sum(w[a] * (1 + g * max(0, a - cfg.world.adult_age))
-               for a in range(horizon)) / tot
-
-
 def check_all(cfg) -> list[str]:
     """전부 검사하고 실패 목록을 반환한다. 빈 리스트면 통과."""
     fails: list[str] = []
     a, b, c, e = window(cfg)
     intc = cfg.thresholds.interceptor
-    bunker = cfg.thresholds.bunker_scale
+    bunker = cfg.thresholds.bunker
 
     # ★A 미루기 방지 — 마지막 한 주기에 3국이 전력을 다해도 도달 불가
     if not (intc > a):
@@ -135,20 +127,20 @@ def check_all(cfg) -> list[str]:
         )
 
     # 벙커 깊이 창 — **국가 효율이 안 걸린다** (요격기 전용). 여기는 cfg.k 그대로다.
-    eff = cfg.income.per_turn * mean_age_multiplier(cfg)
+    eff = capacity_per_year(cfg)
     nation_all = eff * cfg.world.agents_per_country * cfg.world.total_turns
     nation_epoch = eff * cfg.world.agents_per_country * cfg.world.epoch_turns
     bunker_lo = nation_epoch * cfg.k     # 한 주기 전력 진척
     bunker_hi = nation_all * cfg.k       # 전 기간 진척
     if not (bunker >= bunker_lo):
         fails.append(
-            f"벙커↓: bunker_scale({bunker}) 가 한 주기 진척({bunker_lo:.0f}) 이상이어야 한다. "
-            f"작으면 한 주기로 완성됨 → 함정이 함정이 아니게 된다. bunker_scale 를 올려라."
+            f"벙커↓: bunker({bunker}) 가 한 주기 진척({bunker_lo:.0f}) 이상이어야 한다. "
+            f"작으면 한 주기로 완성됨 → 함정이 함정이 아니게 된다. bunker 를 올려라."
         )
     if not (bunker <= bunker_hi):
         fails.append(
-            f"벙커↑: bunker_scale({bunker}) 가 전 기간 진척({bunker_hi:.0f}) 이하여야 한다. "
-            f"크면 아무리 파도 의미가 없다. bunker_scale 를 내려라."
+            f"벙커↑: bunker({bunker}) 가 전 기간 진척({bunker_hi:.0f}) 이하여야 한다. "
+            f"크면 아무리 파도 의미가 없다. bunker 를 내려라."
         )
 
     # ★D 1인부담 비교 — **분모의 기간을 맞춘다** (#51).
@@ -162,21 +154,40 @@ def check_all(cfg) -> list[str]:
     span = cfg.world.total_turns
     bunker_burden = bunker / (cfg.world.agents_per_country * span)
     intc_burden = intc / (3 * cfg.world.agents_per_country * span)
+    # **벙커가 더 비싸야 한다.** 8/25 에 「정확히 같게」 로 바꿨다가 **되돌렸다** —
+    # 같으면 개인에게 비용도 결과(내가 산다)도 같은데, 협력에는 추가 비용(말하기·학습 AP)과
+    # 배신 위험이 얹힌다. 그러면 벙커가 지배하고 딜레마가 사라진다.
+    #
+    # 벙커의 유혹은 「싸다」 가 아니라 **「남이 필요 없다」** 다. 함정은 불신 때문에 더 비싼
+    # 쪽을 택하는 것이고, 그 초과분이 불신의 가격이다.
+    #
+    # 초과분의 크기에는 뜻이 있다 — 요격기를 고르면 남는 AP 가 협력의 비용(국제 발신)을
+    # 살 수 있어야 하고, **그것이 노브에 따라 갈려야** 한다. 7,200 에서 그 경계가 노브
+    # 범위 안에 놓인다 (0.2 → 연 1.03통 · 0.5 → 0.41통).
     if not (bunker_burden > intc_burden):
         fails.append(
-            f"부담: 벙커 1인부담({bunker_burden:.1f}) 이 요격기 1인부담({intc_burden:.1f}) 보다 "
-            f"커야 한다 (둘 다 {span}해·사람당). 벙커가 더 싸지면 아무도 요격기를 안 한다. "
-            f"bunker_scale 를 올리거나 interceptor 를 조정하라."
+            f"부담: 벙커 1인부담({bunker_burden:.2f}) 이 요격기 1인부담({intc_burden:.2f}) 보다 "
+            f"커야 한다 (둘 다 {span}해·사람당). 같거나 싸면 협력의 추가 비용(말하기·학습·"
+            f"배신 위험)을 감수할 이유가 없어져 벙커가 지배한다. bunker 를 올려라."
         )
 
-    # 노브 — 원문 경로가 AI 경로보다 싸야 경로 선택이 의미를 갖는다. 전 구간에서.
-    learner = cfg.costs.comm_intl_learner
-    for v in cfg.knob.comm_intl_ai:
-        if not (v > learner):
+    # 노브 — **원문 경로보다 싸지면 경로 선택이 무의미해진다.** 전 구간에서.
+    # 돈이 사라진 뒤로 비교 대상은 `ap.speak` 다 (자국·original 발신의 AP).
+    aps = list(cfg.knob.comm_intl_ai_ap)
+    for v in aps:
+        if not (v >= cfg.ap.speak):
             fails.append(
-                f"노브: comm_intl_ai 의 값 {v} 가 comm_intl_learner({learner}) 보다 커야 한다. "
-                f"원문 경로가 더 비싸지면 경로 선택이 무의미해진다. "
-                f"knob.comm_intl_ai 의 최저값을 {learner} 위로 올려라."
+                f"노브: comm_intl_ai_ap 의 값 {v} 가 ap.speak({cfg.ap.speak}) 이상이어야 한다. "
+                f"AI 번역이 원문보다 싸지면 아무도 배우지 않는다 — 노브가 방향을 잃는다."
             )
+    # **한 해에 한 통도 못 보내면 노브가 아니라 금지다.**
+    if aps and max(aps) > cfg.turn.action_points:
+        fails.append(
+            f"노브: 최고값 {max(aps)} 이 한 해 AP({cfg.turn.action_points})를 넘는다. "
+            f"그러면 AI 발신이 불가능해지고, 비싼 것과 없는 것이 구분되지 않는다."
+        )
+    # 오름차순이어야 `comm_intl_ai_ap[i]` 가 「i 번째로 비싼 노브」 라는 뜻을 갖는다.
+    if aps != sorted(aps):
+        fails.append(f"노브: comm_intl_ai_ap({aps}) 가 오름차순이 아니다.")
 
     return fails

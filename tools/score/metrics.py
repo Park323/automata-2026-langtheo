@@ -246,7 +246,7 @@ def score_run(run_dir: Path) -> dict:
         # 런 인자가 먼저다. config 의 knob 은 스윕할 **목록**이라 조건을 특정하지 못한다.
         knob = snap.get("knob_ai")
         if knob is None:
-            k = (cfg.get("knob") or {}).get("comm_intl_ai")
+            k = (cfg.get("knob") or {}).get("comm_intl_ai_ap")
             knob = k[0] if isinstance(k, list) and len(k) == 1 else k
         seed = snap.get("seed")
         if seed is None:

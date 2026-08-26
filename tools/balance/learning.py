@@ -54,7 +54,7 @@ def expected_remaining(age, lam, k, tmax=60):
     return sum(survival(age + j, lam, k) for j in range(0, tmax + 1)) / s0
 
 
-def remaining_income(age, cfg, lam, k, mult, tmax=60):
+def remaining_income(age, cfg, lam, k, mult, tmax=60, capacity=200.0):
     """남은 생애 기대 소득. **나이와 함께 오르는 소득**을 반영한다 (8/22).
 
     `expected_remaining × income` 으로 계산하면 젊은 에이전트를 과대평가한다 —
@@ -66,8 +66,7 @@ def remaining_income(age, cfg, lam, k, mult, tmax=60):
     tot = 0.0
     for j in range(0, tmax + 1):
         a = age + j
-        grown = 1.0 + cfg.income.age_growth * max(0, a - cfg.world.adult_age)
-        tot += survival(a, lam, k) * cfg.income.per_turn * mult * grown
+        tot += survival(a, lam, k) * capacity * mult
     return tot / s0
 
 
@@ -102,7 +101,7 @@ def main():
     print("=" * 84)
     print("학습 암묵효용 x 의 자 맞추기 — 산수. ③만 몬테카를로")
     print("=" * 84)
-    print(f"  확정   {T}턴 · 기대수명 {EL:.2f}턴 · adult_age {cfg.world.adult_age}")
+    print(f"  확정   {T}턴 · 기대수명 {EL:.2f}턴")
     print(f"         learn_base L = {L:.0f} (고정) · speedup +{cfg.costs.learn_speedup}/사유")
     print(f"         한 호출 진척 {cfg.costs.unit:.0f}×배수 · AP {cfg.ap.unit}/호출 · "
           f"한 해 AP {AP}")
@@ -111,9 +110,9 @@ def main():
     print("① 자가 닿는 범위")
     print("=" * 84)
     # 성인 진입 시점 소득으로 상한을 잡는다 — 학습은 어린 쪽의 투자다.
-    income0 = cfg.income.per_turn * a.mult
-    ceil_ = remaining_income(cfg.world.adult_age, cfg, lam, k, a.mult)
-    print(f"  x 측정 상한 ≈ 성인 진입({cfg.world.adult_age}세) 시점 잔여 기대소득 "
+    income0 = 200.0 * a.mult
+    ceil_ = remaining_income(0, cfg, lam, k, a.mult)   # 태어난 시점 기준 (8/25)
+    print(f"  x 측정 상한 ≈ 태어난 시점의 잔여 기대용량 "
           f"= {ceil_:.0f}")
     print("  이보다 비싼 눈금은 저축이 생애 안에 끝나지 않아 x 를 놓칩니다.\n")
     print(f"{'눈금':<34}{'배수':>6}{'총지출':>8}{'저축해':>8}"
@@ -141,13 +140,13 @@ def main():
     print("=" * 84)
     print("  '남은 생애'가 개인마다 다릅니다. 같은 눈금이라도 늙은 에이전트에게는")
     print("  회수 기간이 없어 사실상 더 비쌉니다. 게다가 소득이 나이와 함께 오르므로")
-    print(f"  (age_growth {cfg.income.age_growth}) 젊을수록 남은 해가 싸기도 합니다.\n")
+    print()
     # **「감당 가능한가」 로는 이제 아무것도 안 갈립니다** — L 이 300 → 200 으로 내려가
     # 20세에도 셋 다 감당됩니다. 갈리는 건 **남은 소득에서 차지하는 비중**입니다.
     dear, cheap = max(m[2] for m in marks), min(m[2] for m in marks)
     print(f"{'나이':>5}{'기대 잔여':>11}{'남은 소득':>11}"
           f"{'사유0 비중':>11}{'사유2 비중':>11}   판정")
-    for age in (0, cfg.world.adult_age, 8, 12, 16, 20):
+    for age in (0, 2, 4, 6, 8, 10):
         rem = expected_remaining(age, lam, k)
         earn = remaining_income(age, cfg, lam, k, a.mult)
         hi, lo = dear / earn, cheap / earn
@@ -200,7 +199,7 @@ def main():
     print("\n" + "=" * 84)
     print("④ 부등식으로만 묶인 것들")
     print("=" * 84)
-    print("  comm_domestic < comm_intl_learner < comm_intl_ai   (전 구간, assert)")
+    print("  ap.speak ≤ comm_intl_ai_ap ≤ 한 해 AP   (전 구간, assert)")
     print("  comm_intl_learner   학습자 본인은 회수하지 못하므로 x 도출식에 들어가지 않는다")
     print("  propose_vote        국내/국제 비대칭의 크기")
 

@@ -52,13 +52,16 @@ FACTS: dict[str, tuple[Vis, str]] = {
     "hazard_curve":      (Vis.SECRET, "나이→사망확률. 평균만 SYSTEM 에 적고 모양은 숨긴다"),
     "wellness_gain":     (Vis.SECRET, "wellness 가 λ 를 얼마 올렸나. 본인도 모른다"),
     "threshold_truth":   (Vis.SECRET, "요격기 임계의 진값. observe_risk 는 흐린 값만 준다"),
+    "bunker_truth":      (Vis.SECRET, "벙커 임계의 진값 (8/25). 벙커가 확률에서 임계로 "
+                                      "바뀌면서 요격기와 같은 성질이 됐다 — 관측으로만 "
+                                      "흐리게 알 수 있다. 한쪽만 숨기면 그것이 곧 설계가 "
+                                      "미는 선택지가 된다"),
     "impact_turn_truth": (Vis.SECRET, "운석까지 남은 진짜 해수. 같다"),
     "growth_fn":         (Vis.SECRET, "생산배수 함수. 수입에서 추론할 뿐"),
     "inner_reasoning":   (Vis.SECRET, "타인의 내심. 로그에는 남지만 세계에는 없다"),
     "other_nation_state":(Vis.SECRET, "타국의 진척·예산·국토·언어 능력. **소통으로만** 안다"),
 
     # ── PRIVATE — 행위자만 ─────────────────────────────────────────────────
-    "budget":            (Vis.PRIVATE, "내 예산"),
     "action_left":       (Vis.PRIVATE, "내 남은 행동력"),
     "lang_progress":     (Vis.PRIVATE, "내 언어 학습 진척"),
     "facility_invested": (Vis.PRIVATE, "내가 어느 나라에 얼마를 냈나"),
@@ -76,12 +79,6 @@ FACTS: dict[str, tuple[Vis, str]] = {
     "fac_gain":          (Vis.PRIVATE, "내 출자가 진척을 얼마 올렸나 (타국이면 여부만)"),
     "delivery_failed":   (Vis.PRIVATE, "내가 보낸 말이 닿지 않았다"),
     "message":           (Vis.PRIVATE, "주고받은 말. **보낸 이와 받는 이만**"),
-    "income":            (Vis.PRIVATE, "이 해에 내가 받은 수입. 나라 사람 모두가 같은 값을 "
-                                       "받지만 **누구에게도 통지되지 않는다** — 내 해 시작 "
-                                       "문구에만 적힌다. 그 값에서 국가 배수를 읽을 수 "
-                                       "있는 것은 PUBLIC 파생이고, 그건 그래도 된다"),
-
-    # ── PUBLIC — 그 나라 안 ────────────────────────────────────────────────
     "land":              (Vis.PUBLIC, "자국 국토"),
     "progress":          (Vis.PUBLIC, "자국 진척"),
 

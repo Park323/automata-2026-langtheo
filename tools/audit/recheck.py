@@ -215,8 +215,8 @@ def simulate_nation_mult(cfg, trials: int) -> dict:
         for t in range(1, cfg.world.total_turns + 1):
             w.turn = t
             for a in w.agents.values():
-                grown = 1.0 + cfg.income.age_growth * max(0, a.age - cfg.world.adult_age)
-                acc[a.country] += cfg.income.per_turn * grown * a.income_mult
+                # **용량이다** (8/25 · AP 전면 통일). 옛 소득 자리다.
+                acc[a.country] += asserts.capacity_per_year(cfg) * a.invest_mult
                 base[a.country] += cfg.income.per_turn * grown
             if t < cfg.world.total_turns:
                 loopmod._death_birth(w, cfg, rng, sorted(w.agents), set(), counter,
@@ -237,7 +237,7 @@ def sec_C(d: dict, trials: int) -> None:
     ap_speak = d["ap"]["speak"]
     ap_unit = d["ap"]["unit"]
     unit = d["costs"]["unit"]
-    knobs = d["knob"]["comm_intl_ai"]
+    knobs = d["knob"]["comm_intl_ai_ap"]
     max_speaks = int(ap_total / ap_speak)
     print(f"  한 해 AP {ap_total} · speak {ap_speak} → 국제 발신은 한 해 최대 {max_speaks}건")
     print(f"\n  {'노브':>6}{'5건 전액':>10}{'무력화 예산':>12}   설명")
@@ -369,7 +369,7 @@ def sec_F(d: dict, trials: int) -> None:
     total, epoch = d["world"]["total_turns"], d["world"]["epoch_turns"]
     p, eff = d["world"]["success_prob"], d["facility"]["eff"]
     best = max(d["facility"]["build_spread"])
-    bunker, intc = d["thresholds"]["bunker_scale"], d["thresholds"]["interceptor"]
+    bunker, intc = d["thresholds"]["bunker"], d["thresholds"]["interceptor"]
     m = mean_age_mult_analytic(d)[int(d["survival"]["lambda_base"] * 3) + 1]
     k = eff * p
 
@@ -492,7 +492,7 @@ def sec_I(d: dict, trials: int) -> None:
     from core.state import Agent
 
     cfg = cfgmod.load(str(ROOT / "configs" / "base.yaml"))
-    knob = max(cfg.knob.comm_intl_ai)
+    knob = max(cfg.knob.comm_intl_ai_ap)
     print(f"  {'AP':>6}{'예산':>7}{'memory_open':>13}{'can_act':>9}   실제로 부를 수 있는 것")
     for ap, budget, mem in ((1.0, 1000, False), (0.0, 1000, False), (0.0, 0, False),
                             (0.04, 1000, False), (0.0, 1000, True)):

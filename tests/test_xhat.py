@@ -57,16 +57,8 @@ def write(tmp_path, state, events=()):
 
 # ── 분모 ────────────────────────────────────────────────────────────────────────
 
-def test_no_budget_is_not_an_opportunity(tmp_path):
-    """낼 돈이 없었으면 '안 낸 것' 이 아니다. 분모에 넣으면 납부율이 낮게 나온다.
 
-    **분할 납부라 기준이 바뀌었다** — 전액이 아니라 한 푼이라도 있으면 시작할 수 있다.
-    """
-    d = write(tmp_path, [st(1, "A1", "Asla", ["ja"], budget_start=0)])
-    obs, _, _ = xhat.observations(d)
-    assert obs and obs[0]["put_in"] is False
-    assert xhat.take_rates(obs) == {}          # 기회가 0건
-
+# **`test_no_budget_is_not_an_opportunity` 를 지웠다** (8/25 · AP 전면 통일) — 분모가 AP 다 — 살아 있으면 늘 참.
 
 def test_having_money_and_not_paying_counts(tmp_path):
     """전액에 못 미쳐도 기회다 — 50원으로도 시작할 수 있다."""
@@ -108,16 +100,8 @@ def test_trilingual_agent_has_no_opportunity(tmp_path):
     assert xhat.observations(d)[0] == []
 
 
-def test_missing_budget_start_is_reported_not_silently_dropped(tmp_path):
-    """이 필드 이전의 런은 x̂ 를 낼 수 없다. 조용히 빼면 n 이 작아진 줄만 안다."""
-    row = st(1, "A1", "Asla", ["ja"], budget_start=500)
-    del row["budget_start"]
-    d = write(tmp_path, [row])
-    obs, diag, _ = xhat.observations(d)
-    assert obs == [] and diag["no_budget_start"] == 1
 
-
-# ── 할인 재현 ───────────────────────────────────────────────────────────────────
+# **`test_missing_budget_start_is_reported_not_silently_dropped` 를 지웠다** (8/25 · AP 전면 통일) — 같다.
 
 def test_domestic_speaker_speeds_up_the_rung(tmp_path):
     """같은 나라에 구사자가 있으면 배속 1.5 → 총 지출 L/1.5 다 (spec 3.4 · 가속 8/22).

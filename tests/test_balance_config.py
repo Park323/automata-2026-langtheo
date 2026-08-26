@@ -37,11 +37,23 @@ def test_interceptor_sits_inside_the_window(c):
     assert lo < c.interceptor < hi
 
 
-def test_bunker_is_a_trap_not_a_bargain(c):
-    """1인부담이 요격기보다 싸면 벙커가 함정이 아니라 정답이 된다 (spec 3.5)."""
-    b1 = c.bunker / (c.agents * c.epoch_turns)
+def test_the_bunker_costs_more_per_head_or_nobody_coordinates(c):
+    """**벙커가 더 비싸야 협력할 이유가 생긴다** (spec 3.5).
+
+    8/25 에 「정확히 같게」 로 바꿨다가 되돌렸다 — 같으면 개인에게 비용도 결과(내가 산다)도
+    같은데 협력에는 추가 비용(말하기·학습 AP)과 배신 위험이 얹힌다. 그러면 벙커가 지배한다.
+
+    벙커의 유혹은 「싸다」 가 아니라 **「남이 필요 없다」** 다. 초과분이 불신의 가격이고,
+    그 크기는 요격기를 골랐을 때 남는 AP 가 국제 발신을 살 수 있는지로 정해진다 —
+    7,200 에서 그 경계가 노브 범위 안에 놓인다 (0.2 → 연 1.03통 · 0.5 → 0.41통).
+    """
+    # **같은 기간으로 나눈다** (#51). 벙커만 한 주기로 나누고 있었다 — 도구는 8/25 에
+    # 고쳤는데 이 테스트가 남아 있었다.
+    b1 = c.bunker / (c.agents * c.total_turns)
     i1 = c.interceptor / (3 * c.agents * c.total_turns)
-    assert b1 > i1
+    # **정확히 같다** (8/25 · Eddie). 한쪽이 싸면 그쪽이 정답이 되어 선택이 사라진다 —
+    # 벙커가 임계가 된 뒤로 「벙커가 더 비싸야」 는 함정을 함정이 아니게 만든다.
+    assert b1 > i1, (b1, i1)
 
 
 def test_newborns_do_not_mint_money(c):
@@ -53,17 +65,29 @@ def test_newborns_do_not_mint_money(c):
     assert c.initial_budget == 0
 
 
-def test_expected_life_is_about_one_epoch(c):
-    """주기(20턴)는 기대수명의 반올림이다. 둘이 어긋나면 계보 회전이 설계와 달라진다."""
-    assert expected_life(c.surv_lambda, c.surv_k) == pytest.approx(16.06, abs=0.1)
-    assert c.epoch_turns == 20
+def test_the_world_holds_five_generations(c):
+    """**세계 50해 ÷ 수명 10해 = 다섯 세대** (8/25).
+
+    전에는 60/16 ≈ 3.7 세대였고 주기(20)가 기대수명(16.06)의 반올림이라고 적혀 있었다.
+    이제 주기는 `total_turns / 3` 이고 수명과 무관하다 — 두 값이 각자의 이유를 갖는다.
+
+    세대가 늘면 유언·상속을 타는 전달이 더 여러 번 시험된다 (spec 3.3 의 구전).
+    """
+    life = expected_life(c.surv_lambda, c.surv_k)
+    assert life == pytest.approx(10.0, abs=0.1)
+    assert c.total_turns / life == pytest.approx(5.0, abs=0.2)
+    assert c.epoch_turns == round(c.total_turns / 3)
 
 
 def test_a_lifetime_holds_several_conversation_round_trips(c):
-    """**소통 왕복 하나에 두 턴이 든다** — 보내면 다음 턴에 도착한다.
+    """**순차 라운드로빈에서는 왕복이 한 해 안에 끝난다** (8/25).
 
-    기대수명 8턴이던 시절엔 왕복 4회가 생애 전부라, 상대를 파악하고 조율에 이르는 것이
-    구조적으로 불가능에 가까웠다. 이 부등식이 100턴·수명 2배 전환의 이유다.
+    옛 문장은 「왕복 하나에 두 턴이 든다 — 보내면 다음 턴에 도착한다」 였고, 그것이 수명을
+    8.26 → 16.52 로 올린 근거였다. 그런데 순차 라운드로빈(issue #20)은 **같은 해에**
+    배달한다 (`rtt_same`: 「相手が次に動くときに届きます」) — 그 근거가 낡았다.
+
+    ⚠ 병렬 경로는 여전히 다음 해 배달이다. `run_agentic` 의 기본값이 병렬이므로, 본실험을
+      순차로 돌린다면 그 기본값도 바꿔야 한다 — 안 바꾸면 인자 없이 돌린 런이 다른 세계다.
     """
-    round_trips = expected_life(c.surv_lambda, c.surv_k) / 2
-    assert round_trips >= 8, f"생애 왕복 {round_trips:.1f}회 — 조율을 배우기엔 짧다"
+    life = expected_life(c.surv_lambda, c.surv_k)
+    assert life >= 8, f"생애 {life:.1f}해 — 순차에서도 왕복 8회는 있어야 한다"

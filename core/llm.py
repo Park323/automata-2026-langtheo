@@ -30,6 +30,53 @@ BACKENDS = {
 KEY_ENV = {"openrouter": "OPENROUTER_API_KEY", "gemini": "GEMINI_API_KEY"}
 
 
+class RateLimitGuard:
+    """재시도를 다 쓴 429 를 센다. 한도를 넘으면 `RateLimitStorm` 을 던진다.
+
+    **클라이언트 둘이 하나를 나눠 갖는다** — 에이전트가 막히든 번역기가 막히든 그 런의
+    데이터가 상하는 것은 같고, 둘을 따로 세면 각각 한도의 절반씩 맞고도 안 걸린다.
+
+    `limit=0` 이면 끄는 것이다 (짧은 테스트·재현용).
+    """
+
+    def __init__(self, limit: int = 5):
+        self.limit = limit
+        self.count = 0
+        self.by_model: dict[str, int] = {}
+        self._lock = threading.Lock()
+
+    def exhausted(self, model: str) -> None:
+        if self.limit <= 0:
+            return
+        with self._lock:
+            self.count += 1
+            self.by_model[model] = self.by_model.get(model, 0) + 1
+            if self.count >= self.limit:
+                raise RateLimitStorm(
+                    f"429 로 버린 호출이 {self.count}건 — 한도 {self.limit}. 런을 세웁니다.\n"
+                    f"  모델별: {self.by_model}\n"
+                    f"  마지막 복원점부터 `--resume` 으로 이어할 수 있습니다.")
+
+
+class RateLimitStorm(RuntimeError):
+    """**429 가 그치지 않는다 — 런을 세운다.** `LLMCallError` 와 **일부러 무관하다.**
+
+    `LLMCallError` 는 상류가 잡아서 그 에이전트의 차례를 끝내거나 메시지 하나를
+    미전달로 떨어뜨린다. 그 설계 덕에 런은 안 죽는데, 429 폭풍에서는 그것이 **독**이다:
+
+        260826-002-ai010   번역 429 154건 · 244통 중 23통(9.4%)이 죽었다
+                           런은 절뚝이며 50해를 다 갔고, 3시간 33분이 걸렸다
+
+    죽은 23통은 **세계에 뚫린 구멍**이다. 엔진 장애라 수신자에게 흔적도 안 남으니
+    (`translate_failed` 는 세계의 사건이 아니다), 사후에는 「말이 안 통했다」 와 구분은
+    되지만 **일어나지 않은 대화**는 되돌릴 수 없다. 그럴 바에는 세우고 나중에 이어한다 —
+    매해 복원점이 있으므로 이어붙이는 값이 싸다 (8/25).
+
+    그래서 이 예외는 `LLMCallError` 의 자식이 **아니다.** 상류의 그물 둘
+    (`agent_loop` 의 차례 종료 · `loop` 의 미전달)이 이것을 잡으면 안 된다.
+    """
+
+
 class LLMCallError(RuntimeError):
     """**API·망 쪽 실패.** 이 예외만 상류에서 잡아 미전달로 떨어뜨린다.
 
@@ -97,7 +144,8 @@ class OpenRouterClient:
                  temperature: float = 0.7, retries: int = 4, timeout: int = 120,
                  recorder=None, deadline: float = 90.0, max_tokens: int | None = None,
                  reasoning: dict | None = None, provider: dict | None = None,
-                 seed: int | None = None, backend: str = "openrouter"):
+                 seed: int | None = None, backend: str = "openrouter",
+                 rate_guard: "RateLimitGuard | None" = None):
         self.model = model
         if backend not in BACKENDS:
             raise RuntimeError(f"모르는 백엔드: {backend}. {sorted(BACKENDS)} 중 하나")
@@ -113,6 +161,9 @@ class OpenRouterClient:
         self.reasoning = reasoning    # 사고 예산 (OpenRouter 통합 파라미터를 그대로)
         self.provider = provider      # 프로바이더 라우팅. 같은 모델도 업체마다 가격이 다르다
         self.seed = seed              # 샘플링 시드. 프로바이더가 존중할 때만 뜻이 있다
+        # **429 폭풍이면 런을 세운다.** 클라이언트 둘(에이전트·번역기)이 **같은** 그릇을
+        # 나눠 갖는다 — 어느 쪽이 막히든 그 런의 데이터가 상하는 것은 같다.
+        self.rate_guard = rate_guard
 
     def _call_with_deadline(self, req):
         """urlopen 을 별도 스레드에서 돌리고 `deadline` 초 안에 안 오면 버린다.
@@ -185,6 +236,10 @@ class OpenRouterClient:
                 self._record(body, attempt + 1, t0, error=f"HTTP {e.code}", log_tag=log_tag)
                 if e.code == 429:                          # 레이트 리밋: 길게 물러난다
                     if last:
+                        # **재시도를 다 쓴 429 만 센다.** 중간에 회수된 것은 시간만
+                        # 먹었지 데이터를 안 상하게 한다 (154건 중 23건만 실제 손실).
+                        if self.rate_guard is not None:
+                            self.rate_guard.exhausted(self.model)
                         raise LLMCallError(f"HTTP 429 (재시도 소진)") from e
                     time.sleep(min(60, 8 * (2 ** attempt)))
                     continue

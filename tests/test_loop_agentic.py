@@ -16,6 +16,11 @@ from core.llm import StubClient, assistant_msg, tool_call
 from core.loop import RunResult, _settle_agentic, init_world, run_agentic
 from domains.meteor import prompts
 
+
+# **노브는 이제 AP 다** (8/25). 돈 값 48 을 넘기면 「48 AP」 가 되어
+# 한 해(1.0)를 넘고 발신이 불가능해진다 — 타입이 같아 아무도 안 잡았다.
+KNOB = 0.5          # comm_intl_ai_ap 의 최고값
+
 BASE = Path(__file__).resolve().parent.parent / "configs" / "base.yaml"
 IDS = [f"{n}{i}" for n in ("Asla", "Ranoa", "Miris") for i in (1, 2, 3)]
 
@@ -44,7 +49,7 @@ def _clients(overrides=None):
     return d
 
 
-def _run(cfg, clients, translator=None, knob_ai=48, seed=1, parallel=True, sequential=False):
+def _run(cfg, clients, translator=None, knob_ai=KNOB, seed=1, parallel=True, sequential=False):
     translator = translator or StubClient([{"role": "assistant", "content": "译", "tool_calls": []}] * 50)
 
     def client_for(aid):                       # 신생아(사망→출생)도 빈 스크립트로 받는다
@@ -83,7 +88,7 @@ def test_agentic_reproducible():
     cfg = _cfg(3)
     def once():
         c = _clients({"Asla1": [assistant_msg(
-            tool_call("invest", "1", target="facility", amount=50))]})
+            tool_call("invest", "1", target="facility"))]})
         return _run(cfg, c, seed=3, parallel=True).state_log
     a, b = once(), once()
     assert a == b and a.encode() == b.encode()
@@ -103,30 +108,8 @@ def test_parallel_equals_sequential():
 
 # ── #12 cap 순서 편향 없음 ───────────────────────────────────────────────────
 
-def test_cap_proportional_order_independent():
-    """cap 초과 투자 배분이 호출(=리스트) 순서와 무관하다."""
-    cfg = _cfg(1)
 
-    def settle_with(order):
-        world = init_world(cfg, itertools.count(1))
-        world.agents["Asla1"].budget = 1000
-        world.agents["Asla2"].budget = 1000
-        sink = Sink()
-        sink.facility = order            # cap=500, 총 800 → 초과 300 비례 환급
-        _settle_agentic(world, cfg, random.Random(42), sink, StubClient([]), 48,
-                        itertools.count(1000), RunResult(world=world), itertools.count(1))
-        return (round(world.countries["Asla"].progress, 6),
-                round(world.agents["Asla1"].budget, 6),
-                round(world.agents["Asla2"].budget, 6))
-
-    forward = settle_with([("Asla", 400, "Asla1"), ("Asla", 400, "Asla2")])
-    reverse = settle_with([("Asla", 400, "Asla2"), ("Asla", 400, "Asla1")])
-    assert forward == reverse
-    # 각자 400 중 150 환급 (400/800 × 300) → 예산 1150
-    assert forward[1] == 1150 and forward[2] == 1150
-
-
-# ── 정보 은닉 재확인 (통합 프롬프트) ─────────────────────────────────────────
+# **`test_cap_proportional_order_independent` 를 지웠다** (8/25 · AP 전면 통일) — `cap_per_turn` 을 없앴다.
 
 def test_full_prompt_hides_secrets():
     cfg = _cfg(2)
@@ -148,7 +131,7 @@ def test_roundrobin_reproducible():
 
     def once():
         c = _clients({"Asla1": [assistant_msg(
-            tool_call("invest", "1", target="facility", amount=50))]})
+            tool_call("invest", "1", target="facility"))]})
         return _run(cfg, c, seed=5, sequential=True).state_log
 
     a, b = once(), once()
@@ -206,9 +189,13 @@ def test_state_lives_in_system_and_never_piles_up_in_the_conversation():
         assert "行動の費用" not in u               # 비용표는 대화에 없다
         assert "自国の進捗" not in u                # 진척·국토도 없다
         assert "になりました" in u                 # 해를 여는 한 마디는 있다
-        # **소득과 그때의 예산은 있다** — 그 해에 일어난 일이고, 관측에 두면 매 콜 다시
-        # 계산돼 값이 흔들린다 (실측: 한 해 안에 +100 → +104 → +105).
-        assert "今年の収入は" in u
+        # **행동력은 있다** — 그 해에 주어지는 것이고, 얼마로 시작하는지 모르면 몇 번
+        # 움직일 수 있는지 셀 수 없다 (8/25 · AP 전면 통일).
+        #
+        # 소득·예산이 여기 있었다. 관측에 두면 매 콜 다시 계산돼 값이 흔들렸고
+        # (실측: 한 해 안에 +100 → +104 → +105), 그래서 해 오프닝으로 옮겼던 것이다.
+        # 이제 그 자리에 흔들릴 값이 없다.
+        assert "行動力は" in u
 
 
 def test_arrived_messages_stay_in_the_conversation():
@@ -223,7 +210,7 @@ def test_arrived_messages_stay_in_the_conversation():
     txt = prompts.render_arrivals(a, box)
     assert "MARK_ARRIVED" in txt and "Ranoa1" in txt
     # 그리고 관측(system)에는 없다 — 두 군데 있으면 어긋날 수 있다
-    assert "MARK_ARRIVED" not in prompts.system_for(a, world, cfg, 48.0)
+    assert "MARK_ARRIVED" not in prompts.system_for(a, world, cfg, KNOB)
 
 
 def test_system_without_a_world_is_just_the_rules():
@@ -232,7 +219,7 @@ def test_system_without_a_world_is_just_the_rules():
     world = init_world(cfg, itertools.count(1))
     a = world.agents["Asla1"]
     assert "予算" not in prompts.system_for(a, None, cfg)
-    assert "予算" in prompts.system_for(a, world, cfg, 48.0)
+    assert "行動力" in prompts.system_for(a, world, cfg, KNOB)
 
 
 def test_an_empty_inbox_says_nothing_at_all():
@@ -245,7 +232,7 @@ def test_an_empty_inbox_says_nothing_at_all():
     world.turn = 3
     a = world.agents["Asla1"]
     # **오프닝은 이제 도착분을 담지 않는다** — 각 채널이 자기 자리를 갖는다
-    empty = prompts.render_turn_open(world, a, cfg, 48.0, [])
+    empty = prompts.render_turn_open(world, a, cfg, KNOB, [])
     assert empty.count("\n") == 1                     # 소득·예산 한 줄 + 집행 한 줄
     assert prompts.render_arrivals(a, []) == ""        # 온 것이 없으면 빈 문자열
     for none_word in ("なし", "没有", "aucun", "Aucun"):
@@ -255,33 +242,8 @@ def test_an_empty_inbox_says_nothing_at_all():
     assert "MARK" in got
 
 
-def test_income_is_stated_once_a_year_not_recomputed_each_call():
-    """**소득이 관측에 있던 동안 턴 안에서 값이 흔들렸다.**
 
-    실측(`ovh15` · Asla1 · 44년):
-
-        step 2   予算: 100 · 今年の収入: +100     ← 맞다
-        step 3   予算:   0 · 今年の収入: +104
-        step 6   予算:   0 · 今年の収入: +105
-
-    관측은 매 콜 새로 렌더되므로, 남들이 `national` 에 넣어 배수가 커지면 **이미 받은
-    소득**이 올라간다. 그리고 예산 0 옆에 붙어서 「104 를 받았는데 0」 으로 읽힌다.
-
-    소득은 **그 해에 일어난 일**이다. 해가 열릴 때 한 번 적으면 사실로 굳는다.
-    """
-    cfg = _cfg(2)
-    world = init_world(cfg, itertools.count(1))
-    world.turn = 3
-    a = world.agents["Asla1"]
-    a.budget = 137.0
-    open_ = prompts.render_turn_open(world, a, cfg, 48.0, [])
-    assert "+100" in open_ and "137" in open_
-
-    # 그 해 안에 남들이 국가에 투자해 배수가 커져도 이미 적힌 말은 안 변한다
-    world.countries["Asla"].national_capital = 12_000.0
-    obs = prompts.render_observation(world, a, cfg, 48.0)
-    assert "収入:" not in obs and "収入は" not in obs
-
+# **`test_income_is_stated_once_a_year_not_recomputed_each_call` 를 지웠다** (8/25 · AP 전면 통일) — 소득이 없다.
 
 def test_growing_older_accumulates_in_the_conversation():
     """**나이가 관측에 있으면 매 콜 덮여서 나이 드는 것이 느껴지지 않는다.**
@@ -297,13 +259,13 @@ def test_growing_older_accumulates_in_the_conversation():
     seen = []
     for t, age in ((1, 6), (2, 7), (3, 8)):
         world.turn, a.age = t, age
-        seen.append(prompts.render_turn_open(world, a, cfg, 48.0, []))
+        seen.append(prompts.render_turn_open(world, a, cfg, KNOB, []))
     assert ["6 歳" in seen[0], "7 歳" in seen[1], "8 歳" in seen[2]] == [True] * 3
     # 관측에는 자기 나이가 없다 — **다만 비용표의 「10 歳から」 는 규칙 상수다** (8/21).
     # 그것까지 막으면 아이 낳기의 조건을 적을 수 없다.
     #
     # 관측에는 없다 — 그리고 죽은 문구도 남기지 않는다
-    obs = prompts.render_observation(world, a, cfg, 48.0)
+    obs = prompts.render_observation(world, a, cfg, KNOB)
     assert f"{a.age} 歳" not in obs                 # 내 나이는 없다
     for line in obs.splitlines():
         if "歳" in line:                            # 남는 것은 규칙 상수 한 줄뿐이다
@@ -329,11 +291,10 @@ def test_a_mid_year_arrival_does_not_reopen_the_year():
     world = init_world(cfg, itertools.count(1))
     world.turn = 1
     a = world.agents["Asla1"]
-    a.budget = 100.0
     box = [{"msg_id": 3, "from": "Asla2", "label": None, "text": "MARK", "original": None}]
 
-    first = prompts.render_turn_open(world, a, cfg, 48.0, box, opening=True)
-    later = prompts.render_turn_open(world, a, cfg, 48.0, box, opening=False)
+    first = prompts.render_turn_open(world, a, cfg, KNOB, box, opening=True)
+    later = prompts.render_turn_open(world, a, cfg, KNOB, box, opening=False)
     arrived = prompts.render_arrivals(a, box)
 
     assert "になりました" in first and "MARK" not in first     # 오프닝은 오프닝만
@@ -417,7 +378,6 @@ def test_world_events_get_their_own_context_entry():
     world = init_world(cfg, itertools.count(1))
     world.turn = 2
     a = world.agents["Asla2"]
-    a.budget = 137.0
     box = [{"died": "Asla1", "born": "Asla4", "age": 14},
            {"fac_gain": 61, "amount": 200.0, "to": "Asla"},
            {"from": "Ranoa1", "label": None, "text": "SAID", "original": None}]
@@ -476,19 +436,21 @@ def test_the_year_opens_before_anything_that_happened_in_it():
         assert all(u for u in users), aid                            # 빈 항목이 없다
         # **받은 소득 그대로.** 렌더 때 다시 계산하면 나중에 차례가 온 사람은 남들이
         # national 에 넣은 뒤의 값(+102)을 보게 된다 — 실제로 받은 것은 100 이다.
-        assert f"+{agent.income_this_year:.0f}" in users[0], aid
+        # 소득이 사라진 뒤로 해가 열릴 때 오는 수치는 행동력이다 (8/25)
+        assert f"{cfg.turn.action_points:.2f}" in users[0], aid
 
 
 def test_capital_notice_carries_the_gain_as_a_percentage():
-    """「기술력이 올랐다」 에 **이번 상승분**을 싣는다 (8/23).
+    """「기술력이 올랐다」 에 **이번 상승분과 누적을 나란히** 싣는다 (8/25 · Eddie).
 
-    배수(「1.174 배」)도 누적(「당초보다 17%」)도 아니다 — 사건 줄은 「방금 무슨 일이
-    있었나」 이고, 한 차례 상승분은 0.05~0.6% 라 소수 두 자리여야 값이 남는다.
+    이번 상승분만 있으면 계속 오르는 것처럼 읽힌다 — √ 라서 실제로는 1.77% → 0.14% 로
+    죽고, 33회째에는 시설에 직접 넣는 게 낫다. 두 숫자가 한 줄에 있으면 그 감쇠가 보인다.
 
-    전에는 값이 없는 사실이라 해마다 한 번으로 접었다. 이제 값이 있으므로 그 제한을
-    뗐고, 접는 일은 `render_inbox._add` 가 값으로 판단한다 — 진척과 같은 취급이다.
+    **주어는 技術力 이다.** 전에는 「同じ行動力で出せる進捗が N% 増えました」 였는데 같은
+    화면의 앞 두 줄이 「進捗が 44 進みました」 라, 세 번째가 「내 356 이 N% 늘었다」 로
+    읽혔다. **「はじめから」 도 「これまで」 를 피한 것이다** — 그건 학습 진척의 관용구다.
 
-    값이 없으면 「national 에 더 부을까 facility 에 부을까」 를 수치로 비교할 수 없다.
+    한 차례 상승분은 0.05~0.6% 라 소수 두 자리여야 값이 남는다.
     """
     cfg = _cfg(1)
     inv = assistant_msg(tool_call("invest", "i", target="national", reasoning="r"))
@@ -499,12 +461,19 @@ def test_capital_notice_carries_the_gain_as_a_percentage():
                      if m["role"] == "user")
     assert "技術力が" in blob
     # 상승분은 0 보다 크고, 합치면 누적 배수와 맞아야 한다 (곱으로 쌓인다)
-    got = [float(x) for x in re.findall(r"技術力が ([\d.]+)% 上がりました", blob)]
-    assert got and all(v > 0 for v in got), got
+    rows = re.findall(r"技術力が ([\d.]+)% 上がりました（はじめから ([\d.]+)%）", blob)
+    assert rows, blob
+    got = [float(a) for a, _ in rows]
+    assert all(v > 0 for v in got), got
     prod = 1.0
     for v in got:
         prod *= 1 + v / 100
-    assert prod == pytest.approx(res.world.countries["Asla"].multiplier(cfg), rel=1e-3)
+    mult = res.world.countries["Asla"].multiplier(cfg)
+    assert prod == pytest.approx(mult, rel=1e-3)
+    # **누적은 배수에서 바로 읽힌다** — 마지막 줄의 「はじめから」 가 그 값이다
+    assert float(rows[-1][1]) == pytest.approx((mult - 1) * 100, rel=1e-3)
+    # 진척 어휘와 겹치지 않는다 — 앞 두 줄이 「進捗が N 進みました」 다
+    assert "進捗が" not in blob.split("技術力が")[1].split("\n")[0]
 
 
 def test_identical_rows_inside_one_batch_collapse():
@@ -512,12 +481,13 @@ def test_identical_rows_inside_one_batch_collapse():
     cfg = _cfg(1)
     world = init_world(cfg, itertools.count(1))
     a = world.agents["Asla1"]
-    ev = prompts.render_events(a, [{"cap_up": True, "cap_gain": 0.23}] * 3)
+    ev = prompts.render_events(
+        a, [{"cap_up": True, "cap_gain": 0.23, "cap_total": 1.5}] * 3)
     assert ev.count("上がりました") == 1
     # **소수 두 자리에서 갈리면 다른 줄이다** — 낸 액수가 다르면 오른 폭도 다르고,
     # 그건 접어서 없앨 정보가 아니다 (진척 `prog_up` 과 같은 취급).
-    ev3 = prompts.render_events(a, [{"cap_up": True, "cap_gain": 0.23},
-                                    {"cap_up": True, "cap_gain": 0.07}])
+    ev3 = prompts.render_events(a, [{"cap_up": True, "cap_gain": 0.23, "cap_total": 1.5},
+                                    {"cap_up": True, "cap_gain": 0.07, "cap_total": 1.6}])
     assert ev3.count("上がりました") == 2
     # 값이 다르면 접히지 않는다
     ev2 = prompts.render_events(a, [{"prog_up": 18, "now": 18},
