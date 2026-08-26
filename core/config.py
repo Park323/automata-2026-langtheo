@@ -271,7 +271,10 @@ def from_dict(d: dict) -> Config:
         costs=Costs(**d["costs"]),
         thresholds=Thresholds(**d["thresholds"]),
         turn=TurnCfg(**d["turn"]),
-        ap=AP(**d["ap"]),
+        # **옛 스냅샷은 `speak_intl` 이 없다** (8/26). 그 세계들은 자국과 국제-original 이
+        # **같은 값**이었으므로, 없을 때 `speak` 을 넣는 것이 그 런의 진실이다. 기본값을
+        # dataclass 에 두지 않는 이유 — 새 config 가 값을 빼먹으면 여기서 드러나야 한다.
+        ap=AP(**{"speak_intl": d["ap"]["speak"], **d["ap"]}),
         growth=Growth(**d["growth"]),
         survival=SurvivalCfg(**d["survival"]),
         wellness=Wellness(**d["wellness"]),
