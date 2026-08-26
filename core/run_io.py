@@ -219,14 +219,26 @@ class RunWriter:
         return _rec
 
     # ── 턴별 ──────────────────────────────────────────────────────────────────
-    def on_turn_end(self, turn: int, result) -> None:
-        """run_agentic 의 on_turn_end 훅으로 그대로 넘길 수 있다."""
-        self.last_turn = turn          # 크래시 행을 마지막 정상 턴 뒤에 놓기 위해
-        world = result.world
+    def on_step_end(self, turn: int, step: int, result) -> None:
+        """**해 도중의 스냅샷** (8/26 · Eddie). 순차 라운드로빈에서만 부른다.
+
+        순차는 차례마다 `_settle_step` 이 즉시 정산하므로, 한 차례가 끝난 시점의 세계는
+        **완전히 일관된다** — 「아직 안 움직인 사람이 있는 해」 이고 그것이 그 순간의
+        진실이다. (병렬은 턴 끝에 한꺼번에 정산하므로 중간이 거짓이다 — 그래서 안 부른다.)
+
+        **`step` 이 붙은 줄은 중간 상태다.** 턴 끝 줄은 `step: None` 이고, 지표를 읽는
+        쪽은 그것만 봐야 한다 — 안 그러면 한 해가 여러 번 세어진다. 소비자 넷
+        (`interview`·`score/metrics`·`score/xhat`·뷰어)을 그렇게 고쳤다.
+        """
+        for row in self._state_rows(turn, result.world, step=step):
+            self._append("state", row)
+
+    def _state_rows(self, turn: int, world, step: int | None = None):
         for aid in sorted(world.agents):
             a = world.agents[aid]
-            self._append("state", {
-                "turn": turn, "agent": aid, "country": a.country, "age": a.age,
+            yield {
+                "turn": turn, "step": step,
+                "agent": aid, "country": a.country, "age": a.age,
                 "lambda": round(a.lam, 4), "known_langs": sorted(a.known_langs),
                 "parent_langs": sorted(a.parent_langs),
                 "wellness_spent": round(a.wellness_spent, 4),
@@ -251,7 +263,14 @@ class RunWriter:
                 # **개체 차이** — 소득·처리량 배수 (8/22). 남에게는 안 보이지만
                 # 로그에는 남는다: 비교우위가 실제로 교환으로 이어졌는지 재려면 필요하다
                 "invest_mult": a.invest_mult,
-            })
+            }
+
+    def on_turn_end(self, turn: int, result) -> None:
+        """run_agentic 의 on_turn_end 훅으로 그대로 넘길 수 있다."""
+        self.last_turn = turn          # 크래시 행을 마지막 정상 턴 뒤에 놓기 위해
+        world = result.world
+        for row in self._state_rows(turn, world, step=None):
+            self._append("state", row)
         for m in result.messages_log:
             if m.get("turn") == turn and not m.get("_written"):
                 m["_written"] = True

@@ -1077,7 +1077,8 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
                         counter: "itertools.count", client_for, translator, knob_ai: float,
                         render_obs, system_prompt, msg_ids, is_last: bool = False,
                         on_turn_end=None, render_events=None,
-                        render_arrivals=None) -> None:
+                        render_arrivals=None, on_step_end=None,
+                        step_snapshot_every: int = 10) -> None:
     """한 턴 — 순차 라운드로빈. 임의 순서로 한 명씩 한 차례(1콜)씩, AP 남은 사람끼리
     전원 소진까지 돈다. 차례마다 관측을 새로 렌더하고 액션을 즉시 반영한다 (issue #20)."""
     # 1. AP 리셋. **이월 없다** (8/25 · AP 전면 통일).
@@ -1099,6 +1100,10 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
     ended: dict = {aid: None for aid in snapshot_ids}
     first_seen: set = set()   # 이 턴 첫 차례엔 풀 관측, 이후엔 델타 (issue #22)
 
+    # **해 도중에도 상태를 남긴다** (8/26 · Eddie). 순차는 차례마다 `_settle_step` 이
+    # 즉시 정산하므로 중간 상태가 **일관된다** — 「아직 안 움직인 사람이 있는 해」 이고
+    # 그것이 그 순간의 진실이다. 병렬은 턴 끝에 한꺼번에 정산하므로 여기에 훅이 없다.
+    steps_done = 0
     active = True
     while active:
         active = False
@@ -1166,6 +1171,10 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
                 raise
             _settle_step(world, cfg, rng, sink, translator, knob_ai, msg_ids, result,
                          turn_facility, ballots_acc)
+            steps_done += 1
+            if (on_step_end is not None and step_snapshot_every > 0
+                    and steps_done % step_snapshot_every == 0):
+                on_step_end(world.turn, steps_done, result)
             if done is not None:
                 ended[aid] = done
 
@@ -1194,7 +1203,8 @@ def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
                 on_turn_end=None, sim_turns: int | None = None,
                 resume_from: "Path | None" = None,
                 checkpoint_to: "Path | None" = None, render_events=None,
-                render_arrivals=None) -> RunResult:
+                render_arrivals=None, on_step_end=None,
+                step_snapshot_every: int = 10) -> RunResult:
     """LLM(또는 StubClient) 에이전트로 total_turns 턴을 돌린다.
 
     **기본값이 순차 라운드로빈이다** (8/25). 전에는 병렬(`sequential=False`)이 기본이었는데
@@ -1237,7 +1247,9 @@ def run_agentic(cfg, rng: random.Random, client_for, translator, knob_ai: float,
                                 knob_ai, render_obs, system_prompt, msg_ids,
                                 is_last=(t == cfg.world.total_turns), on_turn_end=on_turn_end,
                                 render_events=render_events,
-                                render_arrivals=render_arrivals)
+                                render_arrivals=render_arrivals,
+                                on_step_end=on_step_end,
+                                step_snapshot_every=step_snapshot_every)
         else:
             run_turn_agentic(world, cfg, rng, result, counter, client_for, translator, knob_ai,
                              render_obs, system_prompt, msg_ids,

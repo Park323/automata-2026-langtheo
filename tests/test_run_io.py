@@ -224,3 +224,51 @@ def test_wellness_spend_accumulates_over_a_life():
 
     obs = prompts.render_observation(w, w.agents["Asla1"], cfg, KNOB)
     assert "120" not in obs                      # 관측에는 안 나온다
+
+
+def test_mid_turn_snapshots_are_marked_and_skipped_by_metrics(tmp_path, cfg):
+    """**해 도중에도 상태를 남긴다** (8/26 · Eddie).
+
+    순차 라운드로빈은 차례마다 `_settle_step` 이 즉시 정산하므로, 한 차례가 끝난 시점의
+    세계는 **완전히 일관된다** — 「아직 안 움직인 사람이 있는 해」 이고 그것이 그 순간의
+    진실이다. (병렬은 턴 끝에 한꺼번에 정산하므로 중간이 거짓이고, 그래서 훅이 없다.)
+
+    **그 줄이 지표에 섞이면 한 해가 여러 번 세어진다.** 그래서 `step` 으로 갈라 두고,
+    소비자 넷(`interview`·`score/metrics`·`score/xhat`·뷰어)이 `step is None` 만 읽는다.
+    이 테스트는 그 규약을 양쪽에서 못 박는다 — 표시가 붙는지, 그리고 읽는 쪽이 거르는지.
+    """
+    import itertools
+    import json
+    import random
+
+    from core import loop, run_io
+
+    w = run_io.RunWriter("t_step", cfg_raw={}, knob_ai=None, seed=1, root=tmp_path)
+    try:
+        world = loop.init_world(cfg, itertools.count(1), random.Random(0))
+        res = loop.RunResult(world=world)
+        w.on_step_end(3, 10, res)          # 해 도중
+        w.on_step_end(3, 20, res)
+        w.on_turn_end(3, res)              # 해 끝
+    finally:
+        w.close()
+
+    rows = [json.loads(l) for l in
+            (tmp_path / "t_step" / "state.jsonl").read_text(encoding="utf-8").splitlines()]
+    n = len(world.agents)
+    assert len(rows) == 3 * n
+    mid = [r for r in rows if r.get("step") is not None]
+    end = [r for r in rows if r.get("step") is None]
+    assert len(mid) == 2 * n and len(end) == n
+    assert sorted({r["step"] for r in mid}) == [10, 20]
+    # 중간 줄도 **완전한 상태**다 — 턴 끝 줄과 같은 필드를 갖는다
+    assert set(mid[0]) == set(end[0])
+
+    # **읽는 쪽이 실제로 거른다** — 소비자 넷의 코드를 구조로 본다
+    for path, needle in (
+            ("tools/interview.py", 'r.get("step") is None'),
+            ("tools/score/metrics.py", 'r.get("step") is None'),
+            ("tools/score/xhat.py", 'r.get("step") is None'),
+            ("viewer/index.html", "r.step == null")):
+        src = (run_io.ROOT / path).read_text(encoding="utf-8")
+        assert needle in src, path

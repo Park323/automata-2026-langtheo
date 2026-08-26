@@ -86,7 +86,9 @@ def _running(run: pathlib.Path) -> bool:
 
 def roster(run: pathlib.Path) -> list[dict]:
     """살아온 해가 긴 순서로. 죽은 사람도 **마지막으로 살아 있던 해**로 물을 수 있다."""
-    st = _rows(run, "state.jsonl")
+    # **`step` 이 붙은 줄은 해 도중의 스냅샷이다** (8/26). 지표는 턴 끝 줄만 읽어야
+# 한다 — 안 그러면 한 해가 여러 번 세어진다.
+    st = [r for r in _rows(run, "state.jsonl") if r.get("step") is None]
     seen: dict[str, dict] = {}
     for r in st:
         d = seen.setdefault(r["agent"], {"agent": r["agent"], "country": r["country"],
@@ -152,6 +154,8 @@ def context_of(run: pathlib.Path, agent: str, turn: int | None) -> tuple[list[di
 
 def native_lang(run: pathlib.Path, agent: str) -> str:
     for r in _rows(run, "state.jsonl"):
+        if r.get("step") is not None:      # 해 도중 스냅샷은 건너뛴다 (8/26)
+            continue
         if r["agent"] == agent:
             return r["native_lang"]
     raise SystemExit(f"{agent} 의 모국어를 state.jsonl 에서 못 찾았습니다")

@@ -160,6 +160,9 @@ def main() -> None:
                     help="N해가 끝난 상태로 **되돌려** 이어한다 — 다음이 N+1해다. "
                          "「N해부터 다시」 를 원하면 N-1 을 준다. "
                          "그 뒤의 로그 행은 잘라낸다 (안 자르면 두 번 들어간다)")
+    ap.add_argument("--step-snapshot", type=int, default=10, metavar="N",
+                    help="N 차례마다 state 를 남긴다 (순차 전용 · 0 이면 끔). "
+                         "그 줄은 `step` 필드가 붙고, 지표는 `step is None` 인 줄만 읽는다")
     ap.add_argument("--run-id", default=None,
                     help="산출물 디렉터리 이름 (기본: smoke_{turns}t_seed{seed}_{시각})")
     args = ap.parse_args()
@@ -297,6 +300,10 @@ def main() -> None:
                           system_prompt=prompts.system_for,
                           sequential=not args.parallel, parallel=args.parallel,
                           on_turn_end=lambda t, r: (progress(t, r), writer.on_turn_end(t, r)),
+                          # **해 도중에도 상태를 남긴다** (8/26 · Eddie) — 뷰어가 한 해를
+                          # 통째로 기다리지 않아도 되고, 사후에는 해 **안**을 되감을 수 있다.
+                          on_step_end=writer.on_step_end,
+                          step_snapshot_every=args.step_snapshot,
                           sim_turns=args.turns,
                           resume_from=resume_src,
                           checkpoint_to=ckpt)

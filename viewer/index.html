@@ -166,7 +166,12 @@ function build(files){
 
   const evs = g("events.jsonl");
   const d = {
-    state: g("state.jsonl"), messages: g("messages.jsonl"),
+    // **`step` 이 붙은 줄은 해 도중의 스냅샷이다** (8/26). 지금 화면은 「완결된 해」 를
+    // 그리므로 걸러낸다 — 안 그러면 한 해가 여러 번 그려진다. 스텝 재생을 붙이려면
+    // 여기서 `stepRows` 를 따로 잡으면 된다.
+    state: g("state.jsonl").filter(r => r.step == null),
+    stepRows: g("state.jsonl").filter(r => r.step != null),
+    messages: g("messages.jsonl"),
     metrics: g("metrics.jsonl"), events: evs, summary,
     knob: grab("knob_ai"), seed: grab("seed"), threshold: thr,
     turns: 0, byTurn: {},
