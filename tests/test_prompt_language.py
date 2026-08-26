@@ -343,8 +343,9 @@ def test_learn_and_invest_share_one_unit():
     assert len(rows) == 3                       # 학습 둘 + invest 하나
     for l in rows:                              # 셋이 같은 AP 를 쓴다
         assert f"{c.ap.unit:g}" in l, l
-    # **학습은 %로, invest 는 옮기는 양으로 적는다** (8/25). 학습의 절대 수치(40)는
-    # 목표를 모르면 뜻이 없어 「회당 몇 %」 로 바꿨고, invest 는 내 배수가 곱해진 양이다.
+    # **학습은 %로 적고, invest 는 아무 수치도 안 적는다** (8/26). 학습의 절대 수치(40)는
+    # 목표를 모르면 뜻이 없어 「회당 몇 %」 로 바꿨고, invest 의 「옮기는 양」 은 아예
+    # 지웠다 — AP 가 유일한 단위이기로 했고, 그 값이 국가 효율을 나눗셈으로 드러냈다.
     learn_rows = [l for l in rows if "の言語を学ぶ" in l]
     inv_row = next(l for l in rows if l.startswith("  invest "))
     # 사유(국내 구사자·부모)가 붙으면 배속이 올라 %도 오른다 — 셋 중 하나여야 한다
@@ -352,7 +353,10 @@ def test_learn_and_invest_share_one_unit():
     ok = {f"{base * (1 + c.costs.learn_speedup * r):.0f}%" for r in (0, 1, 2)}
     for l in learn_rows:
         assert any(x in l for x in ok), (l, ok)
-    assert f"{c.costs.unit * a.invest_mult:.0f}" in inv_row, inv_row
+    # invest 줄에 남는 숫자는 **AP 하나뿐**이다
+    import re as _re
+    nums = _re.findall(r"\d+(?:\.\d+)?", inv_row)
+    assert nums == [f"{c.ap.unit:.2f}"], (inv_row, nums)
 
 def test_the_observation_states_no_message_cap():
     """**「메시지는 1년에 3건까지」 는 규칙이 아니었고, 참도 아니었다.**

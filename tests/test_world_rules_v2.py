@@ -1480,30 +1480,38 @@ def test_the_spreads_average_to_one_or_the_window_breaks(cfg):
         assert len(sp) >= 3                    # 눈금이 있어야 말로 전할 수 있다
 
 
-def test_my_multipliers_show_but_nobody_elses_do(cfg):
-    """**남의 값이 보이면 소통이 필요 없어진다.**
+def test_no_invest_amount_shows_not_even_your_own(cfg):
+    """**액수는 아무에게도, 자기 것도 안 보인다** (8/26 · Eddie).
 
-    내 액수는 비용표에 적힌다 (내 자원이다). 남의 값은 어디에도 없다 — 같은 나라 사람의
-    것도 마찬가지다. 그래야 국내 조율도 대화를 요구한다.
+    전에는 자기 액수를 비용표에 적었다 (「一度に 52 動きます」). 두 가지로 틀렸다.
+
+    ① **AP 가 유일한 단위이기로 했다** (8/25 · 돈 삭제). 액수를 적으면 머릿속에 두 번째
+       화폐가 생긴다 — 실측에서 Ranoa3 이 「My amount per invest is 52」 로 생각했다.
+
+    ② **숨긴 값이 나눗셈 한 번에 나왔다.** 액수와 `fac_gain` 이 둘 다 공개되면 그 몫이
+       **국가 효율 그 자체**다:
+
+           Asla3   52 → 18   몫 0.346        Miris4   28 → 9   몫 0.321
+           (Asla build_mult 1.0)              (Miris build_mult 0.7)
+
+    액수를 빼면 남는 것은 「0.20 AP → 18 진척」 이고, 개인 배수 × 국가 효율의 **곱**이다.
+    차이는 여전히 보이지만 **나 때문인지 우리 나라 때문인지 혼자서는 못 가른다.**
+    가르려면 같은 나라 사람끼리 맞춰봐야 한다 — 그것이 소통을 요구하는 자리다.
     """
     import random
 
     from domains.meteor import prompts
     w = loop.init_world(cfg, itertools.count(1), random.Random(1))
     w.turn = 1
-    me = w.agents["Asla1"]
-    obs = prompts.system_for(me, w, cfg, KNOB)
-    mine = cfg.costs.unit * me.invest_mult
-    inv_row = next(l for l in obs.splitlines() if l.startswith("  invest "))
-    assert f"{mine:g}" in inv_row
-
-    # 남의 액수가 다른 값이면 그 줄에 없다
-    for other in w.agents.values():
-        if other.id == me.id:
-            continue
-        theirs = cfg.costs.unit * other.invest_mult
-        if theirs != mine:
-            assert f"{theirs:g}" not in inv_row, other.id
+    for me in w.agents.values():
+        obs = prompts.system_for(me, w, cfg, KNOB)
+        inv_row = next(l for l in obs.splitlines() if l.startswith("  invest "))
+        # **누구의 액수도** 그 줄에 없다 — 내 것까지
+        for other in w.agents.values():
+            amt = cfg.costs.unit * other.invest_mult
+            assert f"{amt:g}" not in inv_row, (me.id, other.id, inv_row)
+        # `costs.unit` 자체도 없다 (배수 1.0 인 사람의 액수와 같은 값이다)
+        assert f"{cfg.costs.unit:g}" not in inv_row, (me.id, inv_row)
 
 
 def test_an_heir_does_not_inherit_the_multipliers(cfg):

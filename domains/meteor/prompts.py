@@ -150,10 +150,10 @@ T = {
         c_vote_note="何を建てるかの採決を召集する",
         c_obs="  observe_risk",
         c_obs_note="   隕石までの残り年数と、interceptor・bunker に要る進捗を測る。国家投資が精度を上げる",
-        c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ。一度に {v:.0f} 動きます — この量は人によって違います",
+        c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ",
         inv_hdr="invest の効果",
-        inv_rule="  一度の invest で動く量は人によって違います。動いた量がどれだけ進捗になるかは\n"
-                 "  国によって違います。この二つは別々に決まります。",
+        inv_rule="  一度の invest でどれだけ進捗が生まれるかは、人によっても国によっても違います。\n"
+                 "  この二つは別々に決まります。",
         inv_well="  wellness   あなたの健康が良くなる",
         inv_natl="  national   自国の技術力が上がる。出した量が進捗になる比率も、\n"
                  "             observe_risk の精度も良くなる。国民全員に及ぶ",
@@ -229,9 +229,9 @@ T = {
         c_vote_note="召集「建什么」的表决",
         c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 和 bunker 各需要多少进度。国家投资会提高精度",
-        c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一。一次动 {v:.0f} — 这个量因人而异",
+        c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一",
         inv_hdr="invest 的效果",
-        inv_rule="  一次 invest 动的量因人而异。动的量能变成多少进度，因国而异。\n"
+        inv_rule="  一次 invest 能产生多少进度，因人而异，也因国而异。\n"
                  "  这两件事各自决定，互不相干。",
         inv_well="  wellness   你的健康会变好",
         inv_natl="  national   提高本国的技术水平。投入设施时变成进度的效率、\n"
@@ -310,11 +310,10 @@ T = {
         c_vote_note="convoquer un scrutin sur quoi bâtir",
         c_obs="  observe_risk",
         c_obs_note="   mesure les années restantes et la progression qu'exigent un interceptor et un bunker ; l'investissement national affine",
-        c_inv="  invest", c_inv_note="vers wellness · national · facility. Déplace {v:.0f} d'un coup — cette quantité varie selon les personnes",
+        c_inv="  invest", c_inv_note="vers wellness · national · facility",
         inv_hdr="effets d'invest",
-        inv_rule="  La quantité qu'un invest déplace varie selon les personnes. Ce que cette quantité\n"
-                 "  donne en progression varie selon les nations. Ces deux choses se décident\n"
-                 "  séparément.",
+        inv_rule="  Ce qu'un invest fait progresser varie selon les personnes et selon les nations.\n"
+                 "  Ces deux choses se décident séparément.",
         inv_well="  wellness   votre santé s'améliore",
         inv_natl="  national   élève le niveau technique de votre nation : le revenu, le rendement\n"
                           "             de ce qu'on verse à une installation et la précision d'observe_risk\n"
@@ -540,12 +539,23 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
     lines.append(row(t["c_vote"], cfg.ap.propose_vote, t["c_vote_note"]))
     lines.append(row(t["c_obs"], cfg.ap.observe_risk, t["c_obs_note"]))
     lines.append(row(t["c_ballot"], cfg.ap.vote, t["c_ballot_note"]))
-    # **내 액수를 적는다** (8/22). 사람마다 다르고, 남의 값은 보이지 않는다 — 그것을
-    # 알려면 물어봐야 한다. 그래서 여기 적히는 것은 **오직 내 것**이다.
-    # **내가 한 번에 옮기는 양을 주석에 적는다** (8/25). 숫자 칸은 행동력이므로, 양은
-    # 주석으로 간다 — 두 종류의 숫자를 한 칸에 섞지 않는다.
-    lines.append(row(t["c_inv"], cfg.ap.unit,
-                     t["c_inv_note"].format(v=cfg.costs.unit * agent.invest_mult)))
+    # **액수를 적지 않는다** (8/26 · Eddie). 두 가지 이유로 지운다.
+    #
+    # ① **AP 가 유일한 단위이기로 했다** (8/25 · 돈 삭제). 「한 번에 52 옮긴다」 를
+    #    적으면 에이전트 머릿속에 **두 번째 화폐**가 생긴다 — 실측에서 Ranoa3 이
+    #    「My amount per invest is 52」 로 생각했다. `costs.unit` 은 이제 우리 쪽
+    #    변환 계수이지 세계가 말하는 값이 아니다.
+    #
+    # ② **숨긴 값이 나눗셈 한 번에 나왔다.** 액수(52)와 `fac_gain`(18)이 둘 다
+    #    공개되면 그 몫이 **국가 효율 그 자체**다:
+    #
+    #        Asla3   52 → 18   몫 0.346      Miris4   28 → 9   몫 0.321
+    #
+    #    액수를 빼면 남는 것은 「0.20 AP → 18 진척」 이고, 이것은 **개인 배수 × 국가
+    #    효율의 곱**이다. 차이는 여전히 보이지만 **나 때문인지 우리 나라 때문인지
+    #    혼자서는 못 가른다** — 가르려면 같은 나라 사람끼리 맞춰봐야 한다. 그것이
+    #    `inv_rule` 의 「이 둘은 별개로 정해진다」 가 뜻하는 바다.
+    lines.append(row(t["c_inv"], cfg.ap.unit, t["c_inv_note"]))
     # **없는 도구를 설명하지 않는다.** 기억은 압박선 아래에서 목록에 없으므로 비용표에도
     # 없다 — 적어 두면 「부를 수 있다」 는 거짓이 되고, 부르면 거절당한다.
     if memory:
