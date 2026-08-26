@@ -1793,3 +1793,80 @@ def test_progress_never_falls_below_zero(cfg, world):
     loop._settle_step(world, cfg, _rnd.Random(5), sink, None, None,
                       itertools.count(900), loop.RunResult(world=world), {}, [])
     assert world.countries["Ranoa"].progress == 0.0
+
+
+def test_capital_buys_lower_risk_not_just_higher_yield(cfg, world):
+    """**생산성이 오르면 위험이 줄어든다** (8/26 · Eddie).
+
+    `q` 를 상수로 두면 **크기를 키워도 상대 위험이 안 줄어든다.** 분산이 이렇게 갈린다:
+
+        var = 성분 내부 (∝ n)  +  성분 간 (∝ n²)
+        성분 간 = q(1−q) · (p+h)² · n²
+
+    부호가 뒤집히는 거리가 `n` 에 비례하니 `sd ∝ n` 이 되고 `sd/평균` 이 0.79 에서
+    멈춘다. 손실 상한을 씌워도 안 된다 — 뒤집힐 때 잃는 것은 **받았을 이득**이므로
+    거리가 여전히 `n` 에 비례한다. **`q` 자체가 줄어야 한다.**
+
+    그래서 `q` 를 국가 자본 배수로 나눈다. **창은 성장을 빼고 계산하므로**(설계)
+    자본 0 에서 배수가 1.0 이고 `cfg.k` 는 그대로다 — 성장은 창의 전제가 아니라 그 위의
+    이득이고, 이제 그 이득에 **위험 감소**가 하나 더 붙는다.
+
+    이것이 `national` 투자의 **세 번째 의미**다: 진척 효율 · 관측 정확도 · **위험 감소**.
+    """
+    poor, rich = world.countries["Asla"], world.countries["Ranoa"]
+    poor.national_capital = 0.0
+    rich.national_capital = 30000.0
+    assert loop.backfire_prob(poor, cfg) == pytest.approx(cfg.world.backfire_prob)
+    assert loop.backfire_prob(rich, cfg) < loop.backfire_prob(poor, cfg)
+
+    import random as _rnd
+    import statistics as _st
+    rng = _rnd.Random(19)
+
+    def spread(country, n):
+        q = loop.backfire_prob(country, cfg)
+        xs = [loop.draw_gain(n, cfg, rng, q=q) for _ in range(8000)]
+        return _st.mean(xs), _st.pstdev(xs), sum(1 for x in xs if x < 0) / len(xs)
+
+    # **같은 n 으로 비교한다** — 순수하게 `q` 의 효과만 본다
+    m_p, s_p, neg_p = spread(poor, 20)
+    m_r, s_r, neg_r = spread(rich, 20)
+    assert m_r > m_p                       # 기댓값도 오른다 (역화가 덜하므로)
+    assert s_r / m_r < s_p / m_p           # **상대 위험이 내려간다**
+    assert neg_r < neg_p                   # 손실 확률도 내려간다
+
+
+def test_the_target_learns_who_but_never_why(cfg, world):
+    """**누가 · 얼마만큼은 알고, 의도는 모른다** (8/26 · Eddie).
+
+    투자와 파괴가 **같은 통지**를 쓴다. 그리고 역화가 있으므로 부호도 의도를 말하지
+    않는다 — 투자가 음수일 수 있고 파괴가 양수일 수 있다. 그래서 「Asla1 이 우리
+    interceptor 를 7 진행시켰다」 를 받고도 **그가 도우려 했는지 부수려 했는지 모른다.**
+    """
+    import random as _rnd
+
+    from core.agent_loop import Sink, execute_tool
+
+    seen = {}
+    for tool, args in (("invest", {"target": "facility", "to": "Ranoa"}),
+                       ("destroy", {"to": "Ranoa"})):
+        w = loop.init_world(cfg, itertools.count(1), random.Random(1))
+        w.turn = 1
+        w.countries["Ranoa"].land = "interceptor"
+        w.countries["Ranoa"].progress = 500.0
+        a = w.agents["Asla1"]; a.ap = 1.0
+        sink = Sink()
+        execute_tool(tool, {**args, "reasoning": "r"}, w, a, cfg, sink, KNOB)
+        loop._settle_step(w, cfg, _rnd.Random(9), sink, None, None,
+                          itertools.count(900), loop.RunResult(world=w), {}, [])
+        told = [q["msg"] for q in w.inbox_queue if q["to"] == "Ranoa1"]
+        imp = [m for m in told if "impact_by" in m]
+        assert len(imp) == 1, (tool, told)
+        # 누가 했는지는 안다
+        assert imp[0]["impact_by"] == "Asla1"
+        # **무엇을 하려 했는지는 어디에도 없다**
+        for leak in ("kind", "tool", "intent", "destroy", "invest"):
+            assert leak not in imp[0], (tool, leak)
+        seen[tool] = set(imp[0])
+    # 두 통지의 **필드 모양이 같다** — 모양으로도 구분되지 않는다
+    assert seen["invest"] == seen["destroy"], seen

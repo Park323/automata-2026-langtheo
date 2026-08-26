@@ -132,7 +132,31 @@ def init_world(cfg, counter: "itertools.count", rng: random.Random | None = None
                  next_idx={c.id: cfg.world.agents_per_country + 1 for c in countries.values()})
 
 
-def draw_gain(n: int, cfg, rng: random.Random, sign: int = 1) -> int:
+def backfire_prob(country, cfg) -> float:
+    """역화 확률. **국가 자본이 쌓이면 줄어든다** (8/26 · Eddie).
+
+    상수로 두면 **크기를 키워도 상대 위험이 안 줄어든다.** 분산이 이렇게 갈리기 때문이다:
+
+        var = 성분 내부 (∝ n)  +  성분 간 (∝ n²)
+        성분 간 = q(1−q) · (p+h)² · n²
+
+    부호가 뒤집히는 「거리」 가 `n` 에 비례하니 `sd ∝ n` 이 되고 `sd/평균` 이 0.79 에서
+    멈춘다. 손실 상한을 씌워도 안 된다 — 뒤집힐 때 잃는 것은 **받았을 이득**이므로
+    거리가 여전히 `n` 에 비례한다. **`q` 자체가 줄어야 한다.**
+
+        배수 1.0  q 0.150  sd/평균 0.85  P(<0) 14.7%
+        배수 1.5  q 0.100  sd/평균 0.66  P(<0) 10.4%
+        배수 2.0  q 0.075  sd/평균 0.53  P(<0)  7.1%
+
+    **창(★A·B·C·E)은 성장을 빼고 계산한다** (설계 · Phase 0 결함 8번) — 자본 0 에서
+    배수가 1.0 이므로 `cfg.k` 는 그대로다. 성장은 창의 전제가 아니라 그 위의 이득이고,
+    이제 그 이득에 **위험 감소**가 하나 더 붙는다.
+    """
+    return cfg.world.backfire_prob / country.multiplier(cfg)
+
+
+def draw_gain(n: int, cfg, rng: random.Random, sign: int = 1,
+              q: float | None = None) -> int:
     """시행 `n` 번의 진척. **부호가 뒤집힐 수 있다** (8/26 · Eddie).
 
         역화 아님 (1−q)   +Binom(n, success_prob)
@@ -148,10 +172,26 @@ def draw_gain(n: int, cfg, rng: random.Random, sign: int = 1) -> int:
 
     `backfire_prob` 이 0 이면 옛 세계 그대로다 (`Binom(n, success_prob)`).
     """
-    if rng.random() < cfg.world.backfire_prob:
+    if rng.random() < (cfg.world.backfire_prob if q is None else q):
         hits = sum(1 for _ in range(n) if rng.random() < cfg.world.backfire_hit)
         return -sign * hits
     return sign * sum(1 for _ in range(n) if rng.random() < cfg.world.success_prob)
+
+
+def destroy_eff(actor_country, cfg) -> float:
+    """부수는 힘은 **부수는 쪽의 것**이다 (8/26 · Eddie).
+
+    `invest` 는 **지어지는 곳**의 효율을 탄다 — 시설이 그 나라에 서기 때문이다.
+    `destroy` 를 같은 식으로 두면 「기술 좋은 나라는 부서지기도 잘 부서진다」 가 되어
+    뜻이 뒤집힌다. 부수는 역량은 부수는 쪽의 국가 자본에서 나온다.
+
+    **`build_mult` 는 안 곱한다.** 그것은 「요격기를 얼마나 잘 **짓는가**」 이고
+    (요격기 전용 · 순열 배정), 파괴에 갖다 붙이면 한 값이 두 뜻을 지게 된다.
+
+    이 변경의 전략적 결과가 하나 있다 — **`national` 투자가 이제 방어가 아니라 공격을
+    키운다.** 전에는 자국 자본이 자기 시설의 파괴 피해도 키웠다 (대상국 기준이었으므로).
+    """
+    return cfg.facility.eff * actor_country.multiplier(cfg)
 
 
 def facility_eff(c, cfg) -> float:
@@ -521,7 +561,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                 # 똑같이 간다** — 통지가 없으면 그 부재가 곧 "아직 안 정했다" 가 된다.
                 gain = 0
             else:
-                gain = draw_gain(int(share * eff), cfg, rng)
+                gain = draw_gain(int(share * eff), cfg, rng, q=backfire_prob(c, cfg))
                 # **0 아래로는 안 내려간다.** 없는 것보다 나쁜 시설은 없다 — 그리고
                 # 바닥이 없으면 파괴가 무한히 쌓여 복구가 불가능해진다.
                 c.progress = max(0.0, c.progress + gain)
@@ -537,7 +577,10 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         if c.land is None:
             hit = 0
         else:
-            hit = draw_gain(int(share * facility_eff(c, cfg)), cfg, rng, sign=-1)
+            actor = world.agents.get(agent_id)          # 부수는 쪽의 역량 (8/26)
+            src = world.countries[actor.country] if actor else c
+            hit = draw_gain(int(share * destroy_eff(src, cfg)), cfg, rng, sign=-1,
+                            q=backfire_prob(src, cfg))
             c.progress = max(0.0, c.progress + hit)
         result.facility_gains.append({"turn": world.turn, "agent": agent_id,
                                       "to": to_country, "amount": round(share, 2),
@@ -688,6 +731,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         msg = {"msg_id": next(msg_ids), "amount": g["amount"], "to": g["to"]}
         if world.agents[g["agent"]].country == g["to"]:
             msg["fac_gain"] = g["gain"]              # 자국은 그대로 (진척 델타로 어차피 보인다)
+            msg["land"] = world.countries[g["to"]].land   # 무엇이 진척했나 (8/26)
         else:
             msg["fac_moved"] = g["gain"] > 0         # 타국은 늘었는지 여부만
         # 내 출자가 얼마를 올렸나 — **나만 안다** (visibility: fac_gain PRIVATE)
@@ -954,7 +998,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         if c.land is None:
             gain = 0
         else:
-            gain = draw_gain(int(share * eff), cfg, rng)
+            gain = draw_gain(int(share * eff), cfg, rng, q=backfire_prob(c, cfg))
             # **0 아래로는 안 내려간다** (위 `_settle_agentic` 과 같은 규칙).
             c.progress = max(0.0, c.progress + gain)
         result.facility_gains.append({"turn": world.turn, "agent": agent_id,
@@ -964,9 +1008,18 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
             note = {"msg_id": next(msg_ids), "amount": round(share, 2), "to": to_country}
             if world.agents[agent_id].country == to_country:
                 note["fac_gain"] = gain                     # 자국은 그대로
+                note["land"] = c.land                       # 무엇이 진척했나
             else:
                 note["fac_moved"] = gain > 0                # 타국은 늘었는지 여부만
             _notify(world, "fac_gain", note, world.turn, actor=agent_id)
+        # **누가 얼마만큼 영향을 줬는지는 그 나라 전원이 안다** (8/26 · Eddie).
+        # **의도는 모른다** — 투자의 결과인지 파괴의 결과인지 구분되지 않는다.
+        # 역화가 있으므로 부호도 의도를 말해주지 않는다: 투자가 음수일 수 있고
+        # 파괴가 양수일 수 있다. 그래서 「누가 −13 을 만들었다」 를 알면서도
+        # **그가 도우려 했는지 부수려 했는지 알 수 없다.**
+        _notify(world, "impact", {"impact_by": agent_id, "impact": gain,
+                                  "land": c.land},
+                world.turn, nation=to_country)
         if gain:
             prog_delta[to_country] = prog_delta.get(to_country, 0.0) + gain
     # **파괴는 투자와 같은 자리에서, 같은 방식으로 정산한다** (8/26 · Eddie).
@@ -983,7 +1036,11 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         if c.land is None:
             hit = 0
         else:
-            hit = draw_gain(int(share * facility_eff(c, cfg)), cfg, rng, sign=-1)
+            # **부수는 쪽의 역량으로 잰다** (8/26 · Eddie) — 대상국이 아니다.
+            actor = world.agents.get(agent_id)
+            src = world.countries[actor.country] if actor else c
+            hit = draw_gain(int(share * destroy_eff(src, cfg)), cfg, rng, sign=-1,
+                            q=backfire_prob(src, cfg))
             c.progress = max(0.0, c.progress + hit)
         result.facility_gains.append({"turn": world.turn, "agent": agent_id,
                                       "to": to_country, "amount": round(share, 2),
@@ -995,16 +1052,24 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
             note = {"msg_id": next(msg_ids), "to": to_country}
             if world.agents[agent_id].country == to_country:
                 note["dst_hit"] = hit
+                note["land"] = c.land           # 무엇이 움직였나 (자국이므로 적을 수 있다)
             else:
                 note["dst_moved"] = hit < 0
             _notify(world, "dst_hit", note, world.turn, actor=agent_id)
+        # 투자와 **같은 통지**다 — 그래서 구분되지 않는다 (위 주석 참조).
+        _notify(world, "impact", {"impact_by": agent_id, "impact": hit,
+                                  "land": c.land},
+                world.turn, nation=to_country)
         if hit:
             dstr_delta[to_country] = dstr_delta.get(to_country, 0.0) + hit
     for cid, hit in dstr_delta.items():
         prog_delta[cid] = prog_delta.get(cid, 0.0) + hit
     for cid, gain in sorted(prog_delta.items()):
         _notify(world, "progress_change",
-                {"prog_up": gain, "now": world.countries[cid].progress},
+                # **무엇이 진척했는지 적는다** (8/26 · Eddie). 나라가 아니라 시설이
+                # 진척한다 — 자국 국토는 PUBLIC 이라 이름이 누출이 아니다.
+                {"prog_up": gain, "now": world.countries[cid].progress,
+                 "land": world.countries[cid].land},
                 world.turn, nation=cid)
     # wellness / national
     for aid, amount in sink.wellness:

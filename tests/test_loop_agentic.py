@@ -490,9 +490,12 @@ def test_identical_rows_inside_one_batch_collapse():
                                     {"cap_up": True, "cap_gain": 0.07, "cap_total": 1.6}])
     assert ev3.count("上がりました") == 2
     # 값이 다르면 접히지 않는다
-    ev2 = prompts.render_events(a, [{"prog_up": 18, "now": 18},
-                                    {"prog_up": 34, "now": 52}])
-    assert ev2.count("進捗が") == 2
+    # **무엇이 진척했는지 적는다** (8/26) — 「自国の進捗」 이 아니라 「自国の interceptor」.
+    ev2 = prompts.render_events(a, [{"prog_up": 18, "now": 18, "land": "interceptor"},
+                                    {"prog_up": 34, "now": 52, "land": "interceptor"}])
+    assert ev2.count("interceptor が") == 2
+    # 국토가 안 정해졌으면 그렇게 적는다 — 진척이 있을 수 없는 상태다
+    assert "未定" in prompts.render_events(a, [{"prog_up": 0, "now": 0, "land": None}])
 
 
 def test_a_notice_left_at_the_end_of_a_year_is_not_lost_in_the_parallel_path():
