@@ -29,8 +29,8 @@
   .cring::before{content:"";position:absolute;inset:8px;border-radius:50%;background:rgba(4,18,12,.92)}
   .cicon{position:relative;font-size:30px;z-index:1}
   .clabel{font-size:14px;font-weight:800;margin-top:4px;text-shadow:0 1px 4px #000,0 0 8px #000}
-  .nation{position:absolute;transform:translate(-50%,-50%);width:300px;
-    background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px 16px}
+  .nation{position:absolute;transform:translate(-50%,-50%);width:400px;
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 18px 18px}
   .nhead{display:flex;align-items:center;gap:9px;margin-bottom:10px}
   .ndot{width:13px;height:13px;border-radius:50%;box-shadow:0 0 10px currentColor}
   .nname{font-weight:700;font-size:17px}
@@ -45,8 +45,8 @@
   .deaths{margin-top:8px;min-height:0}
   .death{font-size:11px;color:#ff8a8a;background:#241316;border:1px solid #5a2b2b;
     border-radius:7px;padding:3px 7px;margin-top:4px;display:inline-block}
-  .agents{display:flex;gap:16px;justify-content:center;margin-top:10px}
-  .agent{position:relative;text-align:center;width:66px}
+  .agents{position:relative;height:250px;margin-top:8px}
+  .agent{position:absolute;text-align:center;width:76px}
   .tok{width:60px;height:60px;margin:0 auto;border-radius:50%;cursor:pointer;
     display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;color:#fff;
     border:3px solid var(--k);background:#0b1120;transition:transform .15s}
@@ -211,9 +211,9 @@ const LANGNAT={ja:"Asla", zh:"Ranoa", fr:"Miris"};   // 언어 → 나라 이름
 const HEX={ja:"#e8a33d", zh:"#e05561", fr:"#5b9df9"};
 const langName=l=>(LANGNAT[l]||l)+"어";
 // 삼각 배치: Ranoa 위, Asla 좌하, Miris 우하
-const POS={ Ranoa:{x:.50,y:.18}, Asla:{x:.19,y:.72}, Miris:{x:.81,y:.72} };
+const POS={ Ranoa:{x:.50,y:.28}, Asla:{x:.18,y:.52}, Miris:{x:.82,y:.52} };
 // 대륙 중심 (지구 이미지 내부 % 좌표) — 나라와 짝
-const CONT={ Ranoa:[50,20], Asla:[27,50], Miris:[73,50] };
+const CONT={ Ranoa:[50,35], Asla:[34,51], Miris:[66,51] };
 const NAMES=["state.jsonl","metrics.jsonl","events.jsonl","messages.jsonl","config_snapshot.yaml","summary.json"];
 const natOf=a=>String(a).replace(/\d+$/,"");
 // 지구 대륙 (울퉁불퉁한 땅 모양, 구에 클립)
@@ -355,6 +355,22 @@ function render(){
       ag.querySelector(".tok").onclick=e=>{ e.stopPropagation(); openSide(a.agent); };
       ags.appendChild(ag);
     }
+    // 부채꼴 — 나라→지구 벡터 방향으로 3토큰을 아크에 펼친다 (#6)
+    { const EC={x:.5,y:.80};
+      let ex=EC.x-POS[nat].x, ey=EC.y-POS[nat].y; const el2=Math.hypot(ex,ey)||1; const ux=ex/el2, uy=ey/el2;
+      const R=180, ANG=52*Math.PI/180;
+      // 슬롯 3개(아크). 가운데(부채 꼭지)는 항상 2, 양옆은 위·왼쪽부터 1·3
+      const slots=[-1,0,1].map(k=>{ const th=k*ANG;
+        const rx=ux*Math.cos(th)-uy*Math.sin(th), ry=ux*Math.sin(th)+uy*Math.cos(th);
+        return {ox:R*(rx-ux), oy:R*(ry-uy)}; });
+      const out=[slots[0],slots[2]].sort((a,b)=> (a.oy-b.oy) || (a.ox-b.ox));
+      const ordered=[out[0], slots[1], out[1]];   // #1(위/왼) · #2(가운데) · #3
+      const minOy=Math.min(...ordered.map(s=>s.oy)), maxOy=Math.max(...ordered.map(s=>s.oy));
+      [...ags.children].forEach((ag,i)=>{ const s=ordered[i];
+        ag.style.left="50%"; ag.style.top=(s.oy-minOy+8)+"px";
+        ag.style.transform=`translateX(calc(-50% + ${s.ox}px))`; });
+      ags.style.height=(maxOy-minOy+8+108)+"px"; }
+
     // 이 해에 이 나라에서 죽은 이 (+ 유언)
     const dbox=el.querySelector(".deaths");
     frame.deaths.filter(d=>d.country===nat).forEach(d=>{
@@ -398,24 +414,33 @@ function drawFlows(){
 
   // 같은 쌍 합치기 (대화: 사람→사람 · 투자: 사람→나라)
   const edges=new Map();
-  frame.flows.forEach(f=>{
+  frame.flows.forEach((f,fi)=>{
     if(f.kind==="msg" && !showMsg) return;
     if(f.kind==="invest" && !showInvest) return;
     const key=f.kind==="msg"?`m|${f.from}|${f.to}`:`i|${f.from}|${f.toNat}`;
     let e=edges.get(key);
     if(!e){ e={kind:f.kind, from:f.from, to:f.to, toNat:f.toNat, foreign:f.foreign,
-      count:0, amount:0, gain:0, ai:false, orig:false}; edges.set(key,e); }
-    e.count++;
+      count:0, amount:0, gain:0, ai:false, orig:false, idx:0}; edges.set(key,e); }
+    e.count++; e.idx=fi;   // 등장 순서 (파일 순 ≈ 시간 순)
     if(f.kind==="invest"){ e.amount+=f.amount||0; e.gain+=f.gain||0; }
     else { if(f.route==="ai")e.ai=true; if(f.route==="original")e.orig=true; }
   });
-  const list=[...edges.values()], M=list.length||1;
+  const SPREAD=0.82, GROW=0.14;
+  const list=[...edges.values()].sort((a,b)=>a.idx-b.idx);
+  const M=list.length||1;
+  list.forEach((e,i)=>{ e._s=(i/M)*SPREAD; e._i=i; });   // 등장 시각
+  // #2 FIFO — 사람마다 나온 순서대로, 최근 것이 진하고 오래된 건 흐려지며 사라진다
+  const grp={}; list.forEach(e=>{ (grp[e.from]=grp[e.from]||[]).push(e); });
+  for(const s in grp){ grp[s].forEach(e=>e._rank=99);
+    grp[s].filter(e=>flowPhase>=e._s).sort((a,b)=>b._s-a._s).forEach((e,r)=>e._rank=r); }
+  const recOp=r=> r===0?1 : r===1?0.42 : r===2?0.12 : 0;   // 최근2 진하게, 그 뒤 페이드아웃
   const inFocus=e=> !focusAgent || canon(e.from)===focusAgent || (e.kind==="msg"&&canon(e.to)===focusAgent);
 
-  const SPREAD=0.8, GROW=0.16;
   list.forEach((e,i)=>{
-    const s=(i/M)*SPREAD, local=(flowPhase - s)/GROW;
+    const local=(flowPhase - e._s)/GROW;
     if(local<=0) return;
+    const rec=recOp(e._rank);          // FIFO 최근도
+    if(rec<=0.02) return;              // 오래된 건 사라짐
     const td=Math.min(1,local), growing=td<1, dim=focusAgent && !inFocus(e);
     let src,dst,col,bow,dash="", invest=e.kind==="invest";
     if(invest){ src=tokPt(e.from); dst=ptOf("bar-"+e.toNat);
@@ -432,22 +457,22 @@ function drawFlows(){
     const tg={x:dst.x-cRaw.x,y:dst.y-cRaw.y}, tl=Math.hypot(tg.x,tg.y)||1;
     const bEnd={x:dst.x-tg.x/tl*backR, y:dst.y-tg.y/tl*backR};
     const c=ctrl(a,bEnd,bow);
-    const op=dim?0.08:0.78;
-    const w=invest ? 2.8+Math.min(4,e.amount/60) : 2.2+Math.min(3,(e.count-1)*0.8);
+    const op=(dim?0.08:0.85)*rec;
+    const w=invest ? 5.5+Math.min(6,e.amount/45) : 4.2+Math.min(4,(e.count-1)*0.9);
     // 아크: 그 자리에 자라 쌓이며 멈춘다 (사라졌다 다시 안 나옴)
     let dstr=`M${a.x} ${a.y}`;
     for(let k=1;k<=14;k++){ const p=qbez(a,c,bEnd,td*k/14); dstr+=` L${p.x} ${p.y}`; }
     // 어두운 테두리 — 지구 위에서도 선이 보이게
-    svg.appendChild(svgEl("path",{d:dstr, fill:"none", stroke:"#04070e", "stroke-width":w+2.8,
-      "stroke-linecap":"round", "stroke-opacity":dim?0.05:0.5, ...(dash?{"stroke-dasharray":dash}:{}) }));
+    svg.appendChild(svgEl("path",{d:dstr, fill:"none", stroke:"#04070e", "stroke-width":w+3.4,
+      "stroke-linecap":"round", "stroke-opacity":(dim?0.05:0.55)*rec, ...(dash?{"stroke-dasharray":dash}:{}) }));
     svg.appendChild(svgEl("path",{d:dstr, fill:"none", stroke:col, "stroke-width":w,
       "stroke-linecap":"round", "stroke-opacity":op, ...(dash?{"stroke-dasharray":dash}:{}) }));
-    svg.appendChild(svgEl("circle",{cx:a.x, cy:a.y, r:3.4, fill:col, opacity:dim?0.1:0.6}));
+    svg.appendChild(svgEl("circle",{cx:a.x, cy:a.y, r:4.2, fill:col, opacity:(dim?0.1:0.7)*rec}));
     if(growing && !dim){ const hd=qbez(a,c,bEnd,td);
-      const dot=svgEl("circle",{cx:hd.x, cy:hd.y, r:invest?5:4, fill:col, opacity:0.95});
+      const dot=svgEl("circle",{cx:hd.x, cy:hd.y, r:invest?6.5:5.5, fill:col, opacity:0.95*rec});
       dot.style.filter=`drop-shadow(0 0 6px ${col})`; svg.appendChild(dot); }
-    if(td>=0.98 && !dim){ const ang=Math.atan2(tg.y,tg.x), ah=9;
-      svg.appendChild(svgEl("path",{fill:col, opacity:0.85,
+    if(td>=0.98 && !dim){ const ang=Math.atan2(tg.y,tg.x), ah=16;
+      svg.appendChild(svgEl("path",{fill:col, opacity:0.85*rec,
         d:`M${bEnd.x} ${bEnd.y} L${bEnd.x-ah*Math.cos(ang-0.42)} ${bEnd.y-ah*Math.sin(ang-0.42)} `+
           `L${bEnd.x-ah*Math.cos(ang+0.42)} ${bEnd.y-ah*Math.sin(ang+0.42)} Z`})); }
   });
