@@ -150,7 +150,8 @@ T = {
         c_vote_note="何を建てるかの採決を召集する",
         c_obs="  observe_risk",
         c_obs_note="   隕石までの残り年数と、interceptor・bunker に要る進捗を測る。国家投資が精度を上げる",
-        c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ",
+        c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ。"
+                                     "facility は逆に後退することもある",
         c_dst="  destroy", c_dst_note="どこかの国の施設を後退させる。逆に進むこともある",
         inv_hdr="invest の効果",
         inv_rule="  一度の invest でどれだけ進捗が生まれるかは、人によっても国によっても違います。\n"
@@ -232,7 +233,8 @@ T = {
         c_vote_note="召集「建什么」的表决",
         c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 和 bunker 各需要多少进度。国家投资会提高精度",
-        c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一",
+        c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一。"
+                                     "投向 facility 时也可能反而倒退",
         c_dst="  destroy", c_dst_note="使某国的设施倒退。也可能反而前进",
         inv_hdr="invest 的效果",
         inv_rule="  一次 invest 能产生多少进度，因人而异，也因国而异。\n"
@@ -316,7 +318,8 @@ T = {
         c_vote_note="convoquer un scrutin sur quoi bâtir",
         c_obs="  observe_risk",
         c_obs_note="   mesure les années restantes et la progression qu'exigent un interceptor et un bunker ; l'investissement national affine",
-        c_inv="  invest", c_inv_note="vers wellness · national · facility",
+        c_inv="  invest", c_inv_note="vers wellness · national · facility. "
+                                     "Un versement à la facility peut au contraire la faire reculer",
         c_dst="  destroy", c_dst_note="fait reculer l'installation d'une nation ; parfois elle avance au contraire",
         inv_hdr="effets d'invest",
         inv_rule="  Ce qu'un invest fait progresser varie selon les personnes et selon les nations.\n"

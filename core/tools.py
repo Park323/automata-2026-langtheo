@@ -104,7 +104,15 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "building — which may not be what you think it is, and a nation that has not "
         "yet decided what to build has nothing to put it into, so it buys "
         "no progress. "
-        "Only that nation knows which it is.",
+        "Only that nation knows which it is. "
+        # **역화를 적는다** (8/26 · Eddie). `destroy` 에는 「逆に進むこともある」 가 있는데
+        # `invest` 에는 없었다 — 그 비대칭이 실측에서 값을 치렀다. 6해 Ranoa6 이 자기
+        # 투자가 음수로 나온 것을 보고 **「내가 도구를 잘못 썼나」** 로 읽고 설명을 두 번
+        # 다시 읽었다. 규칙에 없는 일이 일어나면 도구를 의심한다.
+        #
+        # **`facility` 에만 붙인다.** `wellness`·`national` 은 직접 더해지고 추첨이 없다.
+        "Putting into a facility can backfire: sometimes it sets that nation's "
+        "facility back instead.",
         {"target": {"type": "string", "enum": ["wellness", "national", "facility"]},
          "to": {"type": "string", "description": "facility only: any nation id, yours or another's. "
                                "Defaults to your own nation"}},

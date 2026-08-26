@@ -784,3 +784,48 @@ def test_every_cost_row_is_titled_by_its_tool_name():
             assert head in TOOLS, (a.id, l)
         # 세 경로가 **한 도구**라는 것이 이름으로 보인다
         assert sum(1 for l in rows if l.strip().startswith("speak")) == 3, a.id
+
+
+def test_invest_and_destroy_both_admit_they_can_backfire():
+    """**한쪽만 적혀 있었다** (8/26 · Eddie · `260826-007` 실측).
+
+    `destroy` 는 「逆に進むこともある」 를 적는데 `invest` 는 안 적었다. 그 비대칭이 값을
+    치렀다 — 6해 Ranoa6 이 자기 투자가 음수로 나온 것을 보고 이렇게 읽었다:
+
+        「잠깐, 시설에 투자했는데 뒤로 갔다고? 설명을 다시 읽어보자.
+          to 를 안 썼으니 자국에 들어가야 하는데 결과가 「1 후퇴시켰다」 다. 이상하다.」
+
+    같은 해에 두 번 그랬다. **규칙에 없는 일이 일어나면 도구를 의심한다** — 그러면
+    의심이 세계로 안 가고 문서로 간다. 우리가 재려는 것은 사람에 대한 의심이다.
+
+    **`facility` 에만 붙인다** — `wellness`·`national` 은 직접 더해지고 추첨이 없다.
+    범위를 안 적으면 「wellness 에 투자했는데 수명이 줄 수 있다」 로 읽힌다.
+    """
+    import itertools
+    import random
+
+    from core import config, loop, tools
+    from domains.meteor import prompts
+
+    c = config.load("configs/base.yaml")
+    assert c.world.backfire_prob > 0, "역화가 꺼져 있으면 이 문구가 거짓이다"
+
+    inv = [t for t in tools.tools_for(c, ai=False)
+           if t["function"]["name"] == "invest"][0]["function"]["description"]
+    dst = [t for t in tools.tools_for(c, ai=False)
+           if t["function"]["name"] == "destroy"][0]["function"]["description"]
+    for d in (inv, dst):
+        assert "backfire" in d, d[-120:]
+    # invest 쪽은 **facility 로 범위를 좁혀야** 한다
+    assert "facility can backfire" in inv
+
+    w = loop.init_world(c, itertools.count(1), random.Random(1))
+    w.turn = 1
+    for a in w.agents.values():
+        rows = {l.strip().split()[0]: l for l in prompts.render_costs(w, a, c, None).splitlines()
+                if l.startswith("  ") and l.strip()}
+        # 세 언어 모두, 두 줄 **다** 역화를 말한다
+        back = {"ja": ("後退", "進む"), "zh": ("倒退", "前进"), "fr": ("reculer", "avanc")}
+        neg, pos = back[a.native_lang]
+        assert neg in rows["invest"], (a.id, rows["invest"])
+        assert pos in rows["destroy"], (a.id, rows["destroy"])
