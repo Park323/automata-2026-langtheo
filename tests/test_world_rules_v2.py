@@ -1870,3 +1870,56 @@ def test_the_target_learns_who_but_never_why(cfg, world):
         seen[tool] = set(imp[0])
     # 두 통지의 **필드 모양이 같다** — 모양으로도 구분되지 않는다
     assert seen["invest"] == seen["destroy"], seen
+
+
+def test_the_cumulative_record_does_not_converge_when_intent_flips(cfg, world):
+    """**한 번은 모호하고, 누적은 쌓인다 — 그러나 수렴하지 않는다** (8/26 · Eddie).
+
+    변화량만 알리면 개별 건이 늘 우연으로 설명된다. 누적을 함께 적으면 「다섯 해에 걸쳐
+    −40 이 된 사람」 이 보인다 — 그것이 의심의 시간 구조다.
+
+    그런데 역화가 있으므로 누적이 **의도로 수렴하지 않는다.** 실측 다섯 해:
+
+        1해 (파괴)  倒退了 12  누계 −12
+        2해 (투자)  倒退了  9  누계 −21   ← 도우려 했는데 역화
+        3해 (파괴)  倒退了  8  누계 −29
+        4해 (파괴)  前进了 10  누계 −19   ← 부수려 했는데 역화
+        5해 (투자)  前进了 12  누계  −7   ← 신호가 흐려진다
+
+    표본이 적을 때 역화 두 번이 결론을 뒤집는다. 진짜 적을 놓칠 수도 있고 친구를 적으로
+    볼 수도 있다 — 그것이 이 설계가 만들려는 불확실성이다.
+
+    사람 id 는 재사용되지 않으므로 이 값은 **그 사람의 생애 기록**이다.
+    """
+    import random as _rnd
+
+    from core.agent_loop import Sink, execute_tool
+
+    world.countries["Ranoa"].land = "interceptor"
+    world.countries["Ranoa"].progress = 500.0
+    totals = []
+    for t, tool in enumerate(("destroy", "invest", "destroy"), 1):
+        world.turn = t
+        a = world.agents["Asla1"]; a.ap = 1.0
+        sink = Sink()
+        args = {"to": "Ranoa", "reasoning": "r"}
+        if tool == "invest":
+            args["target"] = "facility"
+        execute_tool(tool, args, world, a, cfg, sink, KNOB)
+        world.inbox_queue.clear()
+        loop._settle_step(world, cfg, _rnd.Random(t * 7), sink, None, None,
+                          itertools.count(900 + t * 10), loop.RunResult(world=world),
+                          {}, [])
+        imp = [q["msg"] for q in world.inbox_queue
+               if q["to"] == "Ranoa1" and "impact_by" in q["msg"]]
+        assert len(imp) == 1, (t, world.inbox_queue)
+        totals.append(imp[0]["impact_total"])
+    # 누적이 실제로 쌓인다 — 매 통지가 그때까지의 합이다
+    log = world.countries["Ranoa"].impact_log
+    assert totals[-1] == pytest.approx(log["Asla1"])
+    # 그리고 **사람별**이다 — 손 안 댄 사람은 기록에 없다
+    assert set(log) == {"Asla1"}
+
+    # 체크포인트가 이 기록을 넘긴다 — 안 넘기면 누적이 조용히 리셋된다
+    from core import checkpoint
+    assert checkpoint.VERSION >= 4, "Country 필드가 늘면 버전을 올려야 한다"

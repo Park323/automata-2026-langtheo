@@ -186,8 +186,8 @@ T = {
         dst_still="  あなたの手は {to} の進捗を後退させられませんでした。",
         prog_up="  自国の {land} が {gain:.0f} 進んで {now:.0f} になりました。",
         prog_down="  自国の {land} が {loss:.0f} 後退して {now:.0f} になりました。",
-        impact_up="  {by} の手が働いて、自国の {land} が {mag:.0f} 進みました。",
-        impact_down="  {by} の手が働いて、自国の {land} が {mag:.0f} 後退しました。",
+        impact_up="  {by} の手が働いて、自国の {land} が {mag:.0f} 進みました（この人の累計 {tot:+.0f}）。",
+        impact_down="  {by} の手が働いて、自国の {land} が {mag:.0f} 後退しました（この人の累計 {tot:+.0f}）。",
         cap_up="  自国の技術力が {pct:.2f}% 上がりました（はじめから {tot:.2f}%）。",
         ballot_kept="  採決の結果、建てるものは {land} のままです。",
         ballot_new="  採決の結果、建てるものは {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
@@ -273,8 +273,8 @@ T = {
         dst_still="  你的行动没能让 {to} 的进度倒退。",
         prog_up="  本国的 {land} 前进了 {gain:.0f}，现在是 {now:.0f}。",
         prog_down="  本国的 {land} 倒退了 {loss:.0f}，现在是 {now:.0f}。",
-        impact_up="  {by} 出手，使本国的 {land} 前进了 {mag:.0f}。",
-        impact_down="  {by} 出手，使本国的 {land} 倒退了 {mag:.0f}。",
+        impact_up="  {by} 出手，使本国的 {land} 前进了 {mag:.0f}（此人累计 {tot:+.0f}）。",
+        impact_down="  {by} 出手，使本国的 {land} 倒退了 {mag:.0f}（此人累计 {tot:+.0f}）。",
         cap_up="  本国的技术水平提高了 {pct:.2f}%（自开始累计 {tot:.2f}%）。",
         ballot_kept="  表决的结果，要建的设施仍是 {land}。",
         ballot_new="  表决的结果，要建的设施定为 {land}。此前的进度 {lost:.0f} 已失去。",
@@ -363,8 +363,8 @@ T = {
         dst_still="  Votre geste n'a pas fait reculer {to}.",
         prog_up="  Le {land} de votre nation a avancé de {gain:.0f} ; il est à {now:.0f}.",
         prog_down="  Le {land} de votre nation a reculé de {loss:.0f} ; il est à {now:.0f}.",
-        impact_up="  {by} est intervenu : le {land} de votre nation a avancé de {mag:.0f}.",
-        impact_down="  {by} est intervenu : le {land} de votre nation a reculé de {mag:.0f}.",
+        impact_up="  {by} est intervenu : le {land} de votre nation a avancé de {mag:.0f} (cumul de cette personne {tot:+.0f}).",
+        impact_down="  {by} est intervenu : le {land} de votre nation a reculé de {mag:.0f} (cumul de cette personne {tot:+.0f}).",
         cap_up="  Le niveau technique de votre nation a augmenté de {pct:.2f}% ({tot:.2f}% depuis le début).",
         ballot_kept="  Au scrutin, ce qu'on bâtit reste {land}.",
         ballot_new="  Au scrutin, ce qu'on bâtit devient {land}. La progression acquise, {lost:.0f}, est perdue.",
@@ -716,8 +716,12 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
             # 투자와 파괴가 **같은 문구**를 쓴다. 그리고 역화가 있으므로 부호도 의도를
             # 말하지 않는다 — 투자가 음수일 수 있고 파괴가 양수일 수 있다.
             land = m.get("land") or t["undecided"]
+            # **변화량과 누적을 함께** (8/26 · Eddie). 한 번의 사건은 늘 모호한데
+            # (투자인지 파괴인지, 역화인지) **누적은 쌓인다** — 다섯 해에 걸쳐 −40 이
+            # 된 사람은 우연으로 설명하기 어려워진다. 그것이 의심의 시간 구조다.
             key = "impact_up" if m["impact"] > 0 else "impact_down"
-            _add(t[key].format(by=m["impact_by"], land=land, mag=abs(m["impact"])))
+            _add(t[key].format(by=m["impact_by"], land=land, mag=abs(m["impact"]),
+                               tot=m.get("impact_total", m["impact"])))
             continue
         if m.get("prog_up") is not None:       # 자국 진척이 움직였다 (PUBLIC · 일괄)
             # **줄어들 수도 있다** (8/26). 역화와 파괴가 들어오면서 이 값이 음수가 된다 —

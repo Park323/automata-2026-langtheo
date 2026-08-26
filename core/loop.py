@@ -1017,7 +1017,9 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         # 역화가 있으므로 부호도 의도를 말해주지 않는다: 투자가 음수일 수 있고
         # 파괴가 양수일 수 있다. 그래서 「누가 −13 을 만들었다」 를 알면서도
         # **그가 도우려 했는지 부수려 했는지 알 수 없다.**
+        c.impact_log[agent_id] = c.impact_log.get(agent_id, 0.0) + gain
         _notify(world, "impact", {"impact_by": agent_id, "impact": gain,
+                                  "impact_total": round(c.impact_log[agent_id], 1),
                                   "land": c.land},
                 world.turn, nation=to_country)
         if gain:
@@ -1057,7 +1059,9 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
                 note["dst_moved"] = hit < 0
             _notify(world, "dst_hit", note, world.turn, actor=agent_id)
         # 투자와 **같은 통지**다 — 그래서 구분되지 않는다 (위 주석 참조).
+        c.impact_log[agent_id] = c.impact_log.get(agent_id, 0.0) + hit
         _notify(world, "impact", {"impact_by": agent_id, "impact": hit,
+                                  "impact_total": round(c.impact_log[agent_id], 1),
                                   "land": c.land},
                 world.turn, nation=to_country)
         if hit:

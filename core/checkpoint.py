@@ -24,7 +24,11 @@ from pathlib import Path
 
 from core.state import Agent, Country, World
 
-VERSION = 3   # 8/25: 돈 삭제 · Country.build_mult · Agent.income_mult 흡수
+VERSION = 4   # 8/26: Country.impact_log (사람별 누적 영향)
+#
+# **3 → 4.** `Country(**v)` 는 없는 키를 기본값으로 떨어뜨리므로, 버전을 안 올리면
+# 옛 체크포인트를 이어받은 뒤 `impact_log` 가 **빈 dict** 으로 시작한다 — 그러면 누적이
+# 리셋되고 「다섯 해에 걸쳐 −40」 이라는 의심의 근거가 조용히 사라진다.
 #
 # **버전을 올려야 조용히 틀리지 않는다.** `Country(**v)` 는 없는 키를 기본값으로
 # 떨어뜨리므로, 8/23 이전 체크포인트를 이어받으면 `build_mult` 가 전부 1.0 이 되어
