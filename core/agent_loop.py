@@ -289,6 +289,12 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         # **투자와 같은 모양으로 답한다** — 실행 → AP 소모. 결과는 그 나라의 진척
         # 변화로만 드러나고, **누가 했는지는 아무에게도 안 알린다.** 그것이 모호성이다:
         # 진척이 준 것을 보고 「역화인가 파괴인가」 를 가릴 수 없다.
+        #
+        # 자국이 미정이면 그렇게 답한다 (`invest` 와 같은 이유). 타국은 안 알린다.
+        if to == agent.country and world.countries[to].land is None:
+            return {"ok": True, "ap_left": round(agent.ap, 3),
+                    "note": "your nation has not decided what to build, "
+                            "so this put nothing anywhere"}, None
         return {"ok": True, "ap_left": round(agent.ap, 3)}, None
 
     if name == "invest":
@@ -337,6 +343,19 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             #
             # 진척은 여기서 돌려줄 수 없다 — 정산은 이 호출 뒤에 일어난다. `fac_gain` 이
             # 알린다 (「進捗が 18 進みました」). 그래서 여기는 AP 만 답한다.
+            # **자국이 미정이면 그렇게 답한다** (8/26 · Eddie). 정산 때 `land is None`
+            # 이면 추첨을 아예 안 돌려 진척이 0 이 되는데, 통지는 「0 진행됐다」 로만
+            # 와서 **왜 0 이었는지 알 수 없었다.** 실측에서 Asla3 이 採決 전 3해에
+            # 다섯 번을 헛되게 냈다 (그 해 AP 의 절반).
+            #
+            # **자국만이다.** 자국 국토는 관측에 이미 보이므로(PUBLIC) 누출이 아니고,
+            # 모르고 낸 것은 정보 부족이 아니라 부주의다. 타국은 안 알린다 — 그것을
+            # 알려주면 0.10 짜리 조회로 타국 국토를 읽게 되고, 「타국 사정은 소통으로만」
+            # 이 무너진다 (spec 4.1 은닉 목록).
+            if to == agent.country and world.countries[to].land is None:
+                return {"ok": True, "ap_left": round(agent.ap, 3),
+                        "note": "your nation has not decided what to build, "
+                                "so this put nothing anywhere"}, None
             return {"ok": True, "ap_left": round(agent.ap, 3)}, None
         if target == "wellness":
             sink.wellness.append((agent.id, amount))
