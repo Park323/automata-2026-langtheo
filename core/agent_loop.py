@@ -41,7 +41,6 @@ class Sink:
     wellness: list = field(default_factory=list)      # (agent_id, amount)
     national: list = field(default_factory=list)      # (country, amount, agent_id)
     messages: list = field(default_factory=list)      # 발신 dict (5장, 'from' 에 agent_id)
-    votes: list = field(default_factory=list)         # 제안 (agent_id, country, target)
     ballots: list = field(default_factory=list)       # 표 (agent_id, country, choice)
     learns: list = field(default_factory=list)        # (agent_id, lang) — 다음 턴부터 유효
     # **아이를 낳은 사람들** (8/21). 전에는 `procreations` 로 (id, 유언) 을 담았다 —
@@ -549,35 +548,6 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                 "interceptor_needs": thr_seen, "bunker_needs": bnk_seen,
                 "ap_left": round(agent.ap, 1)}, None
 
-    if name == "propose_vote":
-        # **무엇을 지을지는 여기서 정하지 않는다 — 採決을 소집하기만 한다.**
-        #
-        # 전에는 `target` 을 들고 「이것으로 하자」 를 열었고, `vote` 는 찬/반이었다.
-        # 그래서 같은 턴에 둘이 제안하면 둘 다 도구를 통과하는데 하나만 열렸고,
-        # 밀린 쪽은 AP 0.6 을 내고 **아무 일도 안 일어난 것을 알 방법이 없었다.**
-        #
-        # 소집에 내용이 없으면 겹칠 것이 없다. 둘이 소집해도 같은 採決이다.
-        c = world.countries[agent.country]
-        if c.proposal is not None:
-            return {"ok": False, "error":
-                    f"a ballot is already called for year "
-                    f"{_year(c.proposal['vote_turn'])}"}, None
-        if not _afford(agent.ap, cfg.ap.propose_vote):
-            return {"ok": False, "error": f"not enough action; propose_vote needs {cfg.ap.propose_vote}, have {agent.ap:.2f}"}, None
-        # **돈은 안 받는다.** 가난이 제안을 막으면 국토가 돈으로 정해진다. 무게는 AP 로만
-        # 준다 — 국가의 용도를 여는 행위라 한 턴의 절반이 넘는다.
-        _spend(agent, cfg.ap.propose_vote)
-        sink.votes.append((agent.id, agent.country))
-        # **이제 날짜를 돌려줄 수 있다.** 소집에 내용이 없으니 둘이 소집해도 같은
-        # 採決이고, 밀려서 안 열리는 일이 없다.
-        #
-        # **연도로 돌려준다** (#43). 여기만 `world.turn` 을 날것으로 흘리고 있었다 —
-        # 같은 採決을 `vote` 의 실패 응답은 `_year()` 로 「year 46」 이라고 부른다.
-        # 「년」 통일이 에러 메시지만 훑었고 **성공 응답은 그 그물 밖이었다.**
-        # 키 이름도 바꾼다 — 값만 고치면 `ballot_turn` 이 그 눈금을 계속 말한다.
-        return {"ok": True, "ballot_year": _year(world.turn + loop_vote_delay()),
-                "ap_left": round(agent.ap, 1)}, None
-
     if name == "vote":
         c = world.countries[agent.country]
         if c.proposal is None:
@@ -771,12 +741,6 @@ def _year(turn: int) -> int:
     return FIRST_YEAR + turn - 1
 
 
-def loop_vote_delay() -> int:
-    """`core.loop.VOTE_DELAY`. 여기서 import 하면 순환이 되므로 호출 시점에 읽는다."""
-    from core.loop import VOTE_DELAY
-    return VOTE_DELAY
-
-
 def _redact_args(name: str, args: dict) -> dict:
     """호출 인자에서 **다른 곳에 온전히 있는 것만** 뺀다.
 
@@ -806,8 +770,6 @@ def can_act(agent, cfg, knob_ai: float) -> bool:
         return True
     # **돈 조건이 사라졌다** (8/25 · AP 전면 통일). 남은 것은 AP 뿐이다.
     if _afford(agent.ap, cfg.ap.speak):
-        return True
-    if _afford(agent.ap, cfg.ap.propose_vote):
         return True
     # 투자·학습은 **고정 단위**다 (8/19). 예전엔 금액 비례라 「AP 가 조금이라도 있으면
     # 참」 이었는데, 단위가 고정된 뒤로도 그 말이 남아 있었다.

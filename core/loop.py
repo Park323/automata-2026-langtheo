@@ -24,17 +24,37 @@ from core.state import Agent, Country, World
 # 더미 세계(과제 1)에서만 쓰는 기본 용도. 에이전트 세계에서는 **투표로만** 정해진다.
 DEFAULT_FACILITY_TYPE = "interceptor"
 
-# 소집 → 유예 → 採決. 소집한 해 t 의 t+1 이 상의 기간이고 t+VOTE_DELAY 가 採決일.
+# **採決은 시계가 연다** (8/26 · Eddie). `ballot_from` 해부터 `ballot_every` 해마다
+# 전 국가가 동시에 개표한다 — 소집도 유예도 없다. 사이의 해가 논의 기간이다.
 #
-# **4 에서 2 로 줄였다** (8/20). 4 였을 때는 t+1·t+2·t+3 이 유예라 소집부터 개표까지 다섯
-# 해가 걸렸다. 그 길이는 **메시지 왕복에 두 해가 들던 때** 정해진 것이다 — 보내면 다음
-# 해에 닿고 답은 그 다음 해였으니, 한 번 주고받는 데 두 해가 필요했고 세 해는 겨우
-# 한 왕복 반이었다.
+# 사람이 소집하던 때 두 가지로 무너졌다 (근거는 `core/config.py` World 주석):
+# 발의 한 해 차이가 30해를 정했고, 제안자가 죽으면 採決이 비었다.
 #
-# 순차 라운드로빈은 **같은 해에 왕복이 된다** (#20). 소집한 해에 이미 이야기가 오가고,
-# t+1 한 해가 더 있으면 충분하다. 기대수명이 16해인데 다섯 해를 절차에 쓰면 한 사람이
-# 겪는 採決이 세 번뿐이다.
+# `VOTE_DELAY` 는 남겨 둔다 — 옛 스냅샷의 `proposal.vote_turn` 을 읽을 때 쓰인다.
 VOTE_DELAY = 2
+
+
+def is_ballot_turn(turn: int, cfg) -> bool:
+    """이 해가 採決일인가. 주기가 0 이하면 採決이 없다 (옛 세계)."""
+    every = getattr(cfg.world, "ballot_every", 0)
+    start = getattr(cfg.world, "ballot_from", 1)
+    return bool(every) and turn >= start and (turn - start) % every == 0
+
+
+def open_ballots(world: "World", cfg, result: "RunResult") -> None:
+    """採決일이면 전 국가의 採決을 연다. **행동 전에 불러야 한다** — 관측이 「올해가
+    採決일」 을 읽고 그 해에 표를 낸다.
+
+    `by` 는 `None` 이다. 아무도 부르지 않았고 시계가 열었다.
+    """
+    if not is_ballot_turn(world.turn, cfg):
+        return
+    for cid in sorted(world.countries):
+        c = world.countries[cid]
+        c.proposal = {"by": None, "opened_turn": world.turn, "vote_turn": world.turn}
+        result.votes_log.append({"turn": world.turn, "kind": "propose", "by": None,
+                                 "country": cid, "vote_turn": world.turn,
+                                 "opened": True})
 
 
 @dataclass
@@ -176,6 +196,26 @@ def draw_gain(n: int, cfg, rng: random.Random, sign: int = 1,
         hits = sum(1 for _ in range(n) if rng.random() < cfg.world.backfire_hit)
         return -sign * hits
     return sign * sum(1 for _ in range(n) if rng.random() < cfg.world.success_prob)
+
+
+def apply_progress(world: World, c: "Country", delta: int, agent_id: str) -> float:
+    """진척을 더하되 0 아래로 안 내려가게 하고, **실제 적용분을 국적별로 귀속**한다.
+
+    **적용분과 추첨값이 다르다** — 0 에서 잘리기 때문이다. 추첨값으로 귀속시키면
+    바닥에서 자국 몫이 음수로 쌓이고, 그 뒤 자국민이 올려도 회복되지 않는다.
+
+    `invest` 와 `destroy` 가 같은 함수를 쓴다. `destroy` 도 **가한 사람의 국적** 쪽에서
+    깎이는 것이 맞다 — 자국민이 자국을 부수면 자국 몫이 줄고, 타국이 부수면 타국 몫이
+    줄어 국토 전환 때 남는 것이 늘어난다. 부순 쪽이 그 나라의 「빚」 을 갚아 주는
+    셈인데, 그것이 「타국 기여만 사라진다」 의 일관된 귀결이다.
+    """
+    before = c.progress
+    c.progress = max(0.0, c.progress + delta)
+    applied = c.progress - before
+    actor = world.agents.get(agent_id)
+    if actor is not None and actor.country == c.id:
+        c.domestic_progress += applied
+    return applied
 
 
 def destroy_eff(actor_country, cfg) -> float:
@@ -372,6 +412,9 @@ def run_turn(world: World, cfg, rng: random.Random, result: RunResult,
     for a in world.agents.values():
         a.ap = cfg.turn.action_points
 
+    # **採決을 먼저 연다** (8/26). 관측이 「올해가 採決일」 을 읽어야 하므로 행동 전이다.
+    open_ballots(world, cfg, result)
+
     # 2. 관측 스냅샷 — 이번 턴 행동하는 인스턴스(uid)를 고정
     snapshot_ids = sorted(world.agents.keys())
     snapshot_uids = {world.agents[aid].uid for aid in snapshot_ids}
@@ -564,7 +607,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                 gain = draw_gain(int(share * eff), cfg, rng, q=backfire_prob(c, cfg))
                 # **0 아래로는 안 내려간다.** 없는 것보다 나쁜 시설은 없다 — 그리고
                 # 바닥이 없으면 파괴가 무한히 쌓여 복구가 불가능해진다.
-                c.progress = max(0.0, c.progress + gain)
+                apply_progress(world, c, gain, agent_id)
             # 행위 **후에는** 공개한다. 확률적이라 한 건으로는 success_prob 을 못 읽고,
             # 모르면 "얼마를 더 내야 하는가" 를 판단할 근거가 아예 없다.
             result.facility_gains.append({"turn": world.turn, "seq": next(msg_ids),
@@ -582,7 +625,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
             src = world.countries[actor.country] if actor else c
             hit = draw_gain(int(share * destroy_eff(src, cfg)), cfg, rng, sign=-1,
                             q=backfire_prob(src, cfg))
-            c.progress = max(0.0, c.progress + hit)
+            apply_progress(world, c, hit, agent_id)
         result.facility_gains.append({"turn": world.turn, "seq": next(msg_ids),
                                       "agent": agent_id,
                                       "to": to_country, "amount": round(share, 2),
@@ -653,16 +696,6 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     #   **소집에는 내용이 없다.** 전에는 `target` 을 들고 「이것으로 하자」 를 열었고 같은
     #   턴에 둘이 제안하면 하나만 열렸다 — 밀린 쪽은 AP 0.6 을 내고 아무 일도 안 일어난
     #   것을 알 방법이 없었다. 지금은 둘이 소집해도 같은 採決이라 겹칠 것이 없다.
-    for by, country in sorted(sink.votes):
-        c = world.countries.get(country)
-        opened = c is not None and c.proposal is None
-        rec = {"by": by, "opened_turn": world.turn, "vote_turn": world.turn + VOTE_DELAY}
-        result.votes_log.append({"turn": world.turn, "kind": "propose",
-                                 "by": by, "country": country,
-                                 "vote_turn": rec["vote_turn"], "opened": opened})
-        if opened:
-            c.proposal = rec
-
     # 개표 — **최다득표.** 표는 interceptor / bunker / abstain 중 하나다.
     #
     #   `abstain` 은 어느 쪽으로도 안 센다. 표를 아예 안 낸 것과 개표상 같지만 **로그에는
@@ -677,35 +710,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
         ballots_by[country].append((by, choice))
         result.votes_log.append({"turn": world.turn, "kind": "ballot",
                                  "by": by, "country": country, "choice": choice})
-    for cid in sorted(world.countries):
-        c = world.countries[cid]
-        if c.proposal is None or c.proposal["vote_turn"] != world.turn:
-            continue
-        cast = _one_vote_each(ballots_by.get(cid, []))
-        counts = {k: sum(1 for _, ch in cast if ch == k)
-                  for k in ("interceptor", "bunker", "abstain")}
-        top = max(counts["interceptor"], counts["bunker"])
-        tie = counts["interceptor"] == counts["bunker"]
-        chosen = None if (top == 0 or tie) else (
-            "interceptor" if counts["interceptor"] > counts["bunker"] else "bunker")
-        rec = {"turn": world.turn, "country": cid, "called_by": c.proposal["by"],
-               "counts": counts, "chosen": chosen, "from": c.land,
-               "changed": False, "progress_lost": 0.0}
-        if chosen is not None and chosen != c.land:
-            # 다른 시설을 착수하면 기존 시설은 파괴된다 — 진척 0 (SYSTEM 규칙 5)
-            rec["changed"] = True
-            rec["progress_lost"] = round(c.progress, 3)
-            c.land, c.progress = chosen, 0.0
-        c.proposal = None                       # 바뀌든 안 바뀌든 採決은 닫힌다
-        result.land_changes.append(rec)
-        # **採決 결과와 그때 사라진 진척을 그 나라에 알린다** (ballot_result PUBLIC).
-        # 전에는 아무도 통지받지 않았다 — 다음 해에 진척이 0 인 것을 보고 추론해야 했고,
-        # 국토도 같이 바뀌어 「내가 낸 것이 다 날아갔다」 를 알아차릴 단서가 약했다.
-        _notify(world, "ballot_result",
-                {"ballot": "changed" if rec["changed"] else (
-                     "kept" if rec["chosen"] else "none"),
-                 "land": c.land, "lost": rec["progress_lost"]},
-                world.turn, nation=cid)
+    _tally_ballots(world, cfg, result, ballots_by)
 
     # f-2. 출자자에게 자기 몫의 진척 기여를 다음 턴에 알린다 (행위 후 공개)
     #
@@ -784,6 +789,9 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
     for a in world.agents.values():
         a.ap = cfg.turn.action_points
 
+    # **採決을 먼저 연다** (8/26). 관측이 「올해가 採決일」 을 읽어야 하므로 행동 전이다.
+    open_ballots(world, cfg, result)
+
     # 2. 관측 스냅샷 (도착 메시지·프롬프트를 스레드 시작 전에 고정)
     snapshot_ids = sorted(world.agents.keys())
     snapshot_uids = {world.agents[aid].uid for aid in snapshot_ids}
@@ -833,7 +841,6 @@ def run_turn_agentic(world: World, cfg, rng: random.Random, result: RunResult,
         merged.wellness += s.wellness
         merged.national += s.national
         merged.messages += s.messages
-        merged.votes += s.votes
         merged.ballots += s.ballots
         merged.observations += s.observations
         merged.learns += s.learns
@@ -1012,7 +1019,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         else:
             gain = draw_gain(int(share * eff), cfg, rng, q=backfire_prob(c, cfg))
             # **0 아래로는 안 내려간다** (위 `_settle_agentic` 과 같은 규칙).
-            c.progress = max(0.0, c.progress + gain)
+            apply_progress(world, c, gain, agent_id)
         result.facility_gains.append({"turn": world.turn, "seq": next(msg_ids),
                                       "agent": agent_id,
                                       "to": to_country, "amount": round(share, 2),
@@ -1055,7 +1062,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
             src = world.countries[actor.country] if actor else c
             hit = draw_gain(int(share * destroy_eff(src, cfg)), cfg, rng, sign=-1,
                             q=backfire_prob(src, cfg))
-            c.progress = max(0.0, c.progress + hit)
+            apply_progress(world, c, hit, agent_id)
         result.facility_gains.append({"turn": world.turn, "seq": next(msg_ids),
                                       "agent": agent_id,
                                       "to": to_country, "amount": round(share, 2),
@@ -1140,16 +1147,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
                      "msg_id": next(msg_ids), "delivery_failed_to": sent["to"],
                      "delivery_failed_reason": p["sender_notice"].get("reason"),
                      "ref_msg_id": gid}, world.turn, actor=sent["from"])
-    # 투표 — 소집은 즉시 열고, ballot 은 누적(턴 끝 개표)
-    for by, country in sink.votes:
-        c = world.countries.get(country)
-        opened = c is not None and c.proposal is None
-        rec = {"by": by, "opened_turn": world.turn, "vote_turn": world.turn + VOTE_DELAY}
-        result.votes_log.append({"turn": world.turn, "kind": "propose", "by": by,
-                                 "country": country, "vote_turn": rec["vote_turn"],
-                                 "opened": opened})
-        if opened:
-            c.proposal = rec
+    # 투표 — 採決은 시계가 열었다 (`open_ballots`). ballot 은 누적(턴 끝 개표)
     for by, country, choice in sink.ballots:
         ballots_acc.append((by, country, choice))
         result.votes_log.append({"turn": world.turn, "kind": "ballot",
@@ -1172,11 +1170,19 @@ def _one_vote_each(cast: list) -> list:
     return out
 
 
-def _roundrobin_tally(world: World, cfg, result: RunResult, ballots_acc: list) -> None:
-    """턴 끝 개표 — 최다득표(interceptor/bunker/abstain). _settle_agentic 과 같은 규칙."""
-    ballots_by: dict[str, list] = defaultdict(list)
-    for by, country, choice in sorted(ballots_acc):
-        ballots_by[country].append((by, choice))
+def _tally_ballots(world: World, cfg, result: RunResult,
+                   ballots_by: dict[str, list]) -> None:
+    """採決 개표 — **두 경로가 이 하나를 쓴다.**
+
+    전에는 순차와 병렬이 같은 코드를 복사해 갖고 있었고, 그래서 한쪽만 고치는 사고가
+    반복됐다 (`impact` 통지가 병렬 경로에 아예 없던 것이 그 예다). 50% 소각을 넣으려고
+    두 벌을 고치려다 주석이 갈려 있어 매칭이 깨졌다 — 그것을 신호로 합쳤다.
+
+    최다득표. `abstain` 은 어느 쪽으로도 안 센다 (표를 안 낸 것과 개표상 같지만
+    **로그에는 다르게 남는다** — 「생각해봤지만 정하지 않았다」 가 근거와 함께 남는다).
+    동수거나 아무도 안 내면 **현 상태 그대로**이고 진척도 온전하다 — 합의 실패의 대가를
+    진척 파괴로 물리면 採決 한 번이 진척을 지우는 무기가 된다.
+    """
     for cid in sorted(world.countries):
         c = world.countries[cid]
         if c.proposal is None or c.proposal["vote_turn"] != world.turn:
@@ -1184,27 +1190,57 @@ def _roundrobin_tally(world: World, cfg, result: RunResult, ballots_acc: list) -
         cast = _one_vote_each(ballots_by.get(cid, []))
         counts = {k: sum(1 for _, ch in cast if ch == k)
                   for k in ("interceptor", "bunker", "abstain")}
-        tie = counts["interceptor"] == counts["bunker"]
         top = max(counts["interceptor"], counts["bunker"])
+        tie = counts["interceptor"] == counts["bunker"]
         chosen = None if (top == 0 or tie) else (
             "interceptor" if counts["interceptor"] > counts["bunker"] else "bunker")
         rec = {"turn": world.turn, "country": cid, "called_by": c.proposal["by"],
                "counts": counts, "chosen": chosen, "from": c.land,
-               "changed": False, "progress_lost": 0.0}
+               "changed": False, "progress_lost": 0.0, "progress_kept": 0.0}
         if chosen is not None and chosen != c.land:
+            # **타국이 쌓아준 것만 사라진다** (8/26 · Eddie). 전액 소각은 전환을
+            # 산술적으로 불가능하게 만들어 採決을 형식으로 바꿨고(260826-008 17해:
+            # 벙커까지 20.2해 필요 · 남은 14해 · 3표 만장일치로 요격기 유지), 균등
+            # 50% 소각에는 구멍이 있었다 — 요격기 8,200 을 넘기면 전환 즉시 벙커
+            # (4,100)가 완성돼 **세 나라가 숙주를 밀어 올리는 순간 숙주가 무료로
+            # 배신**할 수 있었다 (마지막 25% 가 그 지대).
+            #
+            # 자국 몫만 남기면 그 구멍이 스스로 닫힌다. 무료 배신은
+            # `진척 × 자국비중 ≥ 벙커임계` 일 때만 생기므로 **도움을 많이 받아 숙주가
+            # 된 나라일수록 빠져나갈 수 없다** — 자국비중 0.376 아래면 요격기 임계
+            # 안에서 원리적으로 불가능하다. 008 의 Asla 는 자국비중 41% 라 문턱이
+            # 10,000 이다 (임계 10,899 의 92%).
+            #
+            # 그리고 **투자가 족쇄를 채우는 수단**이 된다 — 「저 나라가 배신 못 하게 더
+            # 부어두자」 가 성립한다. 값은 숨기고 규칙만 말한다 (프롬프트).
+            kept = round(c.kept_on_switch(), 3)
             rec["changed"] = True
-            rec["progress_lost"] = round(c.progress, 3)
-            c.land, c.progress = chosen, 0.0
-        c.proposal = None
+            rec["progress_lost"] = round(c.progress - kept, 3)
+            rec["progress_kept"] = kept
+            c.land, c.progress = chosen, kept
+            # 새 시설의 출발점은 **전부 자국 몫**이다 — 남은 것이 곧 자국이 쌓은 것이다.
+            c.domestic_progress = kept
+        c.proposal = None                       # 바뀌든 안 바뀌든 採決은 닫힌다
         result.land_changes.append(rec)
         # **採決 결과와 그때 사라진 진척을 그 나라에 알린다** (ballot_result PUBLIC).
         # 전에는 아무도 통지받지 않았다 — 다음 해에 진척이 0 인 것을 보고 추론해야 했고,
         # 국토도 같이 바뀌어 「내가 낸 것이 다 날아갔다」 를 알아차릴 단서가 약했다.
+        #
+        # **남은 것도 함께 알린다** — 잃은 값만 주면 「전부 날아갔다」 로 읽힌다.
         _notify(world, "ballot_result",
                 {"ballot": "changed" if rec["changed"] else (
                      "kept" if rec["chosen"] else "none"),
-                 "land": c.land, "lost": rec["progress_lost"]},
+                 "land": c.land, "lost": rec["progress_lost"],
+                 "now": round(c.progress, 3)},
                 world.turn, nation=cid)
+
+
+def _roundrobin_tally(world: World, cfg, result: RunResult, ballots_acc: list) -> None:
+    """턴 끝 개표. **규칙은 `_tally_ballots` 하나뿐이다** — 여기서 표만 모아 넘긴다."""
+    ballots_by: dict[str, list] = defaultdict(list)
+    for by, country, choice in sorted(ballots_acc):
+        ballots_by[country].append((by, choice))
+    _tally_ballots(world, cfg, result, ballots_by)
 
 
 def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult,
@@ -1222,6 +1258,9 @@ def run_turn_roundrobin(world: World, cfg, rng: random.Random, result: RunResult
     # 값 조절이 아니라 **구조로** 사라진다.
     for a in world.agents.values():
         a.ap = cfg.turn.action_points
+
+    # **採決을 먼저 연다** (8/26). 관측이 「올해가 採決일」 을 읽어야 하므로 행동 전이다.
+    open_ballots(world, cfg, result)
     snapshot_ids = sorted(world.agents.keys())
     snapshot_uids = {world.agents[aid].uid for aid in snapshot_ids}
     order = list(snapshot_ids)

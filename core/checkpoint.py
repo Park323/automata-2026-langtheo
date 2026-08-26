@@ -24,12 +24,18 @@ from pathlib import Path
 
 from core.state import Agent, Country, World
 
-VERSION = 3   # 8/25: 돈 삭제 · Country.build_mult · Agent.income_mult 흡수
+VERSION = 4   # 8/26: Country.domestic_progress (국토 전환 시 남는 몫) · 採決이 시계로
 #
 # **버전을 올려야 조용히 틀리지 않는다.** `Country(**v)` 는 없는 키를 기본값으로
 # 떨어뜨리므로, 8/23 이전 체크포인트를 이어받으면 `build_mult` 가 전부 1.0 이 되어
 # **국가 효율 순열이 사라진다** — 세계가 달라진 것을 아무도 모른다. `Agent` 쪽은
 # 지운 키(budget 등)가 남아 있어 TypeError 로 시끄럽게 죽지만, Country 는 아니었다.
+#
+# v3 → v4 도 같은 함정이다. `domestic_progress` 가 없으면 0.0 으로 떨어져 **전환 시
+# 남는 몫이 0** 이 된다 — 옛 런을 이어받으면 국토 전환이 전액 소각처럼 굴어서, 규칙이
+# 바뀐 것을 아무도 모른다. v3 이하는 `_migrate` 가 **`progress` 전액을 자국 몫으로**
+# 채운다: 그 세계에는 구분이 없었으므로 어느 쪽도 참이 아니지만, 「타국 기여 0」 쪽이
+# 옛 세계의 전환 비용(0)과 맞고 조용한 강화보다 낫다.
 
 
 def _agent_to_json(a: Agent) -> dict:
@@ -44,6 +50,16 @@ def _agent_from_json(d: dict) -> Agent:
     d["known_langs"] = set(d.get("known_langs") or [])
     d["parent_langs"] = set(d.get("parent_langs") or [])
     return Agent(**d)
+
+
+def _migrate_country(d: dict, version: int) -> dict:
+    """옛 나라 기록을 지금 필드로. **없는 키를 기본값에 맡기지 않는다.**"""
+    d = dict(d)
+    if version < 4 and "domestic_progress" not in d:
+        # 그 세계에는 자국/타국 구분이 없었다. 전액을 자국 몫으로 둔다 — 옛 전환 비용
+        # (0)과 맞고, 0.0 으로 떨어뜨려 **전액 소각처럼 굴게** 하는 것보다 낫다.
+        d["domestic_progress"] = d.get("progress", 0.0)
+    return d
 
 
 def save(path: Path, world: World, rng: random.Random,
@@ -145,7 +161,8 @@ def load(path: Path):
                          "세계 구조가 바뀐 뒤라 이어붙이면 다른 세계가 됩니다.")
     world = World(
         turn=blob["turn"],
-        countries={k: Country(**v) for k, v in blob["countries"].items()},
+        countries={k: Country(**_migrate_country(v, blob.get("version", 0)))
+                   for k, v in blob["countries"].items()},
         agents={k: _agent_from_json(v) for k, v in blob["agents"].items()},
         testaments=blob.get("testaments") or {},
         inbox_queue=blob.get("inbox_queue") or [],

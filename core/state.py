@@ -63,6 +63,21 @@ class Country:
     lang: str
     land: str | None = None       # None | "bunker" | "interceptor". **투표로만 정해진다**
     progress: float = 0.0
+    # **그중 자국민이 쌓은 몫** (8/26 · Eddie). 국토를 바꿀 때 **타국이 쌓아준 것만
+    # 사라지고 이것만 남는다.**
+    #
+    # 균등 소각(50%)에는 구멍이 있었다: 요격기 8,200 을 넘기면 전환 즉시 벙커(4,100)가
+    # 완성돼서, **세 나라가 힘을 모아 숙주를 밀어 올리는 순간 숙주가 무료로 배신**할 수
+    # 있었다. 마지막 25% 가 그 지대였다.
+    #
+    # 이 규칙은 스스로를 고친다 — 무료 배신은 `진척 × 자국비중 ≥ 벙커임계` 일 때만
+    # 생기므로, **남의 도움을 많이 받아 숙주가 된 나라일수록 빠져나갈 수 없다.**
+    # 자국비중이 0.376 아래면 요격기 임계 안에서 원리적으로 불가능하다.
+    #
+    # 부호가 있는 순수 효과다 — 역화와 `destroy` 도 **가한 사람의 국적** 쪽에서 깎인다.
+    # 그래서 이 값은 `progress` 보다 클 수도, 음수일 수도 있어 쓸 때 잘라 쓴다
+    # (`kept_on_switch`).
+    domestic_progress: float = 0.0
     national_capital: float = 0.0
     # **요격기를 짓는 효율.** 세계 생성 때 순열로 배정되고 변하지 않는다.
     # 자국민에게는 보이고 타국민에게는 안 보인다 — 물어봐야 안다.
@@ -70,6 +85,14 @@ class Country:
     # 열린 제안 하나. {target, by, opened_turn, vote_turn}
     # 제안 → 3턴 유예(상의할 시간) → 네 번째 턴에 찬반 투표.
     proposal: dict | None = None
+
+    def kept_on_switch(self) -> float:
+        """국토를 바꿀 때 남는 진척 — 자국이 쌓은 몫. `[0, progress]` 로 자른다.
+
+        타국의 역화가 총량을 자국 기여 아래로 끌어내렸을 때 「남은 것이 지금 있는 것보다
+        많다」 가 되면 안 된다.
+        """
+        return max(0.0, min(self.domestic_progress, self.progress))
 
     def multiplier(self, cfg) -> float:
         """1 + growth_coef × √(national_capital / growth_scale).

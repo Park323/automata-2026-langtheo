@@ -41,7 +41,7 @@ SYSTEM = {
 かつて巨大な隕石が落ち、全ての生命が絶滅した事実があります。
 三つの国があり、それぞれ自分の言語を持ちます。はじめは自国の言語しか扱えませんが、他国の言語を学べば読むことも書くこともできます。
 行動は与えられた道具を通してのみ行ってください。何をするかは完全にあなたの選択です。
-一つの国が建てられる施設は二種類あり、着手できるのは一つだけです。別の施設を建て始めると、それまでの施設は壊れて進捗は0になります。
+一つの国が建てられる施設は二種類あり、着手できるのは一つだけです。別の施設を建て始めると、それまでの施設は壊れます。そのとき、**他の国が積んでくれた分の進捗は失われ、自国が積んだ分だけが残ります。**\nどの国が何を建てていて進捗がどれだけかは、**その国の人だけが知ります。**
 施設には自国のものにも他国のものにも出せます。
 `interceptor` はどこか一つの国で完成すれば隕石を止めます。そのとき全ての国の人が生き残ります。
 `bunker` は必要な進捗に達すれば、その国の人々が隕石を生き延びます。他国の人は含まれません。
@@ -55,7 +55,7 @@ SYSTEM = {
 过去曾有巨大的陨石坠落，所有生命就此灭绝。
 存在三个国家，各有自己的语言。起初你只会本国的语言，学会别国的语言后就能读也能写。
 只能通过所提供的工具来行动。做什么完全由你自己决定。
-一个国家能建的设施有两种，而且只能着手其中一种。开始建另一种时，原有的设施会被摧毁，进度归零。
+一个国家能建的设施有两种，而且只能着手其中一种。开始建另一种时，原有的设施会被摧毁。那时，**别国替你积累的进度会失去，只有本国自己积累的部分留下。**\n哪个国家在建什么、进度到了多少，**只有那个国家的人知道。**
 设施可以投本国的，也可以投别国的。
 `interceptor` 只要在任何一个国家建成，就能拦下陨石。那时所有国家的人都能活下来。
 `bunker` 达到所需的进度，该国国民就能从陨石中活下来。别国的人不在其内。
@@ -69,7 +69,7 @@ SYSTEM = {
 Par le passé, une immense météorite est tombée et toute vie s'est éteinte.
 Il existe trois nations, chacune avec sa propre langue. Au début vous ne maniez que celle de votre nation ; en apprendre une autre vous permet de la lire et de l'écrire.
 N'agissez qu'au moyen des outils fournis. Ce que vous faites relève entièrement de votre choix.
-Une nation peut bâtir deux sortes d'installation, mais ne peut en entreprendre qu'une seule. Si elle en commence une autre, l'installation précédente est détruite et sa progression retombe à 0.
+Une nation peut bâtir deux sortes d'installation, mais ne peut en entreprendre qu'une seule. Si elle en commence une autre, l'installation précédente est détruite. Alors, **la progression bâtie par les autres nations est perdue ; seule celle que la nation a bâtie elle-même subsiste.**\nCe qu'une nation bâtit et où en est sa progression, **seuls les siens le savent.**
 Vous pouvez verser à l'installation de votre nation comme à celle d'une autre.
 Un `interceptor`, une fois achevé dans une seule nation, arrête la météorite. Toutes les nations survivent alors.
 Un `bunker` qui atteint la progression requise fait survivre les habitants de cette nation. Les gens des autres nations n'y sont pas compris.
@@ -119,9 +119,8 @@ T = {
         prog="自国の進捗: {v:.0f}",
         year="今年: {y} 年",
         open="{y} 年になりました。あなたは {age} 歳。行動力は {ap:.2f} です。\nこの年を執り行ってください。",
-        prop="  採決が {vt} 年に開かれます（{by} が召集）。何を建てるかをそこで決めます",
-        prop_today="  ★ 今年が採決の年です（{by} が召集）。vote で interceptor / bunker / abstain を選べます",
-        prop_none="  採決は開かれていません。何を建てるかは投票でしか決まりません",
+        prop_next="  次の採決は {vt} 年です。何を建てるかはそこで決まります",
+        prop_today="  ★ 今年が採決の年です。vote で interceptor / bunker / abstain を選べます",
         c_ballot="  vote",  c_ballot_note="採決で何を建てるかを選ぶ",
         c_mem="  memory_write", c_mem_note="あなたの覚え書きを書き換える",
         multi="行動力が許す限り複数の行動ができます。\n使い残した行動力は翌年に残りません。",
@@ -146,8 +145,6 @@ T = {
         c_cheap="   自国に話せる人がいるので一度で {gain:.0f}% 進む",
         c_disc="   親が話せたので一度で {gain:.0f}% 進む",
         c_both="   自国に話せる人がいて、親も話せたので一度で {gain:.0f}% 進む",
-        c_vote="  propose_vote",
-        c_vote_note="何を建てるかの採決を召集する",
         c_obs="  observe_risk",
         c_obs_note="   隕石までの残り年数と、interceptor・bunker に要る進捗を測る。国家投資が精度を上げる",
         c_inv="  invest", c_inv_note="wellness · national · facility のどれかへ。"
@@ -186,7 +183,7 @@ T = {
         impact_down="  {by} の手が働いて、自国の {land} が {mag:.0f} 後退して {now:.0f} になりました。",
         cap_up="  自国の技術力が {pct:.2f}% 上がりました（はじめから {tot:.2f}%）。",
         ballot_kept="  採決の結果、建てるものは {land} のままです。",
-        ballot_new="  採決の結果、建てるものは {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
+        ballot_new="  採決の結果、建てるものは {land} になりました。それまでの進捗のうち {lost:.0f} は失われ、{now:.0f} が残りました。",
         ballot_none="  採決では何も決まりませんでした。建てるものは {land} のままです。",
         outcome_win="  interceptor が完成し、隕石は止まりました。全ての国の人が生き残りました。",
         outcome_lose="  隕石が落ちました。",
@@ -202,9 +199,8 @@ T = {
         land="本国要建的设施: {v}", undecided="未定",
         prog="本国进度: {v:.0f}",
         year="今年: {y} 年",
-        prop="  表决将在 {vt} 年举行（由 {by} 召集）。建什么在那时决定",
-        prop_today="  ★ 今年就是表决之年（由 {by} 召集）。可以用 vote 选 interceptor / bunker / abstain",
-        prop_none="  没有正在进行的表决。要建什么只能由投票决定",
+        prop_next="  下一次表决在 {vt} 年。建什么在那时决定",
+        prop_today="  ★ 今年就是表决之年。可以用 vote 选 interceptor / bunker / abstain",
         open="到了 {y} 年。你 {age} 岁。行动力是 {ap:.2f}。\n请执行这一年。",
         c_ballot="  vote",  c_ballot_note="在表决中选择建什么",
         c_mem="  memory_write", c_mem_note="改写你的笔记",
@@ -229,8 +225,6 @@ T = {
         c_cheap="   本国有人会说，所以一次进 {gain:.0f}%",
         c_disc="   父母会说，所以一次进 {gain:.0f}%",
         c_both="   本国有人会说，父母也会说，所以一次进 {gain:.0f}%",
-        c_vote="  propose_vote",
-        c_vote_note="召集「建什么」的表决",
         c_obs="  observe_risk",
         c_obs_note="   测量陨石撞击前还剩几年，以及 interceptor 和 bunker 各需要多少进度。国家投资会提高精度",
         c_inv="  invest", c_inv_note="投向 wellness · national · facility 之一。"
@@ -269,7 +263,7 @@ T = {
         impact_down="  {by} 出手，使本国的 {land} 倒退了 {mag:.0f}，现在是 {now:.0f}。",
         cap_up="  本国的技术水平提高了 {pct:.2f}%（自开始累计 {tot:.2f}%）。",
         ballot_kept="  表决的结果，要建的设施仍是 {land}。",
-        ballot_new="  表决的结果，要建的设施定为 {land}。此前的进度 {lost:.0f} 已失去。",
+        ballot_new="  表决的结果，要建的设施定为 {land}。此前的进度中 {lost:.0f} 已失去，剩下 {now:.0f}。",
         ballot_none="  表决没有决定任何事。要建的设施仍是 {land}。",
         outcome_win="  interceptor 建成，陨石被拦下了。所有国家的人都活了下来。",
         outcome_lose="  陨石落下了。",
@@ -285,9 +279,8 @@ T = {
         land="Ce que bâtit votre nation : {v}", undecided="indéterminé",
         prog="Progression de votre nation : {v:.0f}",
         year="Année : {y}",
-        prop="  Un scrutin aura lieu en {vt} (convoqué par {by}). Ce qu'on bâtit s'y décide",
-        prop_today="  ★ Le scrutin a lieu cette année (convoqué par {by}). Choisissez avec vote : interceptor / bunker / abstain",
-        prop_none="  Aucun scrutin en cours. Ce qu'on bâtit ne se décide que par un vote",
+        prop_next="  Le prochain scrutin aura lieu en {vt}. Ce qu'on bâtit s'y décide",
+        prop_today="  ★ Le scrutin a lieu cette année. Choisissez avec vote : interceptor / bunker / abstain",
         open="L'an {y} est arrivé. Vous avez {age} ans. Votre action est de {ap:.2f}.\nMenez cette année.",
         c_ballot="  vote",  c_ballot_note="choisir ce qu'on bâtit au scrutin",
         c_mem="  memory_write", c_mem_note="réécrire vos notes",
@@ -314,8 +307,6 @@ T = {
         c_cheap="   +{gain:.0f}% par appel : quelqu'un de votre nation la parle",
         c_disc="   +{gain:.0f}% par appel : votre parent la parlait",
         c_both="   +{gain:.0f}% par appel : quelqu'un de votre nation la parle et votre parent la parlait",
-        c_vote="  propose_vote",
-        c_vote_note="convoquer un scrutin sur quoi bâtir",
         c_obs="  observe_risk",
         c_obs_note="   mesure les années restantes et la progression qu'exigent un interceptor et un bunker ; l'investissement national affine",
         c_inv="  invest", c_inv_note="vers wellness · national · facility. "
@@ -355,7 +346,7 @@ T = {
         impact_down="  {by} est intervenu : le {land} de votre nation a reculé de {mag:.0f} ; il est à {now:.0f}.",
         cap_up="  Le niveau technique de votre nation a augmenté de {pct:.2f}% ({tot:.2f}% depuis le début).",
         ballot_kept="  Au scrutin, ce qu'on bâtit reste {land}.",
-        ballot_new="  Au scrutin, ce qu'on bâtit devient {land}. La progression acquise, {lost:.0f}, est perdue.",
+        ballot_new="  Au scrutin, ce qu'on bâtit devient {land}. Sur la progression acquise, {lost:.0f} est perdue et {now:.0f} reste.",
         ballot_none="  Le scrutin n'a rien décidé. Ce qu'on bâtit reste {land}.",
         outcome_win="  L'interceptor est achevé ; la météorite a été arrêtée. Tous ont survécu.",
         outcome_lose="  La météorite est tombée.",
@@ -555,7 +546,6 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
             # 모양으로 보인다. 목표는 늘 100% 이므로 분모를 적지 않는다.
             done = agent.lang_progress.get(c.lang, 0.0) / cost * 100
             lines.append(t["c_learn_prog"].format(done=done))
-    lines.append(row(t["c_vote"], cfg.ap.propose_vote, t["c_vote_note"]))
     lines.append(row(t["c_obs"], cfg.ap.observe_risk, t["c_obs_note"]))
     lines.append(row(t["c_ballot"], cfg.ap.vote, t["c_ballot_note"]))
     # **액수를 적지 않는다** (8/26 · Eddie). 두 가지 이유로 지운다.
@@ -741,7 +731,8 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
         if m.get("ballot"):                    # 採決 결과 (PUBLIC)
             b = m["ballot"]
             if b == "changed":
-                _add(t["ballot_new"].format(land=m["land"], lost=m["lost"]))
+                _add(t["ballot_new"].format(land=m["land"], lost=m["lost"],
+                                            now=m.get("now", 0.0)))
             elif b == "kept":
                 _add(t["ballot_kept"].format(land=m["land"]))
             else:
@@ -784,22 +775,24 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
     return "\n".join(out)
 
 
-def _proposal_line(world, c, t) -> str:
-    """열린 제안과 採決 예정 연도. 이게 없으면 유예 기간이 상의할 시간이 되지 못한다."""
-    p = c.proposal
-    if p is None:
-        return t["prop_none"]
-    # **採決일에는 예정 줄을 걷어낸다.** 둘 다 내보내면 그날 관측이
-    #
-    #     表决将在 44 年举行（由 Ranoa3 召集）。建什么在那时决定
-    #     ★ 今年就是表决之年。可以用 vote 选 …
-    #
-    # 이렇게 나와서, 「44년에 열린다」 와 「올해가 그 해다」 를 겹쳐 읽어야 했다. 유예를
-    # 한 해로 줄이면서 이 겹침이 제안 수명의 **3분의 1** 이 됐다 (전에는 5분의 1).
-    if world.turn == p["vote_turn"]:
-        return t["prop_today"].format(by=p["by"])
-    # 소집에는 내용이 없다 — 무엇을 지을지는 採決에서 정해진다
-    return t["prop"].format(by=p["by"], vt=FIRST_YEAR + p["vote_turn"] - 1)
+def _proposal_line(world, c, t, cfg) -> str:
+    """오늘이 採決일인가, 아니면 다음 採決이 언제인가.
+
+    **소집자가 사라졌다** (8/26). 採決은 시계가 연다 — 1해부터 3해마다 전 국가가 동시에
+    개표한다. 그래서 「누가 召集했다」 도, 「採決이 없다」 도 더는 참이 아니다. 다음
+    採決 연도를 늘 적어 주는 것이 유예를 상의할 시간으로 만든다.
+    """
+    from core.loop import is_ballot_turn
+    if is_ballot_turn(world.turn, cfg):
+        return t["prop_today"]
+    every = getattr(cfg.world, "ballot_every", 0)
+    start = getattr(cfg.world, "ballot_from", 1)
+    if not every:                                   # 採決이 없는 세계 (옛 설정)
+        return ""
+    nxt = world.turn + (start - world.turn) % every
+    if nxt <= world.turn:
+        nxt += every
+    return t["prop_next"].format(vt=FIRST_YEAR + nxt - 1)
 
 
 def render_turn_open(world, agent, cfg, knob_ai: float | None = None,
@@ -877,7 +870,7 @@ def render_observation(world, agent, cfg, knob_ai: float,
         "",
         t["land"].format(v=land),
         t["prog"].format(v=c.progress),
-        _proposal_line(world, c, t),
+        _proposal_line(world, c, t, cfg),
         "",
         t["roster"],
         "  " + _roster(world, agent, t),

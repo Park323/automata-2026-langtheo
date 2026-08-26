@@ -110,8 +110,8 @@ def test_tool_tokens_stay_english(world_cfg):
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         a = world.agents[aid]
         obs = prompts.render_observation(world, a, cfg, KNOB, [])
-        for token in ("wellness", "national", "facility", "propose_vote",
-                      "invest"):
+        # `propose_vote` 는 사라졌다 (8/26 — 採決을 시계가 연다)
+        for token in ("wellness", "national", "facility", "vote", "invest"):
             assert token in obs, f"{a.native_lang} 관측에 토큰 '{token}' 이 없다"
 
 
@@ -498,7 +498,7 @@ def test_no_error_message_says_turn():
                                          "vote_turn": ballot}
 
     a = world.agents["Ranoa2"]; a.ap = 1.0
-    for name, args in (("propose_vote", {"reasoning": "r"}),
+    for name, args in (("vote", {"choice": "bunker", "reasoning": "r"}),
                        ("vote", {"choice": "bunker", "reasoning": "r"})):
         r, _ = execute_tool(name, args, world, a, c, Sink(), KNOB)
         assert not r["ok"], name
@@ -530,9 +530,12 @@ def test_no_tool_response_says_turn():
     from core.agent_loop import Sink, execute_tool
     c = config.load("configs/base.yaml")
     world = loop.init_world(c, itertools.count(1), random.Random(1))
-    world.turn = 10
+    # **採決일로 맞춘다** (8/26). `vote` 는 採決이 열린 해에만 통과하고, 採決은 이제
+    # 시계가 연다 — 임의의 턴을 박으면 이 테스트가 「응답 문구」 대신 「採決이 없다」 를 잰다.
+    world.turn = next(t for t in range(10, 40) if loop.is_ballot_turn(t, c))
+    loop.open_ballots(world, c, loop.RunResult(world=world))
 
-    calls = [("propose_vote", {"reasoning": "r"}),
+    calls = [("vote", {"choice": "bunker", "reasoning": "r"}),
              ("invest", {"target": "facility", "reasoning": "r"}),
              # Asla1 은 초기화로 Ranoa 말을 이미 안다 (`init_world` 가 나라마다 한 명)
              ("learn", {"country": "Miris", "reasoning": "r"}),
@@ -772,7 +775,7 @@ def test_every_cost_row_is_titled_by_its_tool_name():
     w = loop.init_world(c, itertools.count(1), random.Random(1))
     w.turn = 1
     TOOLS = ("speak", "learn", "invest", "destroy", "observe_risk",
-             "propose_vote", "vote", "memory_write")
+             "vote", "memory_write")
     for a in w.agents.values():
         table = prompts.render_costs(w, a, c, 0.10)
         # **정확히 두 칸**이 제목 줄이다. 세 칸은 딸린 설명(학습 진척 `これまで/目前/déjà`),

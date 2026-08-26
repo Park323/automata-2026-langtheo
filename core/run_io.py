@@ -248,6 +248,10 @@ class RunWriter:
             "turn": turn, "step": step,
             "alive": sum(1 for a in world.agents.values() if a.alive),
             "progress": {c.id: round(c.progress, 3) for c in world.countries.values()},
+            # **그중 자국이 쌓은 몫.** 국토 전환 때 남는 것이 이 값이므로, 없으면 「그
+            # 나라가 지금 배신할 수 있나」 를 사후에 복원할 수 없다 — 결과 해석의 전제다.
+            "domestic_progress": {c.id: round(c.domestic_progress, 3)
+                                  for c in world.countries.values()},
             "land": {c.id: c.land for c in world.countries.values()},
             "national_capital": {c.id: round(c.national_capital, 3)
                                  for c in world.countries.values()},

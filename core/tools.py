@@ -156,16 +156,12 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "sees it.",
         {}, []),
 
-    fn("propose_vote",
-        "Call a ballot on what your nation should build. Your nation only. You do not "
-        "say what to build — the ballot itself decides that. Nothing changes yet: time "
-        "passes so people can talk it over, and then everyone casts a choice; your "
-        "observation tells you which year that is. **Only people of your own nation may "
-        "vote** — a foreigner cannot, no "
-        "matter what they say. If a ballot is already called, calling again does nothing. "
-        "It costs nothing to fund — nobody is priced out of proposing — but it "
-        "takes more than half of your action points for the year.",
-        {}, []),
+    # **`propose_vote` 를 지웠다** (8/26 · Eddie). 採決을 시계가 연다 — 1해부터
+    # 3해마다 전 국가가 동시에 개표한다 (`world.ballot_every`). 사람이 소집하던 때
+    # 발의 한 해 차이가 30해를 정했고, 제안자가 죽으면 採決이 비었다.
+    #
+    # 도구를 남겨 두면 0.20 을 내고 아무 일도 안 일어난다 — 이 프로젝트에서 가장
+    # 반복된 실패다 (「조용한 무시가 가장 나쁜 실패다」).
 
     fn("vote",
         "Choose what **your own nation** builds — `interceptor`, `bunker`, or `abstain`. "
@@ -173,7 +169,14 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "observation tells you which year that is. The choice with the most votes wins; "
         "`abstain` counts for neither. If the two tie, or nobody votes, your nation keeps "
         "what it has and its progress survives. It costs almost no action "
-        "points, so voting never takes away your chance to speak on the day it matters most.",
+        "points, so voting never takes away your chance to speak on the day it matters "
+        # **결과가 자국 밖으로 나가지 않는다** (8/26 · Eddie). 이것이 없으면, 국토를 바꾼
+        # 것을 출자한 타국이 당연히 알 것이라고 읽는다 — 그러면 「내가 쌓아준 것이
+        # 사라졌다」 를 알아챌 단서가 있다고 오해한 채로 계산한다. SYSTEM 이 「그 나라
+        # 사람만 안다」 를 말하고, 여기서 採決에 대해 그것을 되짚는다.
+        "most. The outcome stays inside your nation: no other nation is told what was "
+        # 「turned」 는 못 쓴다 — 「turn」 금지 그물이 부분문자열로 잡는다 (실제로 잡혔다).
+        "chosen, or that it changed to something else at all.",
         {"choice": {"type": "string", "enum": ["interceptor", "bunker", "abstain"]}},
         ["choice"]),
 
