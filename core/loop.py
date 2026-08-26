@@ -567,7 +567,8 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                 c.progress = max(0.0, c.progress + gain)
             # 행위 **후에는** 공개한다. 확률적이라 한 건으로는 success_prob 을 못 읽고,
             # 모르면 "얼마를 더 내야 하는가" 를 판단할 근거가 아예 없다.
-            result.facility_gains.append({"turn": world.turn, "agent": agent_id,
+            result.facility_gains.append({"turn": world.turn, "seq": next(msg_ids),
+                                      "agent": agent_id,
                                           "to": cid, "amount": round(share, 2),
                                           "gain": gain})
 
@@ -582,7 +583,8 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
             hit = draw_gain(int(share * destroy_eff(src, cfg)), cfg, rng, sign=-1,
                             q=backfire_prob(src, cfg))
             c.progress = max(0.0, c.progress + hit)
-        result.facility_gains.append({"turn": world.turn, "agent": agent_id,
+        result.facility_gains.append({"turn": world.turn, "seq": next(msg_ids),
+                                      "agent": agent_id,
                                       "to": to_country, "amount": round(share, 2),
                                       "gain": hit, "kind": "destroy"})
 
@@ -624,7 +626,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
             p["inbox"]["msg_id"] = gid      # 전역 id — understood 의 조인 키 (spec 6.1)
             # 주고받은 말 — **보낸 이와 받는 이만** (visibility: message PRIVATE)
             _notify(world, "message", p["inbox"], world.turn + 1, actor=sent["to"])
-        result.messages_log.append({"turn": world.turn, "msg_id": gid,
+        result.messages_log.append({"turn": world.turn, "msg_id": gid, "seq": gid,
                                     "from": sent["from"], "to": sent["to"],
                                     "action": sent.get("kind", "speak"),
                                     "route": p["kind"], "delivered": p["delivered"],
@@ -1011,7 +1013,8 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
             gain = draw_gain(int(share * eff), cfg, rng, q=backfire_prob(c, cfg))
             # **0 아래로는 안 내려간다** (위 `_settle_agentic` 과 같은 규칙).
             c.progress = max(0.0, c.progress + gain)
-        result.facility_gains.append({"turn": world.turn, "agent": agent_id,
+        result.facility_gains.append({"turn": world.turn, "seq": next(msg_ids),
+                                      "agent": agent_id,
                                       "to": to_country, "amount": round(share, 2),
                                       "gain": gain})
         # **자국이면 자기 몫 통지를 안 보낸다** (8/26 · Eddie). `impact` 가 이름·값·총량을
@@ -1053,7 +1056,8 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
             hit = draw_gain(int(share * destroy_eff(src, cfg)), cfg, rng, sign=-1,
                             q=backfire_prob(src, cfg))
             c.progress = max(0.0, c.progress + hit)
-        result.facility_gains.append({"turn": world.turn, "agent": agent_id,
+        result.facility_gains.append({"turn": world.turn, "seq": next(msg_ids),
+                                      "agent": agent_id,
                                       "to": to_country, "amount": round(share, 2),
                                       "gain": hit, "kind": "destroy"})
         # **행위자에게는 알린다** (8/26 · Eddie). `invest` 가 그러므로 대칭이다 —
@@ -1124,7 +1128,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         if p["inbox"] is not None:
             p["inbox"]["msg_id"] = gid
             _notify(world, "message", p["inbox"], world.turn, actor=sent["to"])
-        result.messages_log.append({"turn": world.turn, "msg_id": gid,
+        result.messages_log.append({"turn": world.turn, "msg_id": gid, "seq": gid,
                                     "from": sent["from"], "to": sent["to"],
                                     "action": sent.get("kind", "speak"),
                                     "route": p["kind"], "delivered": p["delivered"],

@@ -320,3 +320,52 @@ def test_the_viewer_never_draws_a_turn_twice():
     assert "if (!b || b.state.length) return;" in src
     # 진행 중임을 화면에 밝힌다
     assert "진행 중" in src
+
+
+def test_settlement_events_share_one_ordering_key(tmp_path, cfg):
+    """**두 파일을 섞을 공통 순서 키가 없었다** (8/26 · #60 리뷰).
+
+    보드 뷰어가 「투자 전부 → 메시지 전부」 순으로 그려서 사람 sweep 처럼 보였다.
+    실제로는 순차 라운드로빈이라 한 사람이 말하고 투자하고, 다음 사람이 말하고… 인데
+    그 순서를 복원할 키가 없었다:
+
+        facility_gain   ['agent','amount','gain','to','turn','type']   순서 키 없음
+        messages        ['msg_id', ...]                                메시지에만
+
+    `msg_ids` 카운터를 정산 전체의 순서 키로 확장했다 — 새로 만들지 않은 이유는 그것이
+    이미 **체크포인트로 이어지고** 단조 증가하기 때문이다 (resume 뒤에도 순서가 이어진다).
+
+    두 로그가 **같은 필드 이름**(`seq`)을 쓰는 것이 요점이다. 뷰어가 한 필드만 보면 된다.
+    """
+    import itertools as _it
+    import random as _rnd
+
+    from core import loop
+    from core.agent_loop import Sink, execute_tool
+
+    world = loop.init_world(cfg, _it.count(1), _rnd.Random(1))
+    world.turn = 1
+    for c in world.countries.values():
+        c.land = "interceptor"
+    msg_ids = _it.count(1)
+    res = loop.RunResult(world=world)
+    for aid in ("Asla1", "Asla2", "Asla1"):
+        a = world.agents[aid]; a.ap = 1.0
+        sink = Sink()
+        execute_tool("invest", {"target": "facility", "to": "Asla", "reasoning": "r"},
+                     world, a, cfg, sink, None)
+        execute_tool("speak", {"to": "Asla3", "text": "やあ", "reasoning": "r"},
+                     world, a, cfg, sink, None)
+        loop._settle_step(world, cfg, _rnd.Random(3), sink, None, None,
+                          msg_ids, res, {}, [])
+
+    flows = ([("invest", e["agent"], e["seq"]) for e in res.facility_gains]
+             + [("msg", m["from"], m["seq"]) for m in res.messages_log])
+    flows.sort(key=lambda x: x[2])
+    # **한 사람의 투자와 발화가 붙어 있고, 사람이 바뀌면 seq 가 커진다**
+    assert [f[0] for f in flows] == ["invest", "msg"] * 3, flows
+    assert [f[1] for f in flows] == ["Asla1", "Asla1", "Asla2", "Asla2",
+                                     "Asla1", "Asla1"], flows
+    # 단조 증가이고 겹치지 않는다 — 두 로그가 같은 카운터를 나눠 쓴다
+    seqs = [f[2] for f in flows]
+    assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs), seqs
