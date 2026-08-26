@@ -743,11 +743,11 @@ def can_act(agent, cfg, knob_ai: float) -> bool:
     > 종료는 `end_turn` 이고, 폭주는 `RUNAWAY_CAP`(64) 이 막습니다. 그래도 **정직하게
     > 계산합니다** — 여기서 거짓으로 False 를 돌려주면 합법적인 행동을 잘라내게 됩니다.
     """
-    # **공짜 행동이 사라졌다** (8/21). `procreate` 가 AP 0 이었고 `memory_write` 도
-    # 0 인데 압박선 위에서만 열린다. 출산 행위가 없어진 뒤로 공짜 행동은 그것뿐이라, AP 가 0 이면
-    # 실제로 할 수 있는 것이 없을 수 있다 — 그래서 정직하게 센다.
-    free_ap = cfg.ap.memory_write if agent.memory_open else None
-    if free_ap is not None and free_ap <= 0:
+    # **공짜 행동이 아예 없어졌다** (8/26 · Eddie · `ap.memory_write` 0.0 → 0.04).
+    # 전에는 여기 특례가 있었다 — 기억이 열려 있고 그 값이 0 이면 무조건 참. 이제 모든
+    # 행동이 AP 를 물므로 종료 판정이 **AP 하나로** 정리된다. 특례가 없다는 것이
+    # `can_act` 를 정직하게 만든다 (#47 은 그 특례가 만든 버그였다).
+    if agent.memory_open and _afford(agent.ap, cfg.ap.memory_write):
         return True
     # **돈 조건이 사라졌다** (8/25 · AP 전면 통일). 남은 것은 AP 뿐이다.
     if _afford(agent.ap, cfg.ap.speak):

@@ -405,6 +405,7 @@ def test_writing_the_same_memory_again_does_not_loop_forever(cfg, world):
     from core.agent_loop import Sink, execute_tool
     a = world.agents["Asla2"]
     a.memory_open = True                    # 압박 아래 — 목록에 있다
+    a.ap = cfg.turn.action_points           # **값이 붙었다** (8/26) — 낼 AP 가 있어야 한다
     sink = Sink()
 
     first, _ = execute_tool("memory_write", {"text": "メモ"}, world, a, cfg, sink, KNOB)

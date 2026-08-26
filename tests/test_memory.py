@@ -84,11 +84,19 @@ def test_memory_survives_and_shows_in_observation(cfg, world):
 
 
 def test_memory_costs_ap_not_budget(cfg, world):
-    """예산을 물리면 기억이 시설 투자와 경쟁해 관측에 교란이 섞인다 (spec 4.5)."""
+    """예산을 물리면 기억이 시설 투자와 경쟁해 관측에 교란이 섞인다 (spec 4.5).
+
+    **이 테스트는 아무것도 안 보고 있었다** (8/26). `ap.memory_write` 가 0.0 이던 시절엔
+    `1.0 == 1.0 - 0.0` 이 자동으로 참이라, 호출이 **거절당해도**(압박선 아래라 목록에
+    없다) 통과했다. 값이 붙으니 드러났다 — 압박을 실제로 만들어야 이 줄이 뜻을 갖는다.
+    """
     a = world.agents["Asla1"]
+    a.last_prompt_tokens = int(cfg.llm.context_limit * cfg.llm.warn_ratio) + 1
     _turn(world, cfg, "Asla1", [
         assistant_msg(tool_call("memory_write", "1", text="x", reasoning="r")),
         assistant_msg(tool_call("end_turn", "2", reasoning="r"))])
+    assert a.memory_open, "압박이 안 걸렸다 — 이 테스트가 아무것도 안 본다"
+    assert a.memory == "x"
     assert a.ap == pytest.approx(1.0 - cfg.ap.memory_write)
 
 
@@ -166,14 +174,17 @@ def test_free_actions_keep_can_act_true(cfg, world):
     거짓으로 False 를 돌려주면 **합법적인 행동을 잘라내게** 된다. 정상 종료는 `end_turn`
     이고, 폭주는 `RUNAWAY_CAP`(64) 이 막는다.
 
-    **`procreate` 는 없어졌다** (8/21). 그것도 AP 0 이었는데 `bear_child` 는 1.0 을 문다 —
-    그래서 「공짜 행동」 은 이제 `memory_write` 하나이고, 그것도 압박선 위에서만 열린다.
+    **공짜 행동은 이제 없다** (8/26 · Eddie). `memory_write` 도 값을 문다. 그래서 이
+    테스트가 보는 것이 바뀌었다 — 「공짜라서 참」 이 아니라 **「낼 수 있으니 참, 못 내면
+    거짓」** 이다. 특례가 사라지면서 종료 판정이 AP 하나로 정리됐다.
     """
     a = world.agents["Asla1"]
-    a.ap = 0.0
     a.memory_open = True                       # 압박선 위 — 기억이 열려 있다
-    assert cfg.ap.memory_write == 0.0
-    assert can_act(a, cfg, KNOB) is True
+    assert cfg.ap.memory_write > 0.0, "공짜 행동이 있으면 can_act 에 특례가 되살아난다"
+    a.ap = cfg.ap.memory_write
+    assert can_act(a, cfg, KNOB) is True        # 딱 낼 수 있다
+    a.ap = round(cfg.ap.memory_write / 2, 3)
+    assert can_act(a, cfg, KNOB) is False       # 열려 있어도 못 내면 거짓
 
 
 def test_can_act_is_false_when_nothing_is_affordable(cfg, world):
