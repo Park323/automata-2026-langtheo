@@ -404,7 +404,9 @@ def test_the_summary_records_which_provider_actually_answered(tmp_path):
     """
     from core import run_io
 
-    w = run_io.RunWriter("t_prov", cfg_raw={}, knob_ai=None, seed=1)
+    # **진짜 `runs/` 에 쓰지 않는다.** 처음에 `root` 를 안 넘겨서 테스트를 돌릴 때마다
+    # `runs/t_prov` 가 생겼고, 실제 런 목록에 섞여 헷갈렸다 (Eddie 가 발견).
+    w = run_io.RunWriter("t_prov", cfg_raw={}, knob_ai=None, seed=1, root=tmp_path)
     try:
         w.raw({"kind": "agent", "response": {"provider": "GMICloud"}})
         w.raw({"kind": "agent", "response": {"provider": "GMICloud"}})
