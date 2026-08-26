@@ -110,6 +110,8 @@ class RunWriter:
         self._lock = threading.RLock()
         self._files: dict[str, object] = {}
         self.counts = {"raw": 0, "errors": 0, "retries": 0}
+        # {"agent/GMICloud": 1520, "translate/DeepInfra": 221, ...}
+        self.providers: dict[str, int] = {}
         # **이어할 때는 이미 쓴 줄 수에서 이어 센다.** 0 에서 다시 시작하면 `call_id` 가
         # 앞 구간과 충돌하고, raw_calls_total 도 이어붙인 구간만 센 값이 된다.
         if append:
@@ -194,6 +196,17 @@ class RunWriter:
                 self.counts["errors"] += 1
             if rec.get("attempt", 1) > 1:
                 self.counts["retries"] += 1
+            # **어느 업체가 실제로 응답했는지를 센다** (8/26 · Eddie · 재현성).
+            # `provider` 설정은 **요청**이고 이것은 **결과**다. 둘이 어긋날 수 있다 —
+            # `260826-002-ai010` 은 번역기에 설정이 아예 안 갔고, 그날 다른 런은
+            # `tool_choice: required` 때문에 `order` 밖 업체로 샜다. 어느 쪽도
+            # `summary.json` 만 봐서는 알 수 없었고 30MB 짜리 raw 를 열어야 했다.
+            #
+            # 업체가 바뀌면 **양자화가 바뀐다** (fp8 / bf16 / unknown). 번역 왜곡이
+            # 종속변수이므로 그것은 곧 다른 세계다. 재현하려면 이 값을 먼저 봐야 한다.
+            prov = ((rec.get("response") or {}).get("provider")) or ("—" if rec.get("error") else "?")
+            key = f"{rec.get('kind', '?')}/{prov}"
+            self.providers[key] = self.providers.get(key, 0) + 1
             # call_id 를 맨 앞에 둔다 — 한 줄을 눈으로 훑을 때 먼저 보이게
             row = {"call_id": f"c{self.counts['raw']:05d}", **rec}
             row.setdefault("run_id", self.run_id)

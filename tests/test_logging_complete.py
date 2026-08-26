@@ -373,9 +373,13 @@ def test_the_translator_gets_its_own_provider_pin():
 
     cfg = cfgmod.load(str(run_io.ROOT / "configs" / "base.yaml"))
     assert cfg.llm.translate_provider, "번역기 업체 고정이 config 에 없다"
-    # 폴백은 켠 채로 둔다 — 끄면 그 업체가 막힌 날 번역이 통째로 죽고,
-    # 그건 `translate_failed` 로 세계에 구멍을 낸다.
-    assert cfg.llm.translate_provider.get("allow_fallbacks") is True
+    # **폴백은 끈다** (8/26 · 재현성). `true` 면 「목록 밖으로도 나갈 수 있다」 는 뜻이라
+    # 고정이 아니라 선호다 — 실제로 샜다 (`tool_choice: required` 일 때 목록에 없는
+    # Sail Research 로 갔다). 목록 안 셋은 폴백을 꺼도 순서대로 시도하므로 여유가 있고,
+    # 셋 다 막히면 429 폭풍 차단기가 런을 깨끗하게 세운다.
+    for pv in (cfg.llm.provider, cfg.llm.translate_provider):
+        assert pv.get("allow_fallbacks") is False, pv
+        assert pv.get("order"), pv
 
     src = (run_io.ROOT / "scripts" / "smoke_3turns.py").read_text(encoding="utf-8")
     assert "provider=cfg.llm.translate_provider" in src, \
@@ -384,3 +388,36 @@ def test_the_translator_gets_its_own_provider_pin():
     tr = src[src.index("translator = CountingClient("):]
     tr = tr[:tr.index('"translate")')]
     assert "provider=cfg.llm.provider" not in tr, "번역기에 에이전트용 업체 목록이 갔다"
+
+
+def test_the_summary_records_which_provider_actually_answered(tmp_path):
+    """**설정은 요청이고 이것은 결과다** (8/26 · Eddie · 재현성).
+
+    둘이 어긋날 수 있고, 실제로 어긋났다:
+
+        260826-002-ai010   번역기에 `provider` 가 아예 안 갔다 → 세 업체로 흩어짐
+        260826-004(폐기)   `tool_choice: required` 가 `order` 를 덮어씀 → Sail Research
+
+    **어느 쪽도 `summary.json` 만 봐서는 알 수 없었다** — 30MB 짜리 `raw_calls.jsonl` 을
+    열어야 했다. 업체가 바뀌면 양자화가 바뀌고(fp8 / bf16 / unknown), 번역 왜곡이
+    종속변수이므로 그것은 곧 다른 세계다. 재현하려면 이 값을 먼저 봐야 한다.
+    """
+    from core import run_io
+
+    w = run_io.RunWriter("t_prov", cfg_raw={}, knob_ai=None, seed=1)
+    try:
+        w.raw({"kind": "agent", "response": {"provider": "GMICloud"}})
+        w.raw({"kind": "agent", "response": {"provider": "GMICloud"}})
+        w.raw({"kind": "translate", "response": {"provider": "DeepInfra"}})
+        w.raw({"kind": "translate", "error": "HTTP 429"})       # 실패는 "—"
+        assert w.providers == {"agent/GMICloud": 2,
+                               "translate/DeepInfra": 1,
+                               "translate/—": 1}
+        # 종류가 갈려 있어야 한다 — 에이전트와 번역기는 **다른 모델**이라 업체도 다르다
+        assert all("/" in k for k in w.providers)
+    finally:
+        w.close()
+
+    src = (run_io.ROOT / "scripts" / "smoke_3turns.py").read_text(encoding="utf-8")
+    # 정상 종료와 중단 **양쪽** 요약에 실린다 — 중단된 런이야말로 업체를 알아야 한다
+    assert src.count('"providers": writer.providers') == 2

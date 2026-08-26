@@ -312,7 +312,8 @@ def main() -> None:
                       "aborted_notes": list(getattr(e, "__notes__", []) or []),
                       "aborted_traceback": "".join(_tb.format_exception(e))[:20000],
                       "elapsed_s": round(time.time() - t0, 1),
-                      "raw_calls": writer.counts})
+                      "raw_calls": writer.counts,
+                      "providers": writer.providers})
         print(f"\n✗ 런 중단 — {type(e).__name__}: {e}")
         for n in getattr(e, "__notes__", []) or []:
             print(f"  {n}")
@@ -322,7 +323,10 @@ def main() -> None:
     elapsed = time.time() - t0
     writer.close({"final": res.final, "deaths": res.deaths,
                   "elapsed_s": round(elapsed, 1),
-                  "raw_calls": writer.counts})
+                  "raw_calls": writer.counts,
+                  # **요청이 아니라 결과다** — `provider` 설정과 어긋날 수 있다
+                  # (`core/run_io.py` 의 `raw()` 주석 참조).
+                  "providers": writer.providers})
     print(f"\n산출물        {writer.dir}")
 
     # ── 호출·비용 ──

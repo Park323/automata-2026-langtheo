@@ -364,9 +364,21 @@ llm:
   #
   # 「provider 에 따른 차이는 없다」 는 전제 아래에서만 섞을 수 있다 (Eddie 결정).
   # 실제로 어느 업체가 응답했는지는 `raw_calls.jsonl` 의 `response.provider` 에 남는다.
+  # **폴백을 끈다** (8/26 · Eddie · 재현성). `allow_fallbacks: true` 는 「목록 밖으로도
+  # 나갈 수 있다」 는 뜻이라 **고정이 아니라 선호**다. 오늘 실제로 샜다 —
+  # `tool_choice: required` 일 때 목록에 없는 Sail Research 로 갔다.
+  #
+  #     없는 업체 + 폴백 켬   →  DigitalOcean     목록을 무시하고 아무 데나
+  #     없는 업체 + 폴백 끔   →  HTTPError        시끄럽게 죽는다
+  #     order 셋 + 폴백 끔    →  GMICloud         목록 **안에서** 순서대로
+  #
+  # 끄는 근거가 오늘 생겼다. 전에는 「그 업체가 막힌 날 런이 통째로 죽는다」 가 무서웠는데,
+  # 429 폭풍 차단기(`rate_limit_abort`)와 매해 복원점이 들어왔으므로 이제 런은 **깨끗하게
+  # 서고 이어진다.** 조용히 다른 업체로 새는 것보다 명백히 낫다 — 업체가 바뀌면 양자화가
+  # 바뀌고, 그러면 같은 시드라도 다른 세계가 된다.
   provider:
     order: [GMICloud, Novita, AtlasCloud]
-    allow_fallbacks: true
+    allow_fallbacks: false
   # **번역기는 따로, 그리고 더 좁게 고정한다** (8/26 · Eddie). 안 넘기고 있었더니
   # 375콜이 세 업체로 흩어졌고(DeepInfra 107 · Mistral 93 · Parasail 21) 429 가 154건
   # 났다. 재시도로 244통 중 221통을 회수했지만 23통(9.4%)이 죽었다.
@@ -374,12 +386,17 @@ llm:
   # **429 보다 양자화가 문제다** — DeepInfra fp8 · Parasail bf16 · Mistral unknown.
   # 번역 왜곡이 종속변수이므로 그 생성기가 런 중간에 바뀌면 안 된다.
   #
-  # 우선순위는 양자화가 같은 쪽부터다. `allow_fallbacks` 는 켠다 — 끄면 그 업체가
-  # 막힌 날 번역이 통째로 죽고, 그건 `translate_failed` 로 세계에 구멍을 낸다.
-  # 섞인 것이 로그에 남으므로(`response.provider`) 사후에 셀 수 있다.
+  # 우선순위는 양자화가 같은 쪽부터다. **폴백은 끈다** (8/26 · 위 provider 참조) —
+  # 여기가 특히 중요하다. 번역 왜곡이 **종속변수**이므로 생성기가 바뀌면 지표 4c·4d·7 이
+  # 통째로 오염된다. 실측:
+  #
+  #     260826-002-ai010 번역 375콜
+  #       DeepInfra 107 (fp8) · Mistral 93 (unknown) · Parasail 21 (bf16)
+  #
+  # 목록 안 셋은 폴백을 꺼도 순서대로 시도하므로, 한 업체가 막혀도 여유가 있다.
   translate_provider:
     order: [DeepInfra, Parasail, Mistral]
-    allow_fallbacks: true
+    allow_fallbacks: false
 
 run:
   seed: 1
