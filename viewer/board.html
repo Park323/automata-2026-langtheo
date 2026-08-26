@@ -41,6 +41,15 @@
   .prow .dlt{color:#7ee39a;font-weight:700}
   .bar{height:10px;border-radius:6px;background:#0b1120;border:1px solid var(--line);overflow:hidden}
   .bar>i{display:block;height:100%;width:0;border-radius:6px;transition:width .4s ease}
+  /* 투표·국토 알림 */
+  .vnotes{margin:4px 0 2px}
+  .vnote{font-size:11px;border-radius:7px;padding:3px 8px;margin-top:4px;display:block;
+    border:1px solid var(--line);background:#12213a;color:#cdd6e4}
+  .vnote.propose{color:#8ab4f8;border-color:#2b3f66;background:#111c33}
+  .vnote.land{color:#7fe0ff;border-color:#2b6f8a;background:#0e2530}
+  .vnote.land.lost{color:#ffb0b0;border-color:#7a2b2b;background:#241316}
+  .vnote .tal{color:var(--dim);font-size:10px;margin-left:4px}
+  .vnote .lost{color:#ff8a8a;font-weight:700;margin-left:4px}
   /* 사망 알림 */
   .deaths{margin-top:8px;min-height:0}
   .death{font-size:11px;color:#ff8a8a;background:#241316;border:1px solid #5a2b2b;
@@ -252,13 +261,17 @@ function build(files){
   const messages=jsonl(files["messages.jsonl"]);
   const turns=Math.max(1,...state.map(s=>s.turn));
   const byTurn={};
-  for(let t=1;t<=turns;t++) byTurn[t]={agents:{},nations:{},births:new Set(),deaths:[],flows:[],succ:{}};
+  for(let t=1;t<=turns;t++) byTurn[t]={agents:{},nations:{},births:new Set(),deaths:[],flows:[],succ:{},lands:[],proposes:[]};
   state.forEach(s=>{ if(byTurn[s.turn]) byTurn[s.turn].agents[s.agent]=s; });
   metrics.forEach(m=>{ if(byTurn[m.turn]) byTurn[m.turn].nations=m; });
   events.forEach(e=>{ const b=byTurn[e.turn]; if(!b) return;
     if(e.type==="birth") b.births.add(e.id);
     else if(e.type==="death"){ b.deaths.push({who:e.who, born:e.born, age:e.age, country:e.country});
       b.succ[e.who]=e.born; }   // 그 해에 죽은 행위자 → 후손(같은 자리)
+    else if(e.type==="land_change" && e.changed) b.lands.push({country:e.country, chosen:e.chosen,
+      from:e.from, counts:e.counts||{}, lost:e.progress_lost||0});
+    else if(e.type==="vote" && e.kind==="propose" && e.opened!==false)
+      b.proposes.push({country:e.country, by:e.by, voteTurn:e.vote_turn});
     else if(e.type==="facility_gain") b.flows.push({kind:"invest", from:e.agent, toNat:e.to,
       foreign: natOf(e.agent)!==e.to, amount:e.amount, gain:e.gain}); });
   // 대화 = 메시지 (개인 → 개인) — 내용도 담는다
@@ -314,9 +327,22 @@ function render(){
       </div>
       <div class="prow"><span>진척${delta>0?` <span class="dlt">▲${delta}</span>`:""}</span><span>${Math.round(prog)} / ${thr?Math.round(thr):"?"}${done?" ✅":""}</span></div>
       <div class="bar" id="bar-${nat}"><i style="width:${pct}%;background:${done?"#3fb950":HEX[lang]}"></i></div>
+      <div class="vnotes"></div>
       <div class="agents"></div>
       <div class="deaths"></div>`;
     st.appendChild(el);
+    // 투표 소집 · 국토 결정(진척 소실) 알림
+    const vbox=el.querySelector(".vnotes");
+    frame.proposes.filter(p=>p.country===nat).forEach(p=>{
+      const n=document.createElement("div"); n.className="vnote propose";
+      n.textContent=`🗳 ${p.by} 투표 소집 · ${p.voteTurn}해 표결`; vbox.appendChild(n); });
+    frame.lands.filter(x=>x.country===nat).forEach(x=>{
+      const n=document.createElement("div"); n.className="vnote land"+(x.lost>0?" lost":"");
+      const ico=x.chosen==="bunker"?"🕳 벙커":"🛰 요격기";
+      const cc=x.counts||{}; const tally=`요격 ${cc.interceptor||0}·벙커 ${cc.bunker||0}·기권 ${cc.abstain||0}`;
+      n.innerHTML=`🗳 국토 → ${ico} <span class="tal">${tally}</span>`+
+        (x.lost>0?` <span class="lost">진척 −${Math.round(x.lost)} 소실</span>`:``);
+      vbox.appendChild(n); });
     // 대륙 위 시설 마커 (땅 정해지면)
     if(land && CONT[nat]){
       const col=land==="bunker"?"#ffcf7a":"#7fe0ff";
