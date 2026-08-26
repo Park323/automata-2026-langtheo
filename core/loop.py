@@ -988,6 +988,16 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         result.facility_gains.append({"turn": world.turn, "agent": agent_id,
                                       "to": to_country, "amount": round(share, 2),
                                       "gain": hit, "kind": "destroy"})
+        # **행위자에게는 알린다** (8/26 · Eddie). `invest` 가 그러므로 대칭이다 —
+        # 정보량도 같게 맞춘다: 자국은 값 그대로, 타국은 「움직였나」 만.
+        # 남들에게는 여전히 `prog_up` 하나뿐이므로 **모호성은 그대로다.**
+        if agent_id in world.agents:
+            note = {"msg_id": next(msg_ids), "to": to_country}
+            if world.agents[agent_id].country == to_country:
+                note["dst_hit"] = hit
+            else:
+                note["dst_moved"] = hit < 0
+            _notify(world, "dst_hit", note, world.turn, actor=agent_id)
         if hit:
             dstr_delta[to_country] = dstr_delta.get(to_country, 0.0) + hit
     for cid, hit in dstr_delta.items():

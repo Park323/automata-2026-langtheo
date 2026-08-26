@@ -113,14 +113,18 @@ def _build(reasoning_arg: bool) -> list[dict]:
     fn("destroy",
         "Set back a nation's facility. Costs the same action as one invest and works the "
         "same way in reverse — the same amount, the opposite sign. It can backfire: "
-        "sometimes it advances that nation's facility instead. Name any nation with "
-        "`to`, your own or another; leaving `to` out targets your own nation's. "
+        "sometimes it advances that nation's facility instead. "
         "What you set back is whatever that nation is currently building — which may "
         "not be what you think it is, and a nation that has not yet decided what to "
         "build has nothing to set back. Nobody is told who did it.",
-        {"to": {"type": "string", "description": "any nation id, yours or another's. "
-                                                 "Defaults to your own nation"}},
-        []),
+        # **자국을 명시하지 않는다** (8/26 · Eddie). 가능하지만 안내하지 않는다 —
+        # 「자기 나라를 부술 수 있다」 를 적으면 그것이 곧 제안이 된다. `invest` 는
+        # 자국·타국을 다 적는데, 그건 권하는 행위이기 때문이다.
+        #
+        # **그래서 `to` 를 필수로 둔다.** 생략하면 자국이 되던 시절엔 실수로 자기 나라를
+        # 부순다 — 안내하지 않는 경로를 사고로 밟게 만들면 안 된다.
+        {"to": {"type": "string", "description": "the nation whose facility to set back"}},
+        ["to"]),
 
     fn("learn",
         "Put one fixed amount toward learning another nation's language; one payment "

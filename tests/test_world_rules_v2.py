@@ -1112,10 +1112,13 @@ def test_the_prompt_never_prints_a_foreign_gain_number(cfg, world):
             out = prompts.render_inbox(
                 [{"msg_id": 3, "from": None, "text": None, "label": None,
                   "original": None, "amount": 200.0, "to": "Ranoa", "fac_moved": moved}], lang)
-            assert "200" in out                      # 내가 낸 액수는 내가 안다
+            # **액수는 이제 어디에도 안 적는다** (8/26). 「あなたの facility 出資 200 は…」
+            # 이었는데, 그 200 과 진척을 나누면 국가 효율이 나온다 — 어제 비용표에서
+            # 지운 값이 이 문구에 그대로 남아 있었다.
+            assert "200" not in out
             assert "Ranoa" in out
             # 진척 숫자가 될 수 있는 다른 수가 없다
-            nums = [n for n in re.findall(r"\d+", out) if n not in ("3", "200")]
+            nums = [n for n in re.findall(r"\d+", out) if n != "3"]
             assert not nums, (lang, moved, out)
 
 
@@ -1747,9 +1750,30 @@ def test_destroy_is_indistinguishable_from_a_backfire(cfg, world):
         assert m["prog_up"] < 0
         # **누가 했는지가 없다** — 이 필드가 생기면 모호성이 통째로 무너진다
         assert "by" not in m and "agent" not in m and "who" not in m, m
-    # 행위자에게는 아무 통지도 안 간다 (`fac_gain` 이 없다)
+
+    # **행위자에게는 알린다** (8/26 · Eddie) — `invest` 가 그러므로 대칭이다.
+    # 타국이면 「후퇴시켰나」 만, 값은 없다 (값을 주면 상대국 효율이 새어 나온다).
     mine = [q["msg"] for q in world.inbox_queue if q["to"] == "Asla1"]
-    assert not any("fac_gain" in m or "fac_moved" in m for m in mine), mine
+    hit = [m for m in mine if "dst_moved" in m or "dst_hit" in m]
+    assert len(hit) == 1, mine
+    assert "dst_moved" in hit[0] and "dst_hit" not in hit[0]
+    assert not any("fac_gain" in m for m in mine), mine
+
+    # **자국을 지목할 수 있다 — 그러나 안내하지 않는다** (8/26 · Eddie).
+    from core import tools as _tools
+    d = [x for x in _tools.tools_for(cfg, ai=False)
+         if x["function"]["name"] == "destroy"][0]["function"]
+    assert d["parameters"]["required"] == ["to"], "생략하면 실수로 자국을 부순다"
+    blob = d["description"] + str(d["parameters"])
+    for hint in ("your own", "yours", "own nation"):
+        assert hint not in blob, hint
+    a.ap = 1.0
+    ok, _ = execute_tool("destroy", {"to": "Asla", "reasoning": "r"},
+                         world, a, cfg, Sink(), KNOB)
+    assert ok["ok"], ok                       # 가능하다
+    bad, _ = execute_tool("destroy", {"reasoning": "r"},
+                          world, a, cfg, Sink(), KNOB)
+    assert not bad["ok"]                      # 생략은 사고가 아니라 거절이다
 
 
 def test_progress_never_falls_below_zero(cfg, world):

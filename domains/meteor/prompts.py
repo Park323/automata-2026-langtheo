@@ -178,9 +178,13 @@ T = {
         testa="  あなたより前にこの場所にいた人が残した言葉:", testa_line="    「{t}」",
         gifted="  {frm} があなたに {amt:.0f} を渡しました。",
         fac_gain="  あなたが {to} の facility に動かした分で、進捗が {gain:.0f} 進みました。",
-        fac_moved="  あなたの facility 出資 {amt:.0f} は {to} の進捗を進めました。",
-        fac_still="  あなたの facility 出資 {amt:.0f} は {to} の進捗を何も進めませんでした。",
+        fac_moved="  あなたの出資は {to} の進捗を進めました。",
+        fac_still="  あなたの出資は {to} の進捗を何も進めませんでした。",
+        dst_hit="  自国の進捗が {hit:+.0f} 動きました。",
+        dst_moved="  あなたの手は {to} の進捗を後退させました。",
+        dst_still="  あなたの手は {to} の進捗を後退させられませんでした。",
         prog_up="  自国の進捗が {gain:.0f} 進んで {now:.0f} になりました。",
+        prog_down="  自国の進捗が {loss:.0f} 後退して {now:.0f} になりました。",
         cap_up="  自国の技術力が {pct:.2f}% 上がりました（はじめから {tot:.2f}%）。",
         ballot_kept="  採決の結果、建てるものは {land} のままです。",
         ballot_new="  採決の結果、建てるものは {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
@@ -258,9 +262,13 @@ T = {
         testa="  在你之前站在这个位置的人留下的话:", testa_line="    「{t}」",
         gifted="  {frm} 给了你 {amt:.0f}。",
         fac_gain="  你投向 {to} 的 facility，使进度前进了 {gain:.0f}。",
-        fac_moved="  你投入 facility 的 {amt:.0f}，使 {to} 的进度有所前进。",
-        fac_still="  你投入 facility 的 {amt:.0f}，没有使 {to} 的进度前进。",
+        fac_moved="  你的投入使 {to} 的进度有所前进。",
+        fac_still="  你的投入没有使 {to} 的进度前进。",
+        dst_hit="  本国的进度变动了 {hit:+.0f}。",
+        dst_moved="  你的行动使 {to} 的进度倒退了。",
+        dst_still="  你的行动没能让 {to} 的进度倒退。",
         prog_up="  本国的进度前进了 {gain:.0f}，现在是 {now:.0f}。",
+        prog_down="  本国的进度倒退了 {loss:.0f}，现在是 {now:.0f}。",
         cap_up="  本国的技术水平提高了 {pct:.2f}%（自开始累计 {tot:.2f}%）。",
         ballot_kept="  表决的结果，要建的设施仍是 {land}。",
         ballot_new="  表决的结果，要建的设施定为 {land}。此前的进度 {lost:.0f} 已失去。",
@@ -341,9 +349,13 @@ T = {
         testa="  Les mots laissés par celui qui occupait cette place avant vous :", testa_line="    « {t} »",
         gifted="  {frm} vous a remis {amt:.0f}.",
         fac_gain="  Ce que vous avez mis dans la facility de {to} l'a fait progresser de {gain:.0f}.",
-        fac_moved="  Votre versement de {amt:.0f} a fait progresser {to}.",
-        fac_still="  Votre versement de {amt:.0f} n'a fait progresser {to} en rien.",
+        fac_moved="  Votre versement a fait progresser {to}.",
+        fac_still="  Votre versement n'a fait progresser {to} en rien.",
+        dst_hit="  La progression de votre nation a bougé de {hit:+.0f}.",
+        dst_moved="  Votre geste a fait reculer {to}.",
+        dst_still="  Votre geste n'a pas fait reculer {to}.",
         prog_up="  La progression de votre nation a avancé de {gain:.0f} ; elle est à {now:.0f}.",
+        prog_down="  La progression de votre nation a reculé de {loss:.0f} ; elle est à {now:.0f}.",
         cap_up="  Le niveau technique de votre nation a augmenté de {pct:.2f}% ({tot:.2f}% depuis le début).",
         ballot_kept="  Au scrutin, ce qu'on bâtit reste {land}.",
         ballot_new="  Au scrutin, ce qu'on bâtit devient {land}. La progression acquise, {lost:.0f}, est perdue.",
@@ -581,7 +593,8 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
 
 
 # **세계의 사건**을 가르는 키. 사람이 나에게 한 말이 아니라, 세계가 나에게 알리는 것.
-_EVENT_KEYS = ("died", "born", "testament", "gift_from", "fac_gain", "fac_moved", "delivery_failed_to",
+_EVENT_KEYS = ("died", "born", "testament", "gift_from", "fac_gain", "fac_moved",
+               "dst_hit", "dst_moved", "delivery_failed_to",
                "prog_up", "cap_up", "ballot", "outcome")
 
 
@@ -688,8 +701,14 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
             _add(t["died"].format(who=m["died"], born=m.get("born") or "?",
                                         age=m.get("age") if m.get("age") is not None else "?"))
             continue
-        if m.get("prog_up") is not None:       # 자국 진척이 늘었다 (PUBLIC · 일괄)
-            _add(t["prog_up"].format(gain=m["prog_up"], now=m["now"]))
+        if m.get("prog_up") is not None:       # 자국 진척이 움직였다 (PUBLIC · 일괄)
+            # **줄어들 수도 있다** (8/26). 역화와 파괴가 들어오면서 이 값이 음수가 된다 —
+            # 「進捗が -13 進んで」 는 읽히지 않는다. 방향을 문구가 말하고 크기는 양수로
+            # 적는다. **원인은 여전히 안 적는다** — 그 뭉갬이 설계다.
+            if m["prog_up"] < 0:
+                _add(t["prog_down"].format(loss=-m["prog_up"], now=m["now"]))
+            else:
+                _add(t["prog_up"].format(gain=m["prog_up"], now=m["now"]))
             continue
         if m.get("cap_up"):                    # 자국 기술력이 올랐다 (PUBLIC)
             # **둘을 나란히 적는다** (8/25 · Eddie). 「이번 상승분」 만 있으면 계속 오르는
@@ -730,8 +749,17 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
             continue
         if m.get("fac_moved") is not None:     # **타국 출자 — 늘었는지 여부만**
             # 액수를 주면 E[gain]/amount 로 상대국 생산배수가 새어 나온다 (loop f-2).
-            _add(t["fac_moved" if m["fac_moved"] else "fac_still"]
-                       .format(amt=m["amount"], to=m["to"]))
+            # **문구에서도 뺐다** (8/26) — `{amt}` 가 그대로 찍히고 있었다.
+            _add(t["fac_moved" if m["fac_moved"] else "fac_still"].format(to=m["to"]))
+            continue
+        # **파괴의 결과 — `invest` 와 같은 정보량** (8/26 · Eddie).
+        #   자국은 값 그대로 · 타국은 「후퇴시켰나」 만.
+        # 남들에게는 여전히 `prog_up` 하나뿐이므로 모호성은 그대로다.
+        if m.get("dst_hit") is not None:
+            _add(t["dst_hit"].format(hit=m["dst_hit"]))
+            continue
+        if m.get("dst_moved") is not None:
+            _add(t["dst_moved" if m["dst_moved"] else "dst_still"].format(to=m["to"]))
             continue
         # **두 라벨 모두 수신자 언어로.** 「번역을 안 거쳤는데 뜻이 통했다」 도, 「이건
         # 상대가 기계에 맡긴 말이다」 도 그 사람의 말로 와야 감각이 산다. AI 쪽만 영어

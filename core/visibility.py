@@ -77,6 +77,12 @@ FACTS: dict[str, tuple[Vis, str]] = {
 
     "risk_reading":      (Vis.PRIVATE, "내가 observe_risk 로 읽은 값. 남에게 알리려면 말해야 한다"),
     "fac_gain":          (Vis.PRIVATE, "내 출자가 진척을 얼마 올렸나 (타국이면 여부만)"),
+    # **파괴의 결과는 행위자만 안다** (8/26 · Eddie). `fac_gain` 과 같은 등급이다 —
+    # 투자가 자기 몫을 보는데 파괴만 못 보면 대칭이 깨진다.
+    #
+    # 남들이 받는 것은 `progress`(PUBLIC) 의 델타 하나뿐이고, 그 안에서 「투자 · 역화 ·
+    # 파괴」 가 갈리지 않는다. **그 뭉갬이 이 설계의 목적이다** — 불확실성이 소통을 요구한다.
+    "dst_hit":           (Vis.PRIVATE, "내 파괴가 진척을 얼마 움직였나 (타국이면 여부만)"),
     "delivery_failed":   (Vis.PRIVATE, "내가 보낸 말이 닿지 않았다"),
     "message":           (Vis.PRIVATE, "주고받은 말. **보낸 이와 받는 이만**"),
     "land":              (Vis.PUBLIC, "자국 국토"),

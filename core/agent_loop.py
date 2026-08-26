@@ -274,7 +274,9 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
     if name == "destroy":
         # **투자와 완전 대칭** (8/26 · Eddie). 같은 AP, 같은 양, 부호만 반대.
         # 대상 나라만 받는다 — `target` 이 없다 (wellness·national 을 파괴할 수는 없다).
-        to = args.get("to") or agent.country
+        # **기본값을 안 둔다** (8/26 · Eddie). 자국도 대상이 될 수 있지만 안내하지
+        # 않으므로, 생략하면 자국이 되는 편의는 **사고**를 만든다.
+        to = args.get("to")
         if to not in world.countries:
             return {"ok": False, "error": f"unknown nation: {to}"}, None
         amount, ap_used = cfg.costs.unit * agent.invest_mult, cfg.ap.unit
