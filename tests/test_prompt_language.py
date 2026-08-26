@@ -301,7 +301,7 @@ def test_the_cost_table_shows_learning_as_something_you_pay_into():
         # **비용 칸은 한 번의 값이다.** 총액이 비용 칸에 있으면 「한 번에 그만큼 나간다」
         # 로 읽힌다 — 그 숫자는 바로 아래 진척 줄이 말한다.
         learn_lines = [l for l in obs.splitlines()
-                       if any(k in l for k in ("の言語を学ぶ", "学习 ", "apprendre la langue de"))]
+                       if any(k in l for k in ("learn（", "learn ("))]
         assert learn_lines
         # 비용 칸은 AP 이고, 목표(learn_base)는 어디에도 안 나온다
         for l in learn_lines:
@@ -339,14 +339,14 @@ def test_learn_and_invest_share_one_unit():
     a = world.agents["Asla2"]
     obs = prompts.system_for(a, world, c, KNOB)
     rows = [l for l in obs.splitlines()
-            if "の言語を学ぶ" in l or l.startswith("  invest ")]   # 헤더는 들여쓰기가 없다
+            if "learn（" in l or l.startswith("  invest ")]   # 헤더는 들여쓰기가 없다
     assert len(rows) == 3                       # 학습 둘 + invest 하나
     for l in rows:                              # 셋이 같은 AP 를 쓴다
         assert f"{c.ap.unit:g}" in l, l
     # **학습은 %로 적고, invest 는 아무 수치도 안 적는다** (8/26). 학습의 절대 수치(40)는
     # 목표를 모르면 뜻이 없어 「회당 몇 %」 로 바꿨고, invest 의 「옮기는 양」 은 아예
     # 지웠다 — AP 가 유일한 단위이기로 했고, 그 값이 국가 효율을 나눗셈으로 드러냈다.
-    learn_rows = [l for l in rows if "の言語を学ぶ" in l]
+    learn_rows = [l for l in rows if "learn（" in l]
     inv_row = next(l for l in rows if l.startswith("  invest "))
     # 사유(국내 구사자·부모)가 붙으면 배속이 올라 %도 오른다 — 셋 중 하나여야 한다
     base = c.costs.unit / c.costs.learn_base * 100
@@ -606,7 +606,7 @@ def test_nothing_tells_the_agent_to_repeat_an_action():
     world.turn = 1
     obs = prompts.system_for(world.agents["Miris1"], world, cfg, KNOB)
     lines = obs.splitlines()
-    i = next(n for n, l in enumerate(lines) if "apprendre la langue de" in l)
+    i = next(n for n, l in enumerate(lines) if "learn (langue de" in l)
     assert f"{cfg.ap.unit:.2f}" in lines[i]                      # 한 번의 행동력
     assert "%" in lines[i] and "%" in lines[i + 1]                # 회당 %와 누적 %
 
@@ -746,3 +746,41 @@ def test_the_fact_that_people_differ_is_stated_but_not_the_numbers():
     for lang in ("ja", "zh", "fr"):
         for w in ADVICE:
             assert w not in prompts.SYSTEM[lang], (lang, w)
+
+
+def test_every_cost_row_is_titled_by_its_tool_name():
+    """**제목은 도구 이름으로 통일한다** (8/26 · Eddie).
+
+    `speak`·`learn` 만 자국어로 번역돼 있고 나머지 다섯(`invest`·`observe_risk`·
+    `propose_vote`·`vote`·`memory_write`)은 함수명이었다:
+
+        話す（自国内）        ← 자연스러운 행위로 읽힌다
+        observe_risk         ← 기술적 조작으로 읽힌다
+
+    같은 표 안에서 이름의 결이 갈리면 **선택에 편향이 붙는다.** 표는 값만 비교하게 해야
+    한다. 괄호 안 구분과 비고는 자국어로 남긴다 — 그건 제목이 아니라 설명이고, 도구
+    호출에 그대로 쓰이지도 않는다.
+    """
+    import itertools
+    import random
+    import re
+
+    from core import config, loop
+    from domains.meteor import prompts
+
+    c = config.load("configs/base.yaml")
+    w = loop.init_world(c, itertools.count(1), random.Random(1))
+    w.turn = 1
+    TOOLS = ("speak", "learn", "invest", "observe_risk",
+             "propose_vote", "vote", "memory_write")
+    for a in w.agents.values():
+        table = prompts.render_costs(w, a, c, 0.10)
+        # **정확히 두 칸**이 제목 줄이다. 세 칸은 딸린 설명(학습 진척 `これまで/目前/déjà`),
+        # 네 칸은 나라별 안내다 — 들여쓰기가 이미 그 셋을 가르고 있다.
+        rows = [l for l in table.splitlines() if re.match(r"^ {2}\S", l)]
+        assert rows, a.id
+        for l in rows:
+            head = l.strip().split("（")[0].split(" (")[0].split()[0]
+            assert head in TOOLS, (a.id, l)
+        # 세 경로가 **한 도구**라는 것이 이름으로 보인다
+        assert sum(1 for l in rows if l.strip().startswith("speak")) == 3, a.id

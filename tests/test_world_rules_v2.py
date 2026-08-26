@@ -1248,15 +1248,15 @@ def test_the_note_names_the_right_reason_and_the_yield(cfg, world):
 
     a.parent_langs = {"fr"}
     obs = prompts.system_for(a, world, cfg, KNOB)
-    zh = next(l for l in obs.splitlines() if "Ranoa の言語を学ぶ" in l)
-    fr = next(l for l in obs.splitlines() if "Miris の言語を学ぶ" in l)
+    zh = next(l for l in obs.splitlines() if "learn（Ranoa の言語）" in l)
+    fr = next(l for l in obs.splitlines() if "learn（Miris の言語）" in l)
     assert t["c_cheap"].format(gain=u * (1 + up)).strip() in zh     # 국내 구사자
     assert t["c_disc"].format(gain=u * (1 + up)).strip() in fr      # 부모
     assert "自国に話せる人" not in fr                                # 섞이지 않는다
 
     a.parent_langs = {"zh"}                          # 둘 다 걸리면 두 배속
     lines = prompts.system_for(a, world, cfg, KNOB).splitlines()
-    i = next(n for n, l in enumerate(lines) if "Ranoa の言語を学ぶ" in l)
+    i = next(n for n, l in enumerate(lines) if "learn（Ranoa の言語）" in l)
     assert learn_speed(a, "Ranoa", world, cfg)[0] == 1 + 2 * up
     assert t["c_both"].format(gain=u * (1 + 2 * up)).strip() in lines[i]
     # **진척 줄은 %다** (8/25) — 목표는 늘 100% 이므로 분모가 없다

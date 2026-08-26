@@ -132,14 +132,14 @@ T = {
               "その人たちがしたことや届いたメッセージは、次にあなたが動くときに見えています。",
         costs_hdr="行動の費用", col_ap="行動力",
         ap_hdr="行動力は毎年 1.0 に戻り、繰り越せません。何を諦めるかがここで決まります。",
-        c_dom="  話す（自国内）", c_orig="  話す（国際・original）",
+        c_dom="  speak（自国内）", c_orig="  speak（国際・original）",
         c_dom_note="   {cap}文字まで",
         c_orig_note="   あなたの言葉をそのまま送ります",
         c_ai_note="   翻訳の人工知能を使って送ります",
         c_orig_sure="    {nation} へ — この国の言語を扱えるので、**{lang}で書けば必ず届く**（{cap}文字まで）",
         c_orig_risk="    {nation} へ — 扱えないので**日本語で書く**。あなたの言語を読める相手にだけ届く（{cap}文字まで）",
-        c_ai="  話す（国際・ai）",
-        c_learn="  {nation} の言語を学ぶ",
+        c_ai="  speak（国際・ai）",
+        c_learn="  learn（{nation} の言語）",
         c_learn_prog="   これまで {done:.0f}%",
         c_fac_mine="  {nation} の施設にこれまで出した額: {v:.0f}",
         c_plain="   一度で {gain:.0f}% 進む",
@@ -211,14 +211,14 @@ T = {
               "他们做了什么、送来了什么消息，你下次行动时就看得到。",
         costs_hdr="行动费用", col_ap="行动力",
         ap_hdr="行动力每年恢复为 1.0，不能结转。放弃什么，在这里决定。",
-        c_dom="  说话（本国内）", c_orig="  说话（国际·original）",
+        c_dom="  speak（本国内）", c_orig="  speak（国际·original）",
         c_dom_note="   最多 {cap} 字",
         c_orig_note="   原样送出你自己的话",
         c_ai_note="   用翻译人工智能送出",
         c_orig_sure="    发往 {nation} — 你会这个国家的语言，**用{lang}写就一定送到**（最多 {cap} 字）",
         c_orig_risk="    发往 {nation} — 你不会，**用中文写**。只能送到读得懂你的语言的人那里（最多 {cap} 字）",
-        c_ai="  说话（国际·ai）",
-        c_learn="  学习 {nation} 的语言",
+        c_ai="  speak（国际·ai）",
+        c_learn="  learn（{nation} 的语言）",
         c_learn_prog="   目前 {done:.0f}%",
         c_fac_mine="  你至今向 {nation} 的设施投入: {v:.0f}",
         c_plain="   一次进 {gain:.0f}%",
@@ -292,14 +292,14 @@ T = {
               "visibles au moment où vous agirez de nouveau.",
         costs_hdr="Coûts des actions", col_ap="action",
         ap_hdr="L'action revient à 1.0 chaque année et ne se reporte pas. Ce que vous renoncez se décide ici.",
-        c_dom="  parler (dans votre nation)", c_orig="  parler (international, original)",
+        c_dom="  speak (dans votre nation)", c_orig="  speak (international, original)",
         c_dom_note="   {cap} caractères max",
         c_orig_note="   envoie vos mots tels quels",
         c_ai_note="   envoyé par une intelligence artificielle de traduction",
         c_orig_sure="    vers {nation} — vous maniez sa langue : **écrivez en {lang}, il arrive à coup sûr** ({cap} caractères max)",
         c_orig_risk="    vers {nation} — vous ne la maniez pas : **écrivez en français**. Il n'arrive qu'à qui lit la vôtre ({cap} caractères max)",
-        c_ai="  parler (international, ai)",
-        c_learn="  apprendre la langue de {nation}",
+        c_ai="  speak (international, ai)",
+        c_learn="  learn (langue de {nation})",
         c_learn_prog="   déjà {done:.0f}%",
         c_fac_mine="  déjà versé à l'installation de {nation} : {v:.0f}",
         c_plain="   +{gain:.0f}% par appel",
@@ -459,6 +459,13 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
         a = f"{ap:.2f}" if isinstance(ap, (int, float)) else str(ap)
         return f"{label:<{w}}{a:>{m}}   {note}"
 
+    # **제목은 도구 이름으로 통일한다** (8/26 · Eddie). `speak`·`learn` 만 자국어로
+    # 번역돼 있고 나머지 다섯(`invest`·`observe_risk`·`propose_vote`·`vote`·
+    # `memory_write`)은 함수명이었다. 번역된 이름은 **자연스러운 행위**로, 영어 함수명은
+    # **기술적 조작**으로 읽혀 선택에 편향이 붙는다 — 표는 값만 비교하게 해야 한다.
+    #
+    # 괄호 안 구분(자국내/국제·original/국제·ai, 어느 나라 말인가)과 비고는 자국어로
+    # 남긴다. 그건 제목이 아니라 설명이고, 도구 호출에 그대로 쓰이지도 않는다.
     lines = [t["costs_hdr"],
              f"{'':<{w}}{t['col_ap']:>{m}}",
              row(t["c_dom"], cfg.ap.speak,
