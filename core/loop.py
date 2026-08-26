@@ -981,13 +981,15 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         result.risk_log.append({"turn": world.turn, **o})
     # 시설 — 이번 턴 국가별 누적(turn_facility) 기준 **선착순 cap**, 즉시 진척 + 같은 턴 통지
     #
-    # **진척 변화는 그 나라에 일괄로 알린다** (visibility: progress_change PUBLIC).
-    # 출자자별로 알리면 부피가 3배가 된다 — 실측에서 해당 2.8건이고 각각 3명에게 가면
-    # 해마다 8항목이 대화에 쌓인다. 차례 단위로 묶으면 5항목이다.
+    # **`prog_up` 을 없앴다** (8/26 · Eddie). 그것은 `impact` 가 없던 시절의 유일한
+    # 통로였다 — 나라 사람이 아는 것이 합계뿐이었다.
     #
-    # 누가 냈는지는 담지 않는다. 자국민은 자기가 낸 것을 알므로 차이에서 타국 출자를
-    # 짐작할 수 있고, 그 짐작은 흘려도 되는 것이다.
-    prog_delta: dict = {}
+    # `impact` 가 「누가 · 얼마 · 그래서 지금 얼마」 를 사람마다 알리므로, 합계는 마지막
+    # `impact` 줄의 총량과 같고 두 줄이 통째로 겹쳤다. 그리고 진척이 움직이는 원인은
+    # 투자와 파괴뿐이라 `impact` 없이 `prog_up` 만 오는 경우가 없다.
+    #
+    # 대가는 부피다 — 나라당 한 해 14건이면 14줄이 된다 (전에는 1줄). 그것이 이 설계의
+    # 값이다: 누가 손을 댔는지를 알려면 건별로 와야 한다.
     for to_country, share, agent_id in sink.facility:
         # **상한이 없다** (8/25). `cap_per_turn` 은 돈 상한이었고 선착순 소진이라 같은
         # 나라의 A1 이 A2·A3 보다 유리한 순서 편향이 있었다. 이제 상한은 각자의 AP 이고,
@@ -1017,22 +1019,17 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
         # 역화가 있으므로 부호도 의도를 말해주지 않는다: 투자가 음수일 수 있고
         # 파괴가 양수일 수 있다. 그래서 「누가 −13 을 만들었다」 를 알면서도
         # **그가 도우려 했는지 부수려 했는지 알 수 없다.**
-        c.impact_log[agent_id] = c.impact_log.get(agent_id, 0.0) + gain
         _notify(world, "impact", {"impact_by": agent_id, "impact": gain,
-                                  "impact_total": round(c.impact_log[agent_id], 1),
-                                  "land": c.land},
+                                  "now": c.progress, "land": c.land},
                 world.turn, nation=to_country)
-        if gain:
-            prog_delta[to_country] = prog_delta.get(to_country, 0.0) + gain
     # **파괴는 투자와 같은 자리에서, 같은 방식으로 정산한다** (8/26 · Eddie).
     #
-    # `prog_delta` 에 **합쳐 넣는다** — 그것이 모호성이다. 그 나라 사람이 받는 것은
-    # `prog_up` 하나이고, 그 안에서 「투자 · 역화 · 파괴」 가 갈리지 않는다.
+    # **투자와 같은 통지를 쓴다** — 그것이 모호성이다. 그 나라 사람이 받는 `impact` 줄은
+    # 투자와 파괴가 같은 모양이고, 역화가 있으므로 부호도 의도를 말하지 않는다.
     #
     # **행위자에게도 결과를 안 알린다.** 투자는 `fac_gain` 으로 자기 몫을 보는데
     # 파괴는 그것도 없다 — 알려주면 부호를 보고 역화 여부를 알게 되고, 그러면 자기
     # 행위의 효과를 확신하게 된다. 파괴는 끝까지 도박이어야 한다.
-    dstr_delta: dict = {}
     for to_country, share, agent_id in sorted(sink.destroy, key=lambda x: (x[0], x[2])):
         c = world.countries[to_country]
         if c.land is None:
@@ -1059,22 +1056,9 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
                 note["dst_moved"] = hit < 0
             _notify(world, "dst_hit", note, world.turn, actor=agent_id)
         # 투자와 **같은 통지**다 — 그래서 구분되지 않는다 (위 주석 참조).
-        c.impact_log[agent_id] = c.impact_log.get(agent_id, 0.0) + hit
         _notify(world, "impact", {"impact_by": agent_id, "impact": hit,
-                                  "impact_total": round(c.impact_log[agent_id], 1),
-                                  "land": c.land},
+                                  "now": c.progress, "land": c.land},
                 world.turn, nation=to_country)
-        if hit:
-            dstr_delta[to_country] = dstr_delta.get(to_country, 0.0) + hit
-    for cid, hit in dstr_delta.items():
-        prog_delta[cid] = prog_delta.get(cid, 0.0) + hit
-    for cid, gain in sorted(prog_delta.items()):
-        _notify(world, "progress_change",
-                # **무엇이 진척했는지 적는다** (8/26 · Eddie). 나라가 아니라 시설이
-                # 진척한다 — 자국 국토는 PUBLIC 이라 이름이 누출이 아니다.
-                {"prog_up": gain, "now": world.countries[cid].progress,
-                 "land": world.countries[cid].land},
-                world.turn, nation=cid)
     # wellness / national
     for aid, amount in sink.wellness:
         if aid in world.agents:

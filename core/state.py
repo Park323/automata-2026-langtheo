@@ -70,14 +70,6 @@ class Country:
     # 열린 제안 하나. {target, by, opened_turn, vote_turn}
     # 제안 → 3턴 유예(상의할 시간) → 네 번째 턴에 찬반 투표.
     proposal: dict | None = None
-    # **누가 우리 시설을 얼마나 움직였나 — 사람별 누적** (8/26 · Eddie).
-    #
-    # 한 번의 사건은 늘 모호하다 (투자인지 파괴인지, 역화인지). 그런데 **누적은 쌓인다** —
-    # 다섯 해에 걸쳐 −40 이 된 사람은 우연으로 설명하기 어려워진다. 그것이 의심의 시간
-    # 구조다: 개별 건은 소음에 묻히고 누적이 드러나기까지 여러 해가 걸린다.
-    #
-    # 사람 id 는 재사용되지 않으므로(Asla1…Asla20) 이 값은 **그 사람의 생애 기록**이다.
-    impact_log: dict = field(default_factory=dict)
 
     def multiplier(self, cfg) -> float:
         """1 + growth_coef × √(national_capital / growth_scale).

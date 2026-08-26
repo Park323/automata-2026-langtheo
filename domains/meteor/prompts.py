@@ -184,10 +184,8 @@ T = {
         dst_back="  あなたの手は逆に働き、自国の {land} が {mag:.0f} 進みました。",
         dst_moved="  あなたの手は {to} の進捗を後退させました。",
         dst_still="  あなたの手は {to} の進捗を後退させられませんでした。",
-        prog_up="  自国の {land} が {gain:.0f} 進んで {now:.0f} になりました。",
-        prog_down="  自国の {land} が {loss:.0f} 後退して {now:.0f} になりました。",
-        impact_up="  {by} の手が働いて、自国の {land} が {mag:.0f} 進みました（この人の累計 {tot:+.0f}）。",
-        impact_down="  {by} の手が働いて、自国の {land} が {mag:.0f} 後退しました（この人の累計 {tot:+.0f}）。",
+        impact_up="  {by} の手が働いて、自国の {land} が {mag:.0f} 進みました、{now:.0f} になりました。",
+        impact_down="  {by} の手が働いて、自国の {land} が {mag:.0f} 後退して {now:.0f} になりました。",
         cap_up="  自国の技術力が {pct:.2f}% 上がりました（はじめから {tot:.2f}%）。",
         ballot_kept="  採決の結果、建てるものは {land} のままです。",
         ballot_new="  採決の結果、建てるものは {land} になりました。それまでの進捗 {lost:.0f} は失われました。",
@@ -271,10 +269,8 @@ T = {
         dst_back="  你的行动反了过来，本国的 {land} 前进了 {mag:.0f}。",
         dst_moved="  你的行动使 {to} 的进度倒退了。",
         dst_still="  你的行动没能让 {to} 的进度倒退。",
-        prog_up="  本国的 {land} 前进了 {gain:.0f}，现在是 {now:.0f}。",
-        prog_down="  本国的 {land} 倒退了 {loss:.0f}，现在是 {now:.0f}。",
-        impact_up="  {by} 出手，使本国的 {land} 前进了 {mag:.0f}（此人累计 {tot:+.0f}）。",
-        impact_down="  {by} 出手，使本国的 {land} 倒退了 {mag:.0f}（此人累计 {tot:+.0f}）。",
+        impact_up="  {by} 出手，使本国的 {land} 前进了 {mag:.0f}，现在是 {now:.0f}。",
+        impact_down="  {by} 出手，使本国的 {land} 倒退了 {mag:.0f}，现在是 {now:.0f}。",
         cap_up="  本国的技术水平提高了 {pct:.2f}%（自开始累计 {tot:.2f}%）。",
         ballot_kept="  表决的结果，要建的设施仍是 {land}。",
         ballot_new="  表决的结果，要建的设施定为 {land}。此前的进度 {lost:.0f} 已失去。",
@@ -361,10 +357,8 @@ T = {
         dst_back="  Votre geste s'est retourné : le {land} de votre nation a avancé de {mag:.0f}.",
         dst_moved="  Votre geste a fait reculer {to}.",
         dst_still="  Votre geste n'a pas fait reculer {to}.",
-        prog_up="  Le {land} de votre nation a avancé de {gain:.0f} ; il est à {now:.0f}.",
-        prog_down="  Le {land} de votre nation a reculé de {loss:.0f} ; il est à {now:.0f}.",
-        impact_up="  {by} est intervenu : le {land} de votre nation a avancé de {mag:.0f} (cumul de cette personne {tot:+.0f}).",
-        impact_down="  {by} est intervenu : le {land} de votre nation a reculé de {mag:.0f} (cumul de cette personne {tot:+.0f}).",
+        impact_up="  {by} est intervenu : le {land} de votre nation a avancé de {mag:.0f} ; il est à {now:.0f}.",
+        impact_down="  {by} est intervenu : le {land} de votre nation a reculé de {mag:.0f} ; il est à {now:.0f}.",
         cap_up="  Le niveau technique de votre nation a augmenté de {pct:.2f}% ({tot:.2f}% depuis le début).",
         ballot_kept="  Au scrutin, ce qu'on bâtit reste {land}.",
         ballot_new="  Au scrutin, ce qu'on bâtit devient {land}. La progression acquise, {lost:.0f}, est perdue.",
@@ -605,7 +599,7 @@ def render_costs(world, agent, cfg, knob_ai: float, memory: bool = True) -> str:
 _EVENT_KEYS = ("died", "born", "testament", "gift_from", "fac_gain", "fac_moved",
                "impact_by",
                "dst_hit", "dst_moved", "delivery_failed_to",
-               "prog_up", "cap_up", "ballot", "outcome")
+               "cap_up", "ballot", "outcome")
 
 
 def is_event(m: dict) -> bool:
@@ -716,31 +710,20 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
             # 투자와 파괴가 **같은 문구**를 쓴다. 그리고 역화가 있으므로 부호도 의도를
             # 말하지 않는다 — 투자가 음수일 수 있고 파괴가 양수일 수 있다.
             land = m.get("land") or t["undecided"]
-            # **변화량과 누적을 함께** (8/26 · Eddie). 한 번의 사건은 늘 모호한데
-            # (투자인지 파괴인지, 역화인지) **누적은 쌓인다** — 다섯 해에 걸쳐 −40 이
-            # 된 사람은 우연으로 설명하기 어려워진다. 그것이 의심의 시간 구조다.
+            # **변화량과 시설 누적을 함께** (8/26 · Eddie).
+            # **`prog_up` 을 대체했다** — 그것은 `impact` 가 없던 시절의 유일한
+            # 통로였고(나라 사람이 아는 것이 합계뿐이었다), 지금은 통째로 겹친다.
+            #
+            # **나라가 진척하는 게 아니라 시설이 진척한다** — 「自国の進捗が
+            # 進んだ」 는 「우리 나라가 발전했다」 로 읽혀 `national` 투자의
+            # 결과와 헷갈린다. 증거는 규칙에 있다: `land` 가 없으면 진척이
+            # 아예 없고, 전환하면 진척이 0 이 된다.
+            # 「누가 얼마 움직였고, 그래서 지금 얼마가 됐다」 가 한 줄이 된다.
             key = "impact_up" if m["impact"] > 0 else "impact_down"
-            _add(t[key].format(by=m["impact_by"], land=land, mag=abs(m["impact"]),
-                               tot=m.get("impact_total", m["impact"])))
+            _add(t[key].format(by=m["impact_by"], land=land,
+                               mag=abs(m["impact"]), now=m["now"]))
             continue
-        if m.get("prog_up") is not None:       # 자국 진척이 움직였다 (PUBLIC · 일괄)
-            # **줄어들 수도 있다** (8/26). 역화와 파괴가 들어오면서 이 값이 음수가 된다 —
-            # 「進捗が -13 進んで」 는 읽히지 않는다. 방향을 문구가 말하고 크기는 양수로
-            # 적는다. **원인은 여전히 안 적는다** — 그 뭉갬이 설계다.
-            # **나라가 진척하는 게 아니라 시설이 진척한다** (8/26 · Eddie).
-            # 「自国の進捗が進んだ」 는 「우리 나라가 발전했다」 로 읽혀 `national`
-            # (기술력) 투자의 결과와 헷갈린다. 그 둘은 완전히 다른 통로다.
-            #
-            # 증거는 규칙에 있다 — `land` 가 없으면 진척이 아예 없고, 전환하면 진척이
-            # 0 이 된다. 나라는 그대로인데 진척이 사라진다. 그러니 소유가 틀렸다.
-            #
-            # **자국 국토는 PUBLIC** 이라 이름을 적어도 누출이 아니다.
-            land = m.get("land") or t["undecided"]
-            if m["prog_up"] < 0:
-                _add(t["prog_down"].format(loss=-m["prog_up"], now=m["now"], land=land))
-            else:
-                _add(t["prog_up"].format(gain=m["prog_up"], now=m["now"], land=land))
-            continue
+
         if m.get("cap_up"):                    # 자국 기술력이 올랐다 (PUBLIC)
             # **둘을 나란히 적는다** (8/25 · Eddie). 「이번 상승분」 만 있으면 계속 오르는
             # 것처럼 읽힌다 — √ 라서 실제로는 1.77% → 0.14% 로 죽는다. 두 숫자가 한 줄에
@@ -788,7 +771,7 @@ def render_inbox(inbox: list[dict], lang: str, hdr: str | None = None) -> str:
         #   자국은 값 그대로 · 타국은 「후퇴시켰나」 만.
         # 남들에게는 여전히 `prog_up` 하나뿐이므로 모호성은 그대로다.
         if m.get("dst_hit") is not None:
-            # **`prog_down` 과 같은 형식으로** (8/26 · Eddie) — 방향은 문구가 말하고
+            # **`impact` 와 같은 형식으로** (8/26 · Eddie) — 방향은 문구가 말하고
             # 크기는 양수로 적는다. 「進捗が -9 動きました」 는 읽히지 않고, 게다가
             # 「나라가 진척한다」 는 틀린 소유를 되살린다.
             land = m.get("land") or t["undecided"]

@@ -1744,12 +1744,16 @@ def test_destroy_is_indistinguishable_from_a_backfire(cfg, world):
     assert world.countries["Ranoa"].progress < 500.0
 
     told = [q["msg"] for q in world.inbox_queue if q["to"].startswith("Ranoa")]
-    ups = [m for m in told if "prog_up" in m]
+    # **`prog_up` 은 없앴다** (8/26) — `impact` 가 「누가 · 얼마 · 그래서 지금 얼마」 를
+    # 알리므로 합계 줄이 통째로 겹쳤다.
+    assert not any("prog_up" in m for m in told), told
+    ups = [m for m in told if "impact_by" in m]
     assert ups, told
     for m in ups:
-        assert m["prog_up"] < 0
-        # **누가 했는지가 없다** — 이 필드가 생기면 모호성이 통째로 무너진다
-        assert "by" not in m and "agent" not in m and "who" not in m, m
+        assert m["impact"] < 0
+        # **무엇을 하려 했는지가 없다** — 이 필드가 생기면 모호성이 통째로 무너진다
+        for leak in ("kind", "tool", "intent"):
+            assert leak not in m, (leak, m)
 
     # **행위자에게는 알린다** (8/26 · Eddie) — `invest` 가 그러므로 대칭이다.
     # 타국이면 「후퇴시켰나」 만, 값은 없다 (값을 주면 상대국 효율이 새어 나온다).
@@ -1872,24 +1876,16 @@ def test_the_target_learns_who_but_never_why(cfg, world):
     assert seen["invest"] == seen["destroy"], seen
 
 
-def test_the_cumulative_record_does_not_converge_when_intent_flips(cfg, world):
-    """**한 번은 모호하고, 누적은 쌓인다 — 그러나 수렴하지 않는다** (8/26 · Eddie).
+def test_the_impact_notice_carries_the_change_and_the_running_total(cfg, world):
+    """**변화량과 시설 누적을 함께** (8/26 · Eddie) — `prog_up` 과 같은 형식이다.
 
-    변화량만 알리면 개별 건이 늘 우연으로 설명된다. 누적을 함께 적으면 「다섯 해에 걸쳐
-    −40 이 된 사람」 이 보인다 — 그것이 의심의 시간 구조다.
+    「누가 얼마 움직였고, 그래서 지금 얼마가 됐다」 가 한 줄이 된다. 그 나라 사람은
+    누가 관여했는지와 크기를 알고, 그 결과가 지금 어디에 있는지도 안다 —
+    **그러나 의도는 여전히 모른다** (투자와 파괴가 같은 문구이고 역화가 부호를 뒤집는다).
 
-    그런데 역화가 있으므로 누적이 **의도로 수렴하지 않는다.** 실측 다섯 해:
-
-        1해 (파괴)  倒退了 12  누계 −12
-        2해 (투자)  倒退了  9  누계 −21   ← 도우려 했는데 역화
-        3해 (파괴)  倒退了  8  누계 −29
-        4해 (파괴)  前进了 10  누계 −19   ← 부수려 했는데 역화
-        5해 (투자)  前进了 12  누계  −7   ← 신호가 흐려진다
-
-    표본이 적을 때 역화 두 번이 결론을 뒤집는다. 진짜 적을 놓칠 수도 있고 친구를 적으로
-    볼 수도 있다 — 그것이 이 설계가 만들려는 불확실성이다.
-
-    사람 id 는 재사용되지 않으므로 이 값은 **그 사람의 생애 기록**이다.
+    ⚠ 처음엔 **사람별 누적**으로 만들었다가 되돌렸다. 시설 누적이 맞다 — 사람별은
+      다섯 해 수명에서 표본이 두세 건뿐이고, 역화 한 번이 결론을 뒤집어 「기록」 이라고
+      부를 수 없다.
     """
     import random as _rnd
 
@@ -1897,9 +1893,7 @@ def test_the_cumulative_record_does_not_converge_when_intent_flips(cfg, world):
 
     world.countries["Ranoa"].land = "interceptor"
     world.countries["Ranoa"].progress = 500.0
-    totals = []
-    for t, tool in enumerate(("destroy", "invest", "destroy"), 1):
-        world.turn = t
+    for tool in ("destroy", "invest"):
         a = world.agents["Asla1"]; a.ap = 1.0
         sink = Sink()
         args = {"to": "Ranoa", "reasoning": "r"}
@@ -1907,19 +1901,15 @@ def test_the_cumulative_record_does_not_converge_when_intent_flips(cfg, world):
             args["target"] = "facility"
         execute_tool(tool, args, world, a, cfg, sink, KNOB)
         world.inbox_queue.clear()
-        loop._settle_step(world, cfg, _rnd.Random(t * 7), sink, None, None,
-                          itertools.count(900 + t * 10), loop.RunResult(world=world),
-                          {}, [])
+        loop._settle_step(world, cfg, _rnd.Random(7), sink, None, None,
+                          itertools.count(900), loop.RunResult(world=world), {}, [])
         imp = [q["msg"] for q in world.inbox_queue
                if q["to"] == "Ranoa1" and "impact_by" in q["msg"]]
-        assert len(imp) == 1, (t, world.inbox_queue)
-        totals.append(imp[0]["impact_total"])
-    # 누적이 실제로 쌓인다 — 매 통지가 그때까지의 합이다
-    log = world.countries["Ranoa"].impact_log
-    assert totals[-1] == pytest.approx(log["Asla1"])
-    # 그리고 **사람별**이다 — 손 안 댄 사람은 기록에 없다
-    assert set(log) == {"Asla1"}
-
-    # 체크포인트가 이 기록을 넘긴다 — 안 넘기면 누적이 조용히 리셋된다
-    from core import checkpoint
-    assert checkpoint.VERSION >= 4, "Country 필드가 늘면 버전을 올려야 한다"
+        assert len(imp) == 1, (tool, world.inbox_queue)
+        m = imp[0]
+        assert m["impact_by"] == "Asla1"
+        # **누적은 시설의 것이다** — 통지 시점의 그 나라 진척과 같아야 한다
+        assert m["now"] == pytest.approx(world.countries["Ranoa"].progress)
+        # 사람별 기록은 두지 않는다 (되돌린 설계)
+        assert "impact_total" not in m
+        assert not hasattr(world.countries["Ranoa"], "impact_log")
