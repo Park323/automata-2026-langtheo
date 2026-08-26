@@ -232,6 +232,32 @@ class RunWriter:
         """
         for row in self._state_rows(turn, result.world, step=step):
             self._append("state", row)
+        # **국가 집계도 남긴다** (8/26). `state` 만 쓰면 뷰어의 「사람」 만 살고
+        # 「국가」 는 한 해 내내 「집계가 없습니다」 다 — 진척이 실시간으로 안 보인다.
+        # 여기 담는 것은 **세계의 상태**뿐이다 (진척·국토·자본·제안). 턴 로그에서
+        # 나오는 것(콜 수·벽시계·압박)은 그 해가 끝나야 정해지므로 안 담는다.
+        self._append("metrics", self._country_row(turn, result.world, step=step))
+
+    def _country_row(self, turn: int, world, step: int | None = None) -> dict:
+        """**세계의 상태만** — 해 도중에도 참인 값들. 턴 로그에서 나오는 것은 안 담는다.
+
+        `step` 이 붙은 줄은 해 도중의 스냅샷이다. 지표를 읽는 쪽은 `step is None` 만
+        봐야 한다 — 안 그러면 한 해가 여러 번 세어진다 (`state.jsonl` 과 같은 규약).
+        """
+        return {
+            "turn": turn, "step": step,
+            "alive": sum(1 for a in world.agents.values() if a.alive),
+            "progress": {c.id: round(c.progress, 3) for c in world.countries.values()},
+            "land": {c.id: c.land for c in world.countries.values()},
+            "national_capital": {c.id: round(c.national_capital, 3)
+                                 for c in world.countries.values()},
+            # **요격기 효율.** 시드마다 배정이 달라지므로 로그에 없으면 어느 나라가
+            # 최선이었는지 사후에 복원할 수 없다 — 결과 해석의 전제다.
+            "build_mult": {c.id: c.build_mult for c in world.countries.values()},
+            # **열린 제안.** vote 이벤트로만 남아 있어서, 제안이 열려 있던 구간을
+            # 사후에 복원하려면 이벤트를 되짚어야 했다.
+            "proposal": {c.id: c.proposal for c in world.countries.values()},
+        }
 
     def _state_rows(self, turn: int, world, step: int | None = None):
         for aid in sorted(world.agents):
@@ -341,19 +367,7 @@ class RunWriter:
         for lg in logs.values():
             ends[lg.get("ended_by", "?")] = ends.get(lg.get("ended_by", "?"), 0) + 1
         self._append("metrics", {
-            "turn": turn,
-            "alive": sum(1 for a in world.agents.values() if a.alive),
-            "progress": {c.id: round(c.progress, 3) for c in world.countries.values()},
-            "land": {c.id: c.land for c in world.countries.values()},
-            "national_capital": {c.id: round(c.national_capital, 3)
-                                 for c in world.countries.values()},
-            # **요격기 효율.** 시드마다 배정이 달라지므로 로그에 없으면 어느 나라가
-            # 최선이었는지 사후에 복원할 수 없다 — 결과 해석의 전제다.
-            "build_mult": {c.id: c.build_mult for c in world.countries.values()},
-            # **열린 제안.** vote 이벤트로만 남아 있어서, 제안이 열려 있던 구간을
-            # 사후에 복원하려면 이벤트를 되짚어야 했다 — 採決 전에 무슨 말이 오갔는지를
-            # 보려면 매 턴의 상태가 있어야 한다.
-            "proposal": {c.id: c.proposal for c in world.countries.values()},
+            **self._country_row(turn, world, step=None),
             "messages_this_turn": sum(1 for m in result.messages_log if m.get("turn") == turn),
             "agent_turns": len(logs), "llm_failures": failed,
             "llm_failure_rate": round(failed / len(logs), 4) if logs else 0.0,

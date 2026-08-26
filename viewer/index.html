@@ -172,7 +172,10 @@ function build(files){
     state: g("state.jsonl").filter(r => r.step == null),
     stepRows: g("state.jsonl").filter(r => r.step != null),
     messages: g("messages.jsonl"),
-    metrics: g("metrics.jsonl"), events: evs, summary,
+    // **`step` 이 붙은 줄은 해 도중의 스냅샷이다** — `state.jsonl` 과 같은 규약.
+    metrics: g("metrics.jsonl").filter(r => r.step == null),
+    stepMetrics: g("metrics.jsonl").filter(r => r.step != null),
+    events: evs, summary,
     knob: grab("knob_ai"), seed: grab("seed"), threshold: thr,
     turns: 0, byTurn: {},
   };
@@ -200,6 +203,16 @@ function build(files){
     b.live = lastStep[t];                             // 「몇 차례까지 왔나」
   });
   d.metrics.forEach(m => { if (d.byTurn[m.turn]) d.byTurn[m.turn].metric = m; });
+  // **진행 중인 해는 마지막 스냅샷의 집계를 쓴다** (8/26). 안 쓰면 「국가」 패널이
+  // 한 해 내내 「집계가 없습니다」 다 — 진척이 실시간으로 안 보인다.
+  const lastM = {};
+  d.stepMetrics.forEach(m => {
+    if (!(m.turn in lastM) || m.step > lastM[m.turn].step) lastM[m.turn] = m;
+  });
+  Object.keys(lastM).forEach(t => {
+    const b = d.byTurn[t];
+    if (b && !b.metric) b.metric = lastM[t];      // 끝난 해는 건드리지 않는다
+  });
   return d;
 }
 
@@ -318,7 +331,11 @@ function agents(b){
 }
 
 function messages(b){
-  if (!b.messages.length) return `<div class="empty">이 턴에는 아무도 말하지 않았습니다.</div>`;
+  // **거짓말을 하지 않는다** (8/26). `messages`·`events` 는 턴이 끝나야 써진다 —
+  // 진행 중인 해에 「아무도 말하지 않았습니다」 는 거짓이다 (실제로는 말했다).
+  if (!b.messages.length) return `<div class="empty">${b.live
+      ? `아직 집계 전입니다 (${b.live}차례째 진행 중)`
+      : "이 턴에는 아무도 말하지 않았습니다."}</div>`;
   return b.messages.map(m => {
     const t = m.meta || {};
     const failed = !m.delivered;
@@ -360,7 +377,9 @@ function events(b){
         foreign ? " foreign" : ""}">${label}</span>
       <span>${esc(describe(e))}</span></div>`;
     }).join("");
-  return `<h2>이 턴에 일어난 일</h2>${rows || `<div class="empty">—</div>`}`;
+  // 진행 중인 해는 아직 안 써진 것이지 없는 것이 아니다 (8/26)
+  return `<h2>이 턴에 일어난 일</h2>${rows || `<div class="empty">${b.live
+      ? `아직 집계 전입니다 (${b.live}차례째 진행 중)` : "—"}</div>`}`;
 }
 
 function describe(e){

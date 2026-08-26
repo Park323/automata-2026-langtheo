@@ -234,7 +234,8 @@ def score_run(run_dir: Path) -> dict:
     # **`step` 이 붙은 줄은 해 도중의 스냅샷이다** (8/26). 지표는 턴 끝 줄만 읽어야
 # 한다 — 안 그러면 한 해가 여러 번 세어진다.
     state = [r for r in judge.read_jsonl(rd / "state.jsonl") if r.get("step") is None]
-    mrows = judge.read_jsonl(rd / "metrics.jsonl")
+    # `step` 이 붙은 줄은 해 도중의 스냅샷이다 (8/26) — 턴 끝 줄만 읽는다.
+    mrows = [r for r in judge.read_jsonl(rd / "metrics.jsonl") if r.get("step") is None]
     judged = judge.read_jsonl(rd / "judged.jsonl")
     sp = rd / "summary.json"
     summary = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {}

@@ -264,7 +264,22 @@ def test_mid_turn_snapshots_are_marked_and_skipped_by_metrics(tmp_path, cfg):
     # 중간 줄도 **완전한 상태**다 — 턴 끝 줄과 같은 필드를 갖는다
     assert set(mid[0]) == set(end[0])
 
-    # **읽는 쪽이 실제로 거른다** — 소비자 넷의 코드를 구조로 본다
+    # **국가 집계도 스냅샷으로 남는다** (8/26). `state` 만 쓰면 뷰어의 「사람」 만 살고
+    # 「국가」 는 한 해 내내 「집계가 없습니다」 다 — 진척이 실시간으로 안 보인다.
+    mrows = [json.loads(l) for l in
+             (tmp_path / "t_step" / "metrics.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(mrows) == 3                                  # 스냅샷 둘 + 턴 끝 하나
+    mid_m = [r for r in mrows if r.get("step") is not None]
+    end_m = [r for r in mrows if r.get("step") is None]
+    assert sorted(r["step"] for r in mid_m) == [10, 20]
+    # 중간 줄은 **세계의 상태만** 담는다 — 턴 로그에서 나오는 것은 그 해가 끝나야 정해진다
+    assert set(mid_m[0]) < set(end_m[0]), "중간 줄이 턴 끝 줄보다 많이 담고 있다"
+    for k in ("progress", "land", "national_capital", "proposal", "alive"):
+        assert k in mid_m[0], k
+    for k in ("turn_wall_ms", "agent_turns", "messages_this_turn"):
+        assert k not in mid_m[0], k
+
+    # **읽는 쪽이 실제로 거른다** — 소비자의 코드를 구조로 본다
     for path, needle in (
             ("tools/interview.py", 'r.get("step") is None'),
             ("tools/score/metrics.py", 'r.get("step") is None'),
@@ -272,6 +287,12 @@ def test_mid_turn_snapshots_are_marked_and_skipped_by_metrics(tmp_path, cfg):
             ("viewer/index.html", "r.step == null")):
         src = (run_io.ROOT / path).read_text(encoding="utf-8")
         assert needle in src, path
+    # 뷰어는 **진행 중인 해에만** 스냅샷 집계를 쓴다 (끝난 해를 덮으면 값이 낡는다)
+    v = (run_io.ROOT / "viewer" / "index.html").read_text(encoding="utf-8")
+    assert "stepMetrics" in v
+    assert "if (b && !b.metric) b.metric = lastM[t];" in v
+    # 그리고 진행 중인 해에 「아무도 말하지 않았습니다」 라고 **거짓말하지 않는다**
+    assert "아직 집계 전입니다" in v
 
 
 def test_the_viewer_never_draws_a_turn_twice():
