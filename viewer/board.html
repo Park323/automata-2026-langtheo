@@ -565,8 +565,13 @@ function drawFlows(){
   // **지금 움직이는 사람**을 찾아 테두리를 준다 (8/27 · Eddie). 한 칸씩 짚어 볼 때
   // 행위자가 불분명했다 — 아홉 명이 다 색 테두리를 두르고 있었기 때문이다.
   {
-    const cur=list[Math.min(list.length-1, Math.floor(flowPhase/SPREAD*M))];
-    const who=cur && flowPhase>0 ? cur.from : null;
+    // **그리는 조건과 같은 자로 고른다** (8/27 · Eddie). `flowPhase` 에서 역산해
+    // `floor` 를 취하면 칸 경계에서 한 칸 어긋난다 — 화살표는 X2 인데 테두리는 A1 이었다.
+    // 아래 그리기 루프의 조건(`flowPhase > e._s`)을 그대로 써서 **마지막으로 그려진
+    // 화살표**를 집는다. 두 곳이 같은 식을 쓰므로 부동소수점까지 일치한다.
+    let cur=null;
+    for(const e of list){ if(flowPhase > e._s) cur=e; else break; }
+    const who=cur ? cur.from : null;
     document.querySelectorAll(".tok.acting").forEach(t=>t.classList.remove("acting"));
     if(who){ const el=document.getElementById("tok-"+(frame.succ[who]||who))
                    || document.getElementById("tok-"+who);
