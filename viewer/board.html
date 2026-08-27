@@ -43,6 +43,19 @@
   .prow .dlt{color:#7ee39a;font-weight:700}
   .bar{height:10px;border-radius:6px;background:#0b1120;border:1px solid var(--line);overflow:hidden}
   .bar>i{display:block;height:100%;width:0;border-radius:6px;transition:width .4s ease}
+  /* 좌·우 끝 세로 바 (Asla · Miris) */
+  /* `#stage` 가 `position:fixed` + transform 이라 그 밖에 두면 좌표계가 갈린다 —
+     같은 `fixed` 로 맞춘다. 화살표 목적지는 `getBoundingClientRect` 로 읽으므로
+     무대가 움직여도 끝점은 정확하다. */
+  .sidebar{position:fixed;top:46%;transform:translateY(-50%);
+    display:flex;flex-direction:column;align-items:center;gap:8px;z-index:3;pointer-events:none}
+  .sidebar.left{left:22px} .sidebar.right{right:22px}
+  .sidebar .slabel{font-size:12px;font-weight:700;letter-spacing:.04em}
+  .sidebar .snum{font-size:11px;color:var(--dim);white-space:nowrap}
+  .bar.vert{height:min(38vh,340px);width:16px;border-radius:9px;   /* 아래 범례를 피한다 */
+    display:flex;flex-direction:column;justify-content:flex-end}
+  /* 세로 바는 **아래에서 위로** 찬다 — 쌓이는 것이라 그 방향이 자연스럽다 */
+  .bar.vert>i{width:100%;height:0;border-radius:9px;transition:height .4s ease}
   /* 투표·국토 알림 */
   .vnotes{margin:4px 0 2px}
   .vnote{font-size:11px;border-radius:7px;padding:3px 8px;margin-top:4px;display:block;
@@ -165,6 +178,9 @@
     background:#12203a;border:2px solid #4a8cff;border-radius:14px;
     padding:10px 14px 12px;box-shadow:0 0 22px rgba(74,140,255,.35);text-align:center}
   .ballotbar.below{bottom:auto;top:calc(100% + 10px)}
+  /* 해 끝 사건 — 그 해의 행위가 다 흐른 뒤에 나타난다 */
+  .vnote.land,.deaths{opacity:0;transition:opacity .25s}
+  #stage.yearend .vnote.land,#stage.yearend .deaths{opacity:1}
   .bhead{font-size:15px;font-weight:800;color:#9fc6ff;letter-spacing:.03em}
   .btally{display:flex;justify-content:center;gap:18px;margin-top:6px;
     font-size:15px;font-weight:700}
@@ -202,6 +218,11 @@
   <span class="lg"><i style="background:#5b9df9"></i>Miris어</span>
 </div>
 <div id="stage"></div>
+<!-- **Asla·Miris 의 진척은 화면 좌·우 끝에 세로로** (8/27 · Eddie). 패널 안에 있으면
+     투자 화살표가 그 나라 사람들 위를 지나가 복잡해진다. 가장자리로 빼면 화살표가
+     바깥으로 빠져나가 서로 안 겹친다. Ranoa 는 위쪽이라 그대로 둔다. -->
+<div class="sidebar left" id="side-Asla"></div>
+<div class="sidebar right" id="side-Miris"></div>
 
 <div id="legend">
   <span><i style="background:#a371f7"></i>AI 번역 대화</span>
@@ -311,8 +332,16 @@ function build(files){
     else if(e.type==="vote" && e.kind==="propose" && e.opened!==false)
       b.ballotDay.add(e.country);
     // 개별 표. 採決이 주기로 돌아오므로 「누가 무엇에 던졌나」 가 계속 갱신된다
-    else if(e.type==="vote" && e.kind==="ballot") b.ballots[e.by]=e.choice;
+    else if(e.type==="vote" && e.kind==="ballot"){ b.ballots[e.by]=e.choice;
+      b.flows.push({kind:"act", act:"vote", from:e.by, seq:e.seq, choice:e.choice}); }
     // **파괴는 투자가 아니다** — 부호가 반대인 행위라 같은 화살표로 그리면 거짓이다
+    // **행위인데 차례가 없었다** (8/27 · Eddie). 학습·관측·표가 그 해 처음부터 떠
+    // 있었다. `seq` 가 붙었으므로 투자·대화와 같은 줄에 세운다 — 화살표는 없고
+    // 그 사람 토큰에 흰 테두리만 옮겨 온다.
+    else if(e.type==="learn" && e.kind==="acquired")
+      b.flows.push({kind:"act", act:"learn", from:e.agent, seq:e.seq, lang:e.lang});
+    else if(e.type==="risk_observe")
+      b.flows.push({kind:"act", act:"observe", from:e.agent, seq:e.seq});
     else if(e.type==="facility_gain") b.flows.push({kind:e.kind==="destroy"?"destroy":"invest",
       from:e.agent, toNat:e.to, seq:e.seq,
       foreign: natOf(e.agent)!==e.to, amount:e.amount, gain:e.gain}); });
@@ -384,18 +413,34 @@ function render(){
       <div class="agents"></div>
       <div class="deaths"></div>`;
     st.appendChild(el);
+    // **바를 가장자리로 옮긴다.** id 가 그대로이므로 화살표 목적지(`ptOf("bar-"+nat)`)가
+    // 자동으로 따라온다 — 두 군데에 좌표를 적지 않는다.
+    const side=document.getElementById("side-"+nat);
+    if(side){
+      const bar=el.querySelector(".bar"), prow=el.querySelector(".prow");
+      side.innerHTML="";
+      const lab=document.createElement("div"); lab.className="slabel";
+      lab.style.color=HEX[lang]; lab.textContent=nat; side.appendChild(lab);
+      bar.classList.add("vert");
+      const fill=bar.querySelector("i");
+      fill.style.width=""; fill.style.height=pct+"%";
+      side.appendChild(bar);
+      const num=document.createElement("div"); num.className="snum";
+      num.textContent=`${Math.round(prog)} / ${thr?Math.round(thr):"?"}${done?" ✅":""}`;
+      side.appendChild(num);
+      prow.remove();                     // 패널 안의 숫자 줄은 바를 따라간다
+    }
     // **採決의 해에는 패널 위에 큼직하게 띄운다** (8/27 · Eddie). 국가 블럭 안에 작게
     // 두면 그 해가 採決인지 한눈에 안 들어온다 — 30해에 열 번뿐인 사건이다.
     if(frame.ballotDay.has(nat)){
-      const v={interceptor:0,bunker:0,abstain:0};
-      for(const [who,ch] of Object.entries(frame.ballots))
-        if(natOf(who)===nat && ch in v) v[ch]++;
+      // **집계가 살아 움직인다** (8/27). 표에도 `seq` 가 붙었으므로 한 장씩 들어온다 —
+      // 「투표 진행중」 이 말 그대로가 된다. 숫자는 `drawFlows` 가 채운다.
       const bar=document.createElement("div"); bar.className="ballotbar";
       bar.innerHTML=`<div class="bhead">🗳 투표 진행중</div>`+
         `<div class="btally">`+
-          `<span class="bi">Interceptor <b>${v.interceptor}</b></span>`+
-          `<span class="bb">Bunker <b>${v.bunker}</b></span>`+
-          `<span class="ba">기권 <b>${v.abstain}</b></span>`+
+          `<span class="bi">Interceptor <b id="bal-${nat}-interceptor">0</b></span>`+
+          `<span class="bb">Bunker <b id="bal-${nat}-bunker">0</b></span>`+
+          `<span class="ba">기권 <b id="bal-${nat}-abstain">0</b></span>`+
         `</div>`;
       el.appendChild(bar);
       // **위가 좁으면 아래로 뒤집는다.** Ranoa 는 화면 위쪽(y 28%)이라 패널 위에
@@ -539,12 +584,15 @@ function edgesOf(frame){
   const openBy={}, list=[];            // 사람 → 지금 이어지는 화살표
   frame.flows.forEach((f,fi)=>{
     if(f.kind==="msg" && !showMsg) return;
-    if(f.kind!=="msg" && !showInvest) return;
+    if(f.kind==="invest"||f.kind==="destroy"){ if(!showInvest) return; }
     // **투자와 파괴를 한 통에 넣지 않는다** — 부호가 반대라 합치면 서로를 지운다
-    const key=f.kind==="msg"?`m|${f.from}|${f.to}`:`${f.kind[0]}|${f.from}|${f.toNat}`;
+    // 화살표 없는 행위(학습·관측·표)는 `act` 로 각각 한 칸을 차지한다 — 합치지 않는다.
+    const key=f.kind==="msg"?`m|${f.from}|${f.to}`
+             :f.kind==="act"?`a|${f.from}|${f.act}|${f.seq}`
+             :`${f.kind[0]}|${f.from}|${f.toNat}`;
     let e=openBy[f.from];
     if(!e || e.key!==key){          // 하던 것과 다른 행위 → 새 화살표를 연다
-      e={key, kind:f.kind, from:f.from, to:f.to, toNat:f.toNat, foreign:f.foreign,
+      e={key, kind:f.kind, act:f.act, from:f.from, to:f.to, toNat:f.toNat, foreign:f.foreign,
          count:0, amount:0, gain:0, ai:false, orig:false,
          // **첫 등장으로 자리를 잡는다.** 마지막으로 덮어쓰면 초반에 한 일이 후반으로
          // 밀린다 — `seq` 로 정렬해 놓고도 순서가 어긋나던 이유다.
@@ -603,6 +651,22 @@ function drawFlows(){
     let cur=null;
     for(const e of list){ if(flowPhase > e._s) cur=e; else break; }
     const who=cur ? cur.from : null;
+    // **집계는 지금까지 들어온 표만 센다** — 「투표 진행중」 이 말 그대로가 된다
+    const tal={};
+    for(const e of list){
+      if(flowPhase <= e._s) break;
+      if(e.kind==="act" && e.act==="vote"){
+        const n=natOf(e.from); (tal[n]=tal[n]||{interceptor:0,bunker:0,abstain:0});
+        if(e.choice in tal[n]) tal[n][e.choice]++;
+      }
+    }
+    for(const nat in POS) for(const ch of ["interceptor","bunker","abstain"]){
+      const b=document.getElementById(`bal-${nat}-${ch}`);
+      if(b) b.textContent=(tal[nat]&&tal[nat][ch])||0;
+    }
+    // **해 끝 사건은 해 끝에** (8/27 · Eddie). 국토 결정·유언은 정산에서 일어나므로
+    // 그 해의 행위가 다 흐른 뒤에 나타나야 한다 — 처음부터 떠 있으면 결말을 미리 안다.
+    $("#stage").classList.toggle("yearend", flowPhase>=SPREAD);
     document.querySelectorAll(".tok.acting").forEach(t=>t.classList.remove("acting"));
     if(who){ const el=document.getElementById("tok-"+(frame.succ[who]||who))
                    || document.getElementById("tok-"+who);
@@ -611,6 +675,7 @@ function drawFlows(){
   list.forEach((e,i)=>{
     const local=(flowPhase - e._s)/GROW;
     if(local<=0) return;
+    if(e.kind==="act") return;          // 화살표 없는 행위 — 칸만 차지한다
     const rec=recOp(e._rank);          // FIFO 최근도
     if(rec<=0.02) return;              // 오래된 건 사라짐
     const td=Math.min(1,local), growing=td<1, dim=focusAgent && !inFocus(e);

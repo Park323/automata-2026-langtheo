@@ -584,9 +584,14 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
                     "age": a.age,
                     "discount_domestic": agent_loop.learn_discounts(a, cid, world)[0],
                     "discount_parent": agent_loop.learn_discounts(a, cid, world)[1],
+                    # **순서 키** (8/27 · Eddie). 투자와 메시지에만 있어서 뷰어에서
+                    # 학습·관측·표가 **그 해 처음부터 떠 있었다.** 행위인데 차례가 없었다.
+                    # 순차 라운드로빈은 사람마다 정산이 돌므로, 여기서 찍으면 그 사람의
+                    # 차례 안에 들어간다 (투자·메시지와 같은 카운터).
+                    "seq": next(msg_ids),
                 })
     for o in sorted(sink.observations, key=lambda x: (x["agent"], x["nth"])):
-        result.risk_log.append({"turn": world.turn, **o})
+        result.risk_log.append({"turn": world.turn, "seq": next(msg_ids), **o})
 
     # b. 시설 투자 — 국가별 집계, cap 초과분은 비례 환급(순서 무관, #12), 진척 판정
     by_country: dict[str, list] = defaultdict(list)
@@ -708,7 +713,7 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     ballots_by: dict[str, list] = defaultdict(list)
     for by, country, choice in sorted(sink.ballots):
         ballots_by[country].append((by, choice))
-        result.votes_log.append({"turn": world.turn, "kind": "ballot",
+        result.votes_log.append({"turn": world.turn, "kind": "ballot", "seq": next(msg_ids),
                                  "by": by, "country": country, "choice": choice})
     _tally_ballots(world, cfg, result, ballots_by)
 
@@ -995,7 +1000,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
                     "discount_domestic": agent_loop.learn_discounts(a, cid, world)[0],
                     "discount_parent": agent_loop.learn_discounts(a, cid, world)[1]})
     for o in sink.observations:
-        result.risk_log.append({"turn": world.turn, **o})
+        result.risk_log.append({"turn": world.turn, "seq": next(msg_ids), **o})
     # 시설 — 이번 턴 국가별 누적(turn_facility) 기준 **선착순 cap**, 즉시 진척 + 같은 턴 통지
     #
     # **`prog_up` 을 없앴다** (8/26 · Eddie). 그것은 `impact` 가 없던 시절의 유일한
@@ -1150,7 +1155,7 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
     # 투표 — 採決은 시계가 열었다 (`open_ballots`). ballot 은 누적(턴 끝 개표)
     for by, country, choice in sink.ballots:
         ballots_acc.append((by, country, choice))
-        result.votes_log.append({"turn": world.turn, "kind": "ballot",
+        result.votes_log.append({"turn": world.turn, "kind": "ballot", "seq": next(msg_ids),
                                  "by": by, "country": country, "choice": choice})
 
 
