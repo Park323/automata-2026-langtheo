@@ -47,10 +47,8 @@
   .vnotes{margin:4px 0 2px}
   .vnote{font-size:11px;border-radius:7px;padding:3px 8px;margin-top:4px;display:block;
     border:1px solid var(--line);background:#12213a;color:#cdd6e4}
-  .vnote.propose{color:#8ab4f8;border-color:#2b3f66;background:#111c33}
   .vnote.land{color:#7fe0ff;border-color:#2b6f8a;background:#0e2530}
   .vnote.land.lost{color:#ffb0b0;border-color:#7a2b2b;background:#241316}
-  .vnote .tal{color:var(--dim);font-size:10px;margin-left:4px}
   .vnote .lost{color:#ff8a8a;font-weight:700;margin-left:4px}
   /* 사망 알림 */
   .deaths{margin-top:8px;min-height:0}
@@ -161,6 +159,17 @@
   #legend span{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#c3ccda;white-space:nowrap}
   #legend i{width:22px;height:3px;border-radius:2px;flex:none}
   #legend i.dash{background:none!important;border-top:3px dashed #3fb950;height:0}
+  /* 採決의 해 — 국가 패널 **위에** 붙는 서브 블럭 (8/27 · Eddie).
+     패널이 `position:absolute` 라 `bottom:100%` 로 그 위에 얹힌다. */
+  .ballotbar{position:absolute;left:0;right:0;bottom:calc(100% + 10px);
+    background:#12203a;border:2px solid #4a8cff;border-radius:14px;
+    padding:10px 14px 12px;box-shadow:0 0 22px rgba(74,140,255,.35);text-align:center}
+  .ballotbar.below{bottom:auto;top:calc(100% + 10px)}
+  .bhead{font-size:15px;font-weight:800;color:#9fc6ff;letter-spacing:.03em}
+  .btally{display:flex;justify-content:center;gap:18px;margin-top:6px;
+    font-size:15px;font-weight:700}
+  .btally b{font-size:19px;margin-left:5px}
+  .btally .bi{color:#7fe0ff} .btally .bb{color:#ffcf7a} .btally .ba{color:#8b949e}
   /* 그 해에 던진 표 · 採決 알림 · 국토 결정과 전환의 구분 (8/27) */
   .bal{font-size:10px;margin-top:2px;padding:1px 5px;border-radius:6px;white-space:nowrap;
        border:1px solid currentColor;opacity:.9}
@@ -375,12 +384,28 @@ function render(){
       <div class="agents"></div>
       <div class="deaths"></div>`;
     st.appendChild(el);
+    // **採決의 해에는 패널 위에 큼직하게 띄운다** (8/27 · Eddie). 국가 블럭 안에 작게
+    // 두면 그 해가 採決인지 한눈에 안 들어온다 — 30해에 열 번뿐인 사건이다.
+    if(frame.ballotDay.has(nat)){
+      const v={interceptor:0,bunker:0,abstain:0};
+      for(const [who,ch] of Object.entries(frame.ballots))
+        if(natOf(who)===nat && ch in v) v[ch]++;
+      const bar=document.createElement("div"); bar.className="ballotbar";
+      bar.innerHTML=`<div class="bhead">🗳 투표 진행중</div>`+
+        `<div class="btally">`+
+          `<span class="bi">Interceptor <b>${v.interceptor}</b></span>`+
+          `<span class="bb">Bunker <b>${v.bunker}</b></span>`+
+          `<span class="ba">기권 <b>${v.abstain}</b></span>`+
+        `</div>`;
+      el.appendChild(bar);
+      // **위가 좁으면 아래로 뒤집는다.** Ranoa 는 화면 위쪽(y 28%)이라 패널 위에
+      // 자리가 없을 수 있다 — 그러면 잘려서 아예 안 보인다.
+      if(bar.getBoundingClientRect().top < 8) bar.classList.add("below");
+    }
     // 투표 소집 · 국토 결정(진척 소실) 알림
     const vbox=el.querySelector(".vnotes");
-    // **소집자가 없다** — 시계가 연다. 「누가 불렀나」 대신 「올해가 採決의 해」 다.
-    if(frame.ballotDay.has(nat)){
-      const n=document.createElement("div"); n.className="vnote propose";
-      n.textContent="🗳 올해는 採決의 해"; vbox.appendChild(n); }
+    // 「올해는 採決의 해」 와 집계는 **패널 위 서브 블럭**으로 옮겼다 (8/27 · Eddie) —
+    // 아래(`.ballotbar`). 여기 남는 것은 국토가 실제로 정해지거나 바뀐 사건뿐이다.
     frame.lands.filter(x=>x.country===nat).forEach(x=>{
       // **처음 정하는 것과 갈아엎는 것은 다른 사건이다.** 첫 採決이 1해에 강제되면서
       // 미정→결정도 `changed: true` 로 남는다 (`from` 이 null 이다).
@@ -388,9 +413,7 @@ function render(){
       const n=document.createElement("div");
       n.className="vnote land"+(x.lost>0?" lost":"")+(first?" first":"");
       const ico=x.chosen==="bunker"?"🕳 벙커":"🛰 요격기";
-      const cc=x.counts||{}; const tally=`요격 ${cc.interceptor||0}·벙커 ${cc.bunker||0}·기권 ${cc.abstain||0}`;
       n.innerHTML=(first?`🗳 국토 결정 ${ico}`:`🗳 국토 전환 → ${ico}`)+
-        ` <span class="tal">${tally}</span>`+
         // 잃은 것만 적으면 「전부 날아갔다」 로 읽힌다 — 남은 것도 함께.
         // 새 규칙에서 남는 것은 **자국이 쌓은 몫**이다 (타국 기여만 사라진다).
         (x.lost>0?` <span class="lost">−${Math.round(x.lost)} 소실</span>`+
