@@ -455,9 +455,13 @@ function render(){
       //       x   ㅁ     x       ㅁ
       //      x     ㅁ     x     ㅁ
       //     x       ㅁ     x   ㅁ
+      // **지구 바로 위에 있는 나라는 뒤집지 않는다** (8/27 · Eddie). 뒤집는 뜻은
+      // 「아래로 갈수록 안쪽으로 모은다」 인데, 지구가 정면 아래면 가로로 모일 데가
+      // 없다 — 뒤집으면 ^ 가 되고, 안 뒤집으면 V 로 지구를 향해 열린다.
+      const flip = Math.abs(ux) > 0.3 ? -1 : 1;
       const slots=[-1,0,1].map(k=>{ const th=k*ANG;
         const rx=ux*Math.cos(th)-uy*Math.sin(th), ry=ux*Math.sin(th)+uy*Math.cos(th);
-        return {ox:R*(rx-ux), oy:-R*(ry-uy)}; });
+        return {ox:R*(rx-ux), oy:flip*R*(ry-uy)}; });
       const out=[slots[0],slots[2]].sort((a,b)=> (a.oy-b.oy) || (a.ox-b.ox));
       const ordered=[out[0], slots[1], out[1]];   // #1(위/왼) · #2(가운데) · #3
       const minOy=Math.min(...ordered.map(s=>s.oy)), maxOy=Math.max(...ordered.map(s=>s.oy));
