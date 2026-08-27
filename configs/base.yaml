@@ -379,7 +379,24 @@ llm:
   warn_ratio:    0.7              # 5,734 토큰에서 압박 경고
   repeat_guard:  3                # 동일 (도구,인자) 반복 상한. max_steps 는 두지 않는다
   agent_model:     "deepseek/deepseek-v4-flash"           # tools OK · 사고형
-  translate_model: "mistralai/mistral-small-3.2-24b-instruct"  # 파일럿 확정 — 고정 (바꾸지 말 것)
+  # **번역기를 qwen3.6 으로 옮겼다** (8/27 · Eddie). mistral-small 3.2 는 이 모델을
+  # 서빙하는 곳이 셋뿐이고 **같은 정밀도는 DeepInfra 하나**였다. 그 하나가 막혀
+  # 260827-002 가 18해에 섰고, 번역 5통이 유실됐다 (국제 메시지의 1.0% — 규칙대로
+  # 불달한 2.3% 와 같은 자리수라 인공물이 신호를 먹는다).
+  #
+  # qwen3.6-35b-a3b 는 **fp8 이 여덟 곳**이다. 속도는 같다 (실측 3문장):
+  #
+  #     mistral-small 3.2   지연중앙 1,780ms   fp8 1곳
+  #     qwen3.6-35b-a3b     지연중앙 2,007ms   fp8 8곳
+  #
+  # ⚠ **사고를 반드시 끈다** — 이 모델은 기본이 사고 ON 이고, 그러면 번역 한 통이
+  #   40~100초·사고 1,800~3,700 토큰이 된다 (30배). 그런데 번역문은 사실상 같았다:
+  #
+  #     ON   距离陨石还有约17年。拦截机需要11858的进度，目前仅为2638。…   44,658ms
+  #     OFF  距离陨石撞击还有约17年。拦截系统需要11858的进度，目前仅有2638。… 1,730ms
+  #
+  #   숫자 보존도 3/3 로 같다. 사고가 번역에 아무것도 보태지 않는다.
+  translate_model: "qwen/qwen3.6-35b-a3b"
   temperature:     0.7
   # 응답 상한. 없으면 모델이 같은 문장을 반복하다 붕괴한다 — 실측에서 한 응답이
   # 40,935자였고 그 턴의 벽시계를 통째로 잡아먹었다. **사고와 나눠 쓴다.**
@@ -490,8 +507,13 @@ llm:
   #   실패다 — 조용히 bf16 으로 새는 것보다 낫고, `rate_limit_abort` 와 매해 복원점이
   #   받아 준다. 대안이 필요하면 **번역 모델 자체를 바꿔야** 한다.
   translate_provider:
-    order: [DeepInfra]
+    # 전부 fp8 · 값싼 순. **Darkbloom 제외** — 혼자 fp4 라 섞이면 정밀도가 갈린다 (Eddie).
+    order: [DeepInfra, Venice, AkashML, Parasail, AtlasCloud, Io Net]
     allow_fallbacks: false
+  # **번역기는 사고를 끈다.** 위 translate_model 주석의 실측 참조 — 켜면 30배 느려지고
+  # 번역은 그대로다. 에이전트의 `reasoning` 과 별개로 둔다 (그쪽은 사고가 자료다).
+  translate_reasoning:
+    enabled: false
   # **429 폭풍 차단기** (8/27 · Eddie). 코드 기본값 5 만 있고 yaml 에 없었다 —
   # 「숫자를 두 군데 적으면 하나가 낡는다」 의 반대 사고로, 여기 없으면 조절할 곳이
   # 없는 줄 알게 된다. 값을 올리며 함께 옮긴다.

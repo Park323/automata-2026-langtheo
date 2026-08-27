@@ -249,6 +249,10 @@ def main() -> None:
                          # **번역기도 업체를 고정한다** (8/26). 안 넘기면 매 호출 다른
                          # 업체로 가고 양자화가 섞인다 — `core/config.py` 주석 참조.
                          provider=cfg.llm.translate_provider,
+                         # **사고를 끈다** (8/27). 안 넘기면 모델 기본값이 적용되고,
+                         # qwen3.6 은 기본이 사고 ON 이라 번역 한 통이 40~100초가 된다.
+                         # 에이전트의 `reasoning` 을 쓰면 안 된다 — 그쪽은 켜야 한다.
+                         reasoning=cfg.llm.translate_reasoning,
                          rate_guard=rate_guard,
                          seed=args.seed if det else None), "translate")
     if det:

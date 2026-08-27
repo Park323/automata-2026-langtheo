@@ -141,7 +141,12 @@ class OpenRouterClient:
     """
 
     def __init__(self, model: str, api_key: str | None = None,
-                 temperature: float = 0.7, retries: int = 4, timeout: int = 120,
+                 # **4 → 10** (8/27 · Eddie). 260827-002 에서 소진된 번역 5건이
+                 # **전부 4회 상한에 걸렸다** (`[4,4,4,4,4]`) — 총 대기 56초로는
+                 # 429 가 몰리는 구간(10해에 19건)을 못 넘긴다. 번역 유실은 세계의
+                 # 사실이 아니라 인프라 사고이므로 「몇 번 만에 포기」 가 아니라
+                 # 「끝까지 기다린다」 가 옳다. 10회면 최악 7분이고 한 해가 7.4분이다.
+                 temperature: float = 0.7, retries: int = 10, timeout: int = 120,
                  recorder=None, deadline: float = 90.0, max_tokens: int | None = None,
                  reasoning: dict | None = None, provider: dict | None = None,
                  seed: int | None = None, backend: str = "openrouter",

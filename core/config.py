@@ -245,6 +245,9 @@ class LLM:
     # 죽은 번역은 **세계에 뚫린 구멍**이고 되돌릴 수 없다. 그럴 바에는 세우고 나중에
     # 이어한다 — 매해 복원점이 있으므로 이어붙이는 값이 싸다. 0 이면 끈다.
     rate_limit_abort: int = 5
+    # **번역기 전용 사고 설정.** 에이전트와 갈라 둔다 — 그쪽은 사고가 자료이고
+    # 번역기는 사고가 30배의 지연만 만든다 (configs/base.yaml 실측).
+    translate_reasoning: dict | None = None
 
 
 @dataclass(frozen=True)
