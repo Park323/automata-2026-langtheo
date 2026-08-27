@@ -560,9 +560,13 @@ function drawFlows(){
   const GROW=SPREAD/M;                 // 한 칸 = 한 행위. 겹치지 않는다
   flowCount=M;                         // 재생 속도를 행위 하나 기준으로 잡는 데 쓴다
   // #2 FIFO — 사람마다 나온 순서대로, 최근 것이 진하고 오래된 건 흐려지며 사라진다
+  // **그리는 조건과 같은 부등호를 쓴다** (8/27 · Eddie). 순위는 `>=`, 그리기는 `>` 라
+  // 칸 경계에서 **아직 안 그려진 화살표**가 순위에 끼어들었다. 그러면 방금 그려진 것이
+  // rank 1 로 밀려 **처음부터 0.42 로 흐리게** 나온다 — 41칸 중 40칸이 그랬다.
+  // 수동 스텝은 매 칸이 정확히 그 경계다.
   const grp={}; list.forEach(e=>{ (grp[e.from]=grp[e.from]||[]).push(e); });
   for(const s in grp){ grp[s].forEach(e=>e._rank=99);
-    grp[s].filter(e=>flowPhase>=e._s).sort((a,b)=>b._s-a._s).forEach((e,r)=>e._rank=r); }
+    grp[s].filter(e=>flowPhase>e._s).sort((a,b)=>b._s-a._s).forEach((e,r)=>e._rank=r); }
   const recOp=r=> r===0?1 : r===1?0.42 : r===2?0.12 : 0;   // 최근2 진하게, 그 뒤 페이드아웃
   const inFocus=e=> !focusAgent || canon(e.from)===focusAgent || (e.kind==="msg"&&canon(e.to)===focusAgent);
 
