@@ -66,6 +66,19 @@ def _run(cfg, clients, translator=None, knob_ai=KNOB, seed=1, parallel=True, seq
 
 # ── #5 도착 지연 ─────────────────────────────────────────────────────────────
 
+def _slot_agent(world, nat, slot):
+    """그 나라 `slot` 번째 자리에 **지금 앉아 있는 사람**.
+
+    `Asla1` 을 이름으로 찾으면 안 된다 (8/27) — 죽으면 Asla4·Asla7 로 이어지므로,
+    RNG 흐름이 조금 바뀌어도 테스트가 깨진다. 실제로 `build_spread` 섞기를 없애자
+    난수가 밀려 두 테스트가 `KeyError: 'Asla1'` 로 죽었다. 재는 것은 「그 자리 사람의
+    대화」 이고 이름이 아니다.
+    """
+    got = sorted((a for a in world.agents.values() if a.country == nat),
+                 key=lambda a: int(a.id[len(nat):]))
+    return got[slot - 1]
+
+
 def test_message_delivery_delayed():
     """이번 턴 발신은 다음 턴 관측에 나타난다 (같은 턴엔 없음)."""
     cfg = _cfg(2)
@@ -182,7 +195,7 @@ def test_state_lives_in_system_and_never_piles_up_in_the_conversation():
                                    "tool_calls": []}] * 30),
                       48.0, prompts.render_turn_open, prompts.system_for,
                       parallel=False)
-    convo = res.world.agents["Asla1"].convo
+    convo = _slot_agent(res.world, "Asla", 1).convo
     users = [m["content"] for m in convo if m["role"] == "user"]
     assert len(users) == 3                       # 해마다 한 마디
     for u in users:

@@ -60,6 +60,19 @@ def _turn(world, cfg, aid, script, warn=False):
 
 # ── 누적 ──────────────────────────────────────────────────────────────────────
 
+def _slot_agent(world, nat, slot):
+    """그 나라 `slot` 번째 자리에 **지금 앉아 있는 사람**.
+
+    `Asla1` 을 이름으로 찾으면 안 된다 (8/27) — 죽으면 Asla4·Asla7 로 이어지므로,
+    RNG 흐름이 조금 바뀌어도 테스트가 깨진다. 실제로 `build_spread` 섞기를 없애자
+    난수가 밀려 두 테스트가 `KeyError: 'Asla1'` 로 죽었다. 재는 것은 「그 자리 사람의
+    대화」 이고 이름이 아니다.
+    """
+    got = sorted((a for a in world.agents.values() if a.country == nat),
+                 key=lambda a: int(a.id[len(nat):]))
+    return got[slot - 1]
+
+
 def test_conversation_persists_across_turns(cfg, world):
     """대화는 태어나서 죽을 때까지 이어진다 — 턴마다 버리지 않는다."""
     a, _, _ = _turn(world, cfg, "Asla1", [assistant_msg(tool_call("end_turn", "1", reasoning="r"))])
@@ -221,6 +234,10 @@ def test_no_max_steps_constant():
 def test_sender_context_has_no_translation(cfg):
     """발신자 컨텍스트에 번역 결과·절단본이 새면 왜곡을 즉시 알아챈다."""
     object.__setattr__(cfg.world, "total_turns", 2)
+    # **아무도 죽지 않게 한다** (8/27). 이 테스트가 재는 것은 「발신자 컨텍스트에 번역이
+    # 새는가」 이고 수명이 아니다. 발신자가 죽으면 그 대화가 세계에서 사라져서, RNG 흐름이
+    # 조금 밀리기만 해도 잴 대상이 없어진다 — `build_spread` 섞기를 없애자 그렇게 됐다.
+    object.__setattr__(cfg.survival, "lambda_base", 1e6)
     ids = [f"{c}{i}" for c in ("Asla", "Ranoa", "Miris") for i in (1, 2, 3)]
     end = assistant_msg(tool_call("end_turn", "e", reasoning="r"))
     long_text = "隕石が接近しています。" * 30          # 130자 상한을 넘겨 절단시킨다

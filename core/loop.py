@@ -121,7 +121,17 @@ def init_world(cfg, counter: "itertools.count", rng: random.Random | None = None
     if len(builds) != len(defs):
         raise ValueError(f"facility.build_spread 는 나라 수({len(defs)})와 같아야 한다 "
                          f"— 지금 {len(builds)}개")
-    rng.shuffle(builds)
+    # **섞지 않는다** (8/27 · Eddie). 전에는 `rng.shuffle` 로 씨앗마다 순열이 달랐는데,
+    # 그러면 씨앗을 바꾸는 것이 **두 가지를 동시에** 바꾼다 — 나이·처리량·LLM 확률성과
+    # **배수 배치**. 반복 실험에서 「28해 배신이 우연인가」 를 물을 때 배치까지 달라지면
+    # 무엇이 달라져서 결과가 달라졌는지 못 가른다.
+    #
+    # 게다가 순열이 균등하지도 않았다 — 씨앗 1~20 에서 여섯 순열이 6·5·4·2·2·1 로
+    # 나왔고, 1·2·3 이 **우연히 같은 배치**였다. 반복이라고 믿고 돌린 씨앗 2 가
+    # 실제로는 반복이었던 것은 다행이지 설계가 아니었다.
+    #
+    # 이제 `build_spread` 의 순서가 나라 정의 순서에 그대로 붙는다 — yaml 이 유일한
+    # 출처이고, 배치를 바꾸려면 그 줄을 고친다.
     for n, cdef in enumerate(defs):
         countries[cdef.id] = Country(id=cdef.id, lang=cdef.lang, build_mult=builds[n])
         # 순환으로 이웃 나라 말을 하나 심는다. 어느 나라도 고립되지 않고,
