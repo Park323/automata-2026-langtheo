@@ -323,7 +323,8 @@ function build(files){
     // **행위인데 차례가 없었다** (8/27 · Eddie). 학습·관측·표가 그 해 처음부터 떠
     // 있었다. `seq` 가 붙었으므로 투자·대화와 같은 줄에 세운다 — 화살표는 없고
     // 그 사람 토큰에 흰 테두리만 옮겨 온다.
-    else if(e.type==="learn" && e.kind==="acquired")
+    // 지불 한 번(`kind` 없음)도 취득(`acquired`)도 다 행위다
+    else if(e.type==="learn")
       b.flows.push({kind:"act", act:"learn", from:e.agent, seq:e.seq, lang:e.lang});
     else if(e.type==="risk_observe")
       b.flows.push({kind:"act", act:"observe", from:e.agent, seq:e.seq});

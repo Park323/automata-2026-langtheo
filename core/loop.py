@@ -557,7 +557,9 @@ def _settle_agentic(world: World, cfg, rng: random.Random, sink: Sink, translato
     #    정렬 순으로 도는 이유 — 같은 턴에 둘이 배우면 국내 구사자 판정이 순서를 탄다.
     for rec in sorted(sink.learns, key=lambda r: r["agent"]):
         a = world.agents.get(rec["agent"])
-        result.learns_log.append({"turn": world.turn, **rec})
+        # **지불 한 번도 행위다.** 취득(`acquired`)에만 순서 키를 찍었더니 학습 호출
+        # 열한 건이 여전히 그 해 내내 떠 있었다 (t_seq 실측 14건 중 11건).
+        result.learns_log.append({"turn": world.turn, "seq": next(msg_ids), **rec})
         if a is None:
             continue
         # 진척은 execute_tool 이 **이미** 쌓았다 (한 해에 여러 번 내는 것이 정상
@@ -978,7 +980,9 @@ def _settle_step(world: World, cfg, rng: random.Random, sink: Sink, translator,
     #   turn 3  acquired      charged 200            ← 아직 200 이 아닌데 취득이 찍힌다
     #   turn 3  progress_before 180  charged 13.3    ← 이것이 완주시킨 납부다
     for rec in sink.learns:
-        result.learns_log.append({"turn": world.turn, **rec})
+        # **지불 한 번도 행위다.** 취득(`acquired`)에만 순서 키를 찍었더니 학습 호출
+        # 열한 건이 여전히 그 해 내내 떠 있었다 (t_seq 실측 14건 중 11건).
+        result.learns_log.append({"turn": world.turn, "seq": next(msg_ids), **rec})
     for rec in sink.learns:
         a = world.agents.get(rec["agent"])
         if a is None:
