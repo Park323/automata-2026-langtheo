@@ -474,23 +474,42 @@ function drawFlows(){
   const canon=id=>frame.succ[id]||id;          // 죽은 행위자 → 후손 (집중 매칭용)
 
   // 같은 쌍 합치기 (대화: 사람→사람 · 투자: 사람→나라)
-  const edges=new Map();
+  // **연속한 같은 행위만 합친다** (8/27 · Eddie). 「투자·투자·투자」 는 한 화살표가
+  // 맞지만 「투자·대화·투자」 는 두 번이다 — 그 사이에 다른 일이 있었으므로.
+  //
+  // 전에는 (사람→대상) 키로 그 해 전체를 합쳤다. 그래서 10해 실측에서 행위 72건이
+  // 화살표 34개가 되고, **한 사람이 연달아 다섯 번 투자한 것과 해가 갈리도록 띄엄띄엄
+  // 다섯 번 투자한 것이 같은 그림**이 됐다.
+  const openBy={};                       // 사람 → 지금 이어지는 화살표
+  const list=[];
   frame.flows.forEach((f,fi)=>{
     if(f.kind==="msg" && !showMsg) return;
     if(f.kind!=="msg" && !showInvest) return;
     // **투자와 파괴를 한 통에 넣지 않는다** — 부호가 반대라 합치면 서로를 지운다
     const key=f.kind==="msg"?`m|${f.from}|${f.to}`:`${f.kind[0]}|${f.from}|${f.toNat}`;
-    let e=edges.get(key);
-    if(!e){ e={kind:f.kind, from:f.from, to:f.to, toNat:f.toNat, foreign:f.foreign,
-      count:0, amount:0, gain:0, ai:false, orig:false, idx:0}; edges.set(key,e); }
-    e.count++; e.idx=fi;   // 등장 순서 (파일 순 ≈ 시간 순)
+    let e=openBy[f.from];
+    if(!e || e.key!==key){          // 하던 것과 다른 행위 → 새 화살표를 연다
+      e={key, kind:f.kind, from:f.from, to:f.to, toNat:f.toNat, foreign:f.foreign,
+         count:0, amount:0, gain:0, ai:false, orig:false,
+         // **첫 등장으로 자리를 잡는다.** 마지막으로 덮어쓰면 초반에 한 일이 후반으로
+         // 밀린다 — `seq` 로 정렬해 놓고도 순서가 어긋나던 이유다.
+         idx:fi, seq:f.seq};
+      openBy[f.from]=e; list.push(e);
+    }
+    e.count++;
     if(f.kind!=="msg"){ e.amount+=f.amount||0; e.gain+=f.gain||0; }
     else { if(f.route==="ai")e.ai=true; if(f.route==="original")e.orig=true; }
   });
   const SPREAD=0.82, GROW=0.14;
-  const list=[...edges.values()].sort((a,b)=>a.idx-b.idx);
+  // **실제 차례로 펼친다.** 균등 간격으로 두면 몰린 구간과 뜸한 구간이 같아 보인다 —
+  // `seq` 가 있으면 그 해 안의 상대 위치를 그대로 쓴다. 옛 런에는 없으므로 그때만 균등.
   const M=list.length||1;
-  list.forEach((e,i)=>{ e._s=(i/M)*SPREAD; e._i=i; });   // 등장 시각
+  const sq=list.map(e=>e.seq).filter(v=>v!=null);
+  const lo=sq.length?Math.min(...sq):0, hi=sq.length?Math.max(...sq):0;
+  list.forEach((e,i)=>{
+    e._s = (sq.length && hi>lo && e.seq!=null) ? ((e.seq-lo)/(hi-lo))*SPREAD
+                                              : (i/M)*SPREAD;
+    e._i=i; });
   // #2 FIFO — 사람마다 나온 순서대로, 최근 것이 진하고 오래된 건 흐려지며 사라진다
   const grp={}; list.forEach(e=>{ (grp[e.from]=grp[e.from]||[]).push(e); });
   for(const s in grp){ grp[s].forEach(e=>e._rank=99);
