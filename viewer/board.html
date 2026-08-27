@@ -584,13 +584,17 @@ function animate(ts){ if(!flowLast)flowLast=ts; const dt=ts-flowLast; flowLast=t
   // 칸 길이를 고정하고 한 해 길이를 그 해의 행위 수로 늘린다.
   const PER=+($("#speed")?.value||220);      // 행위 하나가 그려지는 시간 (ms)
   const LOOP=Math.max(900, PER*flowCount/SPREAD_G);
+  // **멈추면 멈춘다** (8/27 · Eddie). 전에는 정지 중에도 `flowPhase` 가 계속 올라
+  // 「한 바퀴 돌고 전체를 보여준다」 였다. 그러면 재생 버튼에 뜻이 없고, 방향키로
+  // 한 칸 짚어 놓으면 그 자리가 저 혼자 흘러가 버린다.
+  //
+  // 정지 중에는 `←→`(한 행위)·`≪≫`(한 해)·눈금만이 시점을 옮긴다.
+  if(!playing){ flowRaf=requestAnimationFrame(animate); return; }
   flowPhase += dt/LOOP;
-  if(playing && actCount.length) $("#scrub").value=actNow();
+  if(actCount.length) $("#scrub").value=actNow();
   if(flowPhase>=1){
-    if(playing){
-      if(turn>=D.turns){ playing=false; $("#play").textContent="▶"; flowPhase=1; }
-      else{ turn++; render(); flowPhase=0; }   // 다음 해로 넘어가며 한 번 더 흐른다
-    }else flowPhase=1;                          // 정지 중엔 한 바퀴 후 멈춰서 전체를 보여준다
+    if(turn>=D.turns){ playing=false; $("#play").textContent="▶"; flowPhase=1; }
+    else{ turn++; render(); flowPhase=0; }     // 다음 해로 넘어가며 이어 흐른다
   }
   drawFlows();
   flowRaf=requestAnimationFrame(animate); }
@@ -606,7 +610,9 @@ function closeModal(){ $("#modal").hidden=true; }
 function shiftBoard(){ $("#stage").style.transform = $("#side").hidden ? "" : "scale(.7)"; }
 function markSelected(){ document.querySelectorAll(".tok.sel").forEach(t=>t.classList.remove("sel"));
   if(focusAgent){ const t=document.getElementById("tok-"+focusAgent); if(t) t.classList.add("sel"); } }
-function openSide(agent){ focusAgent=agent; flowPhase=1;   // 애니 없이 바로 하이라이트
+function openSide(agent){ focusAgent=agent;
+  // **짚어 둔 자리를 유지한다** (8/27). 전에는 `flowPhase=1` 로 그 해 끝까지 밀었다 —
+  // 정지가 진짜 정지가 된 뒤로는 그게 시점을 통째로 옮겨 버린다.
   $("#side").hidden=false; shiftBoard(); markSelected(); renderSide(); }   // transform 으로 부드럽게 축소
 function closeSide(){ focusAgent=null; $("#side").hidden=true; shiftBoard(); markSelected(); }
 function renderSide(){
@@ -638,10 +644,22 @@ function renderSide(){
   $("#sbody").innerHTML=h;
 }
 
-function goto(t){ turn=Math.min(D.turns,Math.max(1,t)); flowPhase=0; render();
-  $("#scrub").value=actBase[turn]+1; }
-function play(){ playing=!playing; $("#play").textContent=playing?"⏸":"▶";
-  if(playing && turn>=D.turns){ turn=1; } flowPhase=0; flowLast=0; }
+function goto(t){
+  turn=Math.min(D.turns,Math.max(1,t));
+  render();
+  // 그 해의 **첫 행위**가 그려진 상태로 선다. 0 으로 두면 아무것도 안 보이고,
+  // 1 로 두면 그 해 전체가 한꺼번에 나와 「한 순간에 하나씩」 이 깨진다.
+  flowPhase=(1/Math.max(1,actCount[turn]||1))*SPREAD_G;
+  $("#scrub").value=actBase[turn]+1;
+  drawFlows();
+}
+function play(){
+  playing=!playing; $("#play").textContent=playing?"⏸":"▶";
+  // **선 자리에서 이어 흐른다.** 전에는 켤 때마다 그 해를 처음부터 다시 돌렸다 —
+  // 방향키로 짚어 놓은 자리가 사라진다. 끝까지 간 뒤에만 처음으로 되돌린다.
+  if(playing && turn>=D.turns && flowPhase>=1){ turn=1; flowPhase=0; render(); }
+  flowLast=0;
+}
 function stop(){ playing=false; $("#play").textContent="▶"; }
 
 // ── 액션 색인 (8/27 · Eddie) ────────────────────────────────────────────────
@@ -706,8 +724,12 @@ function bind(){
       if(f.webkitRelativePath) name=f.webkitRelativePath.split("/")[0]; }
     if(files["state.jsonl"]) start(build(files),name);
   };
-  $("#f-invest").onclick=()=>{ showInvest=!showInvest; $("#f-invest").classList.toggle("on",showInvest); flowPhase=0; reindex(); };
-  $("#f-msg").onclick=()=>{ showMsg=!showMsg; $("#f-msg").classList.toggle("on",showMsg); flowPhase=0; reindex(); };
+  $("#f-invest").onclick=()=>{ showInvest=!showInvest; $("#f-invest").classList.toggle("on",showInvest);
+    // 칸 수가 달라지므로 다시 세고, **보던 자리는 지킨다** (0 으로 두면 화면이 빈다)
+    const keep=actNow(); reindex(); gotoAct(keep); };
+  $("#f-msg").onclick=()=>{ showMsg=!showMsg; $("#f-msg").classList.toggle("on",showMsg);
+    // 칸 수가 달라지므로 다시 세고, **보던 자리는 지킨다** (0 으로 두면 화면이 빈다)
+    const keep=actNow(); reindex(); gotoAct(keep); };
   $("#sclose").onclick=closeSide;
   $("#stage").onclick=e=>{ if(e.target.id==="stage") closeSide(); };   // 빈 곳 클릭 → 집중해제
   $("#mclose").onclick=closeModal;
