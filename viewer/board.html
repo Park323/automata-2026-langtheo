@@ -194,10 +194,16 @@
   <button id="fwd">⏭</button>
   <span class="yr">해 <b id="yr">1</b></span>
   <input type="range" id="scrub" min="1" max="1" value="1">
+  <!-- **한 해가 너무 빨랐다** (8/27 · Eddie). 한 해에 행위가 60~70건이고 화살표가
+       40개 안팎인데 2.8초에 다 흘러서 차례가 안 읽혔다 — 「3배쯤 느려야 한다」.
+       기본을 8.4초로 옮기고 그 아래로 더 내려갈 자리를 뒀다. -->
   <select id="speed" title="속도">
-    <option value="4200">느리게</option>
-    <option value="2800" selected>보통</option>
-    <option value="1600">빠르게</option>
+    <option value="25000">아주 느리게</option>
+    <option value="16800">한참 느리게</option>
+    <option value="8400" selected>느리게</option>
+    <option value="4200">보통</option>
+    <option value="2800">빠르게</option>
+    <option value="1600">아주 빠르게</option>
   </select>
   <button id="loadbtn">📁</button>
 </div>
@@ -563,7 +569,7 @@ function drawFlows(){
   });
 }
 function animate(ts){ if(!flowLast)flowLast=ts; const dt=ts-flowLast; flowLast=ts;
-  const LOOP=+($("#speed")?.value||2800);     // 한 해의 흐름 한 바퀴 (ms)
+  const LOOP=+($("#speed")?.value||8400);     // 한 해의 흐름 한 바퀴 (ms). 기본과 맞춘다
   flowPhase += dt/LOOP;
   if(flowPhase>=1){
     if(playing){
