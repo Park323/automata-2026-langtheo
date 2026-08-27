@@ -445,9 +445,19 @@ function render(){
       let ex=EC.x-POS[nat].x, ey=EC.y-POS[nat].y; const el2=Math.hypot(ex,ey)||1; const ux=ex/el2, uy=ey/el2;
       const R=180, ANG=52*Math.PI/180;
       // 슬롯 3개(아크). 가운데(부채 꼭지)는 항상 2, 양옆은 위·왼쪽부터 1·3
+      //
+      // **세로를 뒤집는다** (8/27 · Eddie). 부채가 반대로 열려 있었다 — 아래로 갈수록
+      // 지구에서 **멀어지는** 쪽으로 벌어졌다 (Asla 기준 위 ox +41 → 아래 ox −145).
+      // 의도는 그 반대다: 아래로 내려갈수록 안쪽(지구 쪽)으로 모여야 안쪽 화살표가
+      // 깔끔해진다. `oy` 부호만 뒤집으면 그 모양이 된다.
+      //
+      //     지금        원하는 것
+      //       x   ㅁ     x       ㅁ
+      //      x     ㅁ     x     ㅁ
+      //     x       ㅁ     x   ㅁ
       const slots=[-1,0,1].map(k=>{ const th=k*ANG;
         const rx=ux*Math.cos(th)-uy*Math.sin(th), ry=ux*Math.sin(th)+uy*Math.cos(th);
-        return {ox:R*(rx-ux), oy:R*(ry-uy)}; });
+        return {ox:R*(rx-ux), oy:-R*(ry-uy)}; });
       const out=[slots[0],slots[2]].sort((a,b)=> (a.oy-b.oy) || (a.ox-b.ox));
       const ordered=[out[0], slots[1], out[1]];   // #1(위/왼) · #2(가운데) · #3
       const minOy=Math.min(...ordered.map(s=>s.oy)), maxOy=Math.max(...ordered.map(s=>s.oy));
