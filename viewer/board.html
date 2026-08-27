@@ -29,8 +29,10 @@
   .cring::before{content:"";position:absolute;inset:8px;border-radius:50%;background:rgba(4,18,12,.92)}
   .cicon{position:relative;font-size:30px;z-index:1}
   .clabel{font-size:14px;font-weight:800;margin-top:4px;text-shadow:0 1px 4px #000,0 0 8px #000}
+  /* 국적은 여기서 말한다 — **아주 옅게**. 토큰에서 색 테두리를 걷어낸 자리를 받는다 */
   .nation{position:absolute;transform:translate(-50%,-50%);width:400px;
-    background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 18px 18px}
+    background:linear-gradient(var(--tint), var(--tint)), var(--panel);
+    border:1px solid var(--k, var(--line));border-radius:16px;padding:16px 18px 18px}
   .nhead{display:flex;align-items:center;gap:9px;margin-bottom:10px}
   .ndot{width:13px;height:13px;border-radius:50%;box-shadow:0 0 10px currentColor}
   .nname{font-weight:700;font-size:17px}
@@ -56,13 +58,21 @@
     border-radius:7px;padding:3px 7px;margin-top:4px;display:inline-block}
   .agents{position:relative;height:250px;margin-top:8px}
   .agent{position:absolute;text-align:center;width:76px}
+  /* **평상시에는 테두리가 없다** (8/27 · Eddie). 아홉 명 모두에 색 테두리를 두르면
+     한 칸씩 짚어 볼 때 **누가 지금 움직이는지**가 안 보인다. 국적은 국가 패널의
+     옅은 색이 말하고, 테두리는 **지금 행위자**에게만 준다. */
   .tok{width:60px;height:60px;margin:0 auto;border-radius:50%;cursor:pointer;
     display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;color:#fff;
-    border:3px solid var(--k);background:#0b1120;transition:transform .15s}
-  .tok:hover{transform:scale(1.08)}
+    border:3px solid transparent;background:#131c2b;
+    transition:transform .15s, border-color .12s, box-shadow .12s}
+  .tok:hover{transform:scale(1.08);border-color:#ffffff33}
+  /* 지금 움직이는 사람 — 굵고 밝게 */
+  .tok.acting{border-color:#fff;
+    box-shadow:0 0 0 4px rgba(255,255,255,.28), 0 0 26px rgba(255,255,255,.55);
+    transform:scale(1.10)}
   .agent.dead{opacity:.28}
-  .agent.dead .tok{filter:grayscale(1);border-color:var(--line)}
-  .agent.born .tok{border-color:#3fb950;box-shadow:0 0 0 3px rgba(63,185,80,.3),0 0 18px rgba(63,185,80,.55)}
+  .agent.dead .tok{filter:grayscale(1)}
+  .agent.born .tok{border-color:#3fb95088;box-shadow:0 0 14px rgba(63,185,80,.35)}
   .asub{font-size:12px;color:#c3ccda;margin-top:6px}
   .asub .new{color:#7ee39a;font-weight:700}
   /* 쓸 수 있는 언어 점 — 사람(토큰) 위에 */
@@ -121,7 +131,12 @@
   #sbody .tag.ai{color:#c9a9ff;border-color:#5a3f8a}
   #sbody .tag.original{color:#9be7b3;border-color:#2f6a45}
   /* 선택된 사람 */
-  .tok.sel{border-color:#fff!important;box-shadow:0 0 0 3px rgba(255,255,255,.45),0 0 22px rgba(255,255,255,.6)}
+  /* **골라 본 사람**과 **지금 움직이는 사람**은 달라야 한다 (8/27). 둘 다 흰 테두리라
+     한 칸씩 짚을 때 구분이 안 됐다. 선택은 호박색 점선, 행위는 흰 실선. */
+  .tok.sel{border-style:dashed;border-color:#ffcf7a!important;
+    box-shadow:0 0 0 3px rgba(255,207,122,.25),0 0 20px rgba(255,207,122,.45)}
+  .tok.sel.acting{border-style:solid;border-color:#fff!important;
+    box-shadow:0 0 0 4px rgba(255,207,122,.35),0 0 26px rgba(255,255,255,.6)}
 
   /* 하단 컨트롤 */
   #dock{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:20;
@@ -344,6 +359,10 @@ function render(){
     const done=thr&&prog>=thr;
     const el=document.createElement("div");
     el.className="nation"; el.id="nat-"+nat; el.style.left=(p.x*100)+"%"; el.style.top=(p.y*100)+"%";
+    // **국적을 여기서 말한다** (8/27). 토큰의 색 테두리를 걷어낸 자리를 패널이 받는다 —
+    // 아주 옅은 바탕과 옅은 테두리로. 진하면 그 자체가 또 시선을 끌어 행위자를 가린다.
+    el.style.setProperty("--tint", HEX[lang]+"14");     // 8%
+    el.style.setProperty("--k", HEX[lang]+"3d");        // 24%
     el.innerHTML=`
       <div class="nhead">
         <span class="ndot" style="color:${HEX[lang]}"></span>
@@ -533,6 +552,16 @@ function drawFlows(){
   const recOp=r=> r===0?1 : r===1?0.42 : r===2?0.12 : 0;   // 최근2 진하게, 그 뒤 페이드아웃
   const inFocus=e=> !focusAgent || canon(e.from)===focusAgent || (e.kind==="msg"&&canon(e.to)===focusAgent);
 
+  // **지금 움직이는 사람**을 찾아 테두리를 준다 (8/27 · Eddie). 한 칸씩 짚어 볼 때
+  // 행위자가 불분명했다 — 아홉 명이 다 색 테두리를 두르고 있었기 때문이다.
+  {
+    const cur=list[Math.min(list.length-1, Math.floor(flowPhase/SPREAD*M))];
+    const who=cur && flowPhase>0 ? cur.from : null;
+    document.querySelectorAll(".tok.acting").forEach(t=>t.classList.remove("acting"));
+    if(who){ const el=document.getElementById("tok-"+(frame.succ[who]||who))
+                   || document.getElementById("tok-"+who);
+      if(el) el.classList.add("acting"); }
+  }
   list.forEach((e,i)=>{
     const local=(flowPhase - e._s)/GROW;
     if(local<=0) return;
