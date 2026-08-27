@@ -194,16 +194,15 @@
   <button id="fwd">⏭</button>
   <span class="yr">해 <b id="yr">1</b></span>
   <input type="range" id="scrub" min="1" max="1" value="1">
-  <!-- **한 해가 너무 빨랐다** (8/27 · Eddie). 한 해에 행위가 60~70건이고 화살표가
-       40개 안팎인데 2.8초에 다 흘러서 차례가 안 읽혔다 — 「3배쯤 느려야 한다」.
-       기본을 8.4초로 옮기고 그 아래로 더 내려갈 자리를 뒀다. -->
-  <select id="speed" title="속도">
-    <option value="25000">아주 느리게</option>
-    <option value="16800">한참 느리게</option>
-    <option value="8400" selected>느리게</option>
-    <option value="4200">보통</option>
-    <option value="2800">빠르게</option>
-    <option value="1600">아주 빠르게</option>
+  <!-- **행위 하나가 그려지는 시간**이다 (8/27 · Eddie). 한 해 길이로 잡으면 바쁜 해가
+       오히려 빨라진다. 한 순간에 하나씩 그리므로 이 값이 곧 체감 속도다. -->
+  <select id="speed" title="행위 하나가 그려지는 시간">
+    <option value="700">아주 느리게</option>
+    <option value="450">한참 느리게</option>
+    <option value="300">느리게</option>
+    <option value="220" selected>보통</option>
+    <option value="140">빠르게</option>
+    <option value="80">아주 빠르게</option>
   </select>
   <button id="loadbtn">📁</button>
 </div>
@@ -459,7 +458,8 @@ function render(){
 
 // ── 개인 행동선 ─────────────────────────────────────────────────────
 const SVG="http://www.w3.org/2000/svg";
-let flowPhase=0, flowRaf=null, flowLast=0;
+let flowPhase=0, flowRaf=null, flowLast=0, flowCount=1;
+const SPREAD_G=0.82;                 // 흐름이 펼쳐지는 구간 (뒤는 여운)
 const routeCol={ai:"#a371f7", original:"#3fb950", domestic:"#7f8db0"};
 function qbez(a,c,b,t){ const u=1-t;
   return {x:u*u*a.x+2*u*t*c.x+t*t*b.x, y:u*u*a.y+2*u*t*c.y+t*t*b.y}; }
@@ -506,16 +506,20 @@ function drawFlows(){
     if(f.kind!=="msg"){ e.amount+=f.amount||0; e.gain+=f.gain||0; }
     else { if(f.route==="ai")e.ai=true; if(f.route==="original")e.orig=true; }
   });
-  const SPREAD=0.82, GROW=0.14;
-  // **실제 차례로 펼친다.** 균등 간격으로 두면 몰린 구간과 뜸한 구간이 같아 보인다 —
-  // `seq` 가 있으면 그 해 안의 상대 위치를 그대로 쓴다. 옛 런에는 없으므로 그때만 균등.
+  const SPREAD=SPREAD_G;
+  // **한 순간에 한 행위만 그린다** (8/27 · Eddie). 순서는 `seq` 가 정하고, 재생은
+  // 한 칸에 하나씩 — 앞엣것이 다 그려진 뒤에 다음이 시작한다.
+  //
+  // 전에는 `GROW` 가 0.14 로 **고정**이고 간격이 `0.82/M` 이었다. 화살표가 41개면
+  // 간격이 0.020 이라 **일곱 개가 동시에 자랐다.** 느리게 해도 같이 느려질 뿐
+  // 「동시에 흐른다」 는 그대로였다.
+  //
+  // `seq` 비례로 펼치는 것도 되돌린다 — 한 응답에서 연달아 부른 것들은 seq 가 붙어
+  // 있어 사실상 같은 자리에 겹친다. **순서는 seq 가, 간격은 칸이 정한다.**
   const M=list.length||1;
-  const sq=list.map(e=>e.seq).filter(v=>v!=null);
-  const lo=sq.length?Math.min(...sq):0, hi=sq.length?Math.max(...sq):0;
-  list.forEach((e,i)=>{
-    e._s = (sq.length && hi>lo && e.seq!=null) ? ((e.seq-lo)/(hi-lo))*SPREAD
-                                              : (i/M)*SPREAD;
-    e._i=i; });
+  list.forEach((e,i)=>{ e._s=(i/M)*SPREAD; e._i=i; });
+  const GROW=SPREAD/M;                 // 한 칸 = 한 행위. 겹치지 않는다
+  flowCount=M;                         // 재생 속도를 행위 하나 기준으로 잡는 데 쓴다
   // #2 FIFO — 사람마다 나온 순서대로, 최근 것이 진하고 오래된 건 흐려지며 사라진다
   const grp={}; list.forEach(e=>{ (grp[e.from]=grp[e.from]||[]).push(e); });
   for(const s in grp){ grp[s].forEach(e=>e._rank=99);
@@ -569,7 +573,11 @@ function drawFlows(){
   });
 }
 function animate(ts){ if(!flowLast)flowLast=ts; const dt=ts-flowLast; flowLast=ts;
-  const LOOP=+($("#speed")?.value||8400);     // 한 해의 흐름 한 바퀴 (ms). 기본과 맞춘다
+  // **속도는 행위 하나 기준이다** (8/27 · Eddie). 한 해 길이로 잡으면 바쁜 해가 오히려
+  // 빨라진다 — 화살표 56개인 해는 칸이 123ms, 30개인 해는 230ms 였다. 거꾸로다.
+  // 칸 길이를 고정하고 한 해 길이를 그 해의 행위 수로 늘린다.
+  const PER=+($("#speed")?.value||220);      // 행위 하나가 그려지는 시간 (ms)
+  const LOOP=Math.max(900, PER*flowCount/SPREAD_G);
   flowPhase += dt/LOOP;
   if(flowPhase>=1){
     if(playing){
