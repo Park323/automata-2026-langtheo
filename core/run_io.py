@@ -219,14 +219,56 @@ class RunWriter:
         return _rec
 
     # ── 턴별 ──────────────────────────────────────────────────────────────────
-    def on_turn_end(self, turn: int, result) -> None:
-        """run_agentic 의 on_turn_end 훅으로 그대로 넘길 수 있다."""
-        self.last_turn = turn          # 크래시 행을 마지막 정상 턴 뒤에 놓기 위해
-        world = result.world
+    def on_step_end(self, turn: int, step: int, result) -> None:
+        """**해 도중의 스냅샷** (8/26 · Eddie). 순차 라운드로빈에서만 부른다.
+
+        순차는 차례마다 `_settle_step` 이 즉시 정산하므로, 한 차례가 끝난 시점의 세계는
+        **완전히 일관된다** — 「아직 안 움직인 사람이 있는 해」 이고 그것이 그 순간의
+        진실이다. (병렬은 턴 끝에 한꺼번에 정산하므로 중간이 거짓이다 — 그래서 안 부른다.)
+
+        **`step` 이 붙은 줄은 중간 상태다.** 턴 끝 줄은 `step: None` 이고, 지표를 읽는
+        쪽은 그것만 봐야 한다 — 안 그러면 한 해가 여러 번 세어진다. 소비자 넷
+        (`interview`·`score/metrics`·`score/xhat`·뷰어)을 그렇게 고쳤다.
+        """
+        for row in self._state_rows(turn, result.world, step=step):
+            self._append("state", row)
+        # **국가 집계도 남긴다** (8/26). `state` 만 쓰면 뷰어의 「사람」 만 살고
+        # 「국가」 는 한 해 내내 「집계가 없습니다」 다 — 진척이 실시간으로 안 보인다.
+        # 여기 담는 것은 **세계의 상태**뿐이다 (진척·국토·자본·제안). 턴 로그에서
+        # 나오는 것(콜 수·벽시계·압박)은 그 해가 끝나야 정해지므로 안 담는다.
+        self._append("metrics", self._country_row(turn, result.world, step=step))
+
+    def _country_row(self, turn: int, world, step: int | None = None) -> dict:
+        """**세계의 상태만** — 해 도중에도 참인 값들. 턴 로그에서 나오는 것은 안 담는다.
+
+        `step` 이 붙은 줄은 해 도중의 스냅샷이다. 지표를 읽는 쪽은 `step is None` 만
+        봐야 한다 — 안 그러면 한 해가 여러 번 세어진다 (`state.jsonl` 과 같은 규약).
+        """
+        return {
+            "turn": turn, "step": step,
+            "alive": sum(1 for a in world.agents.values() if a.alive),
+            "progress": {c.id: round(c.progress, 3) for c in world.countries.values()},
+            # **그중 자국이 쌓은 몫.** 국토 전환 때 남는 것이 이 값이므로, 없으면 「그
+            # 나라가 지금 배신할 수 있나」 를 사후에 복원할 수 없다 — 결과 해석의 전제다.
+            "domestic_progress": {c.id: round(c.domestic_progress, 3)
+                                  for c in world.countries.values()},
+            "land": {c.id: c.land for c in world.countries.values()},
+            "national_capital": {c.id: round(c.national_capital, 3)
+                                 for c in world.countries.values()},
+            # **요격기 효율.** 시드마다 배정이 달라지므로 로그에 없으면 어느 나라가
+            # 최선이었는지 사후에 복원할 수 없다 — 결과 해석의 전제다.
+            "build_mult": {c.id: c.build_mult for c in world.countries.values()},
+            # **열린 제안.** vote 이벤트로만 남아 있어서, 제안이 열려 있던 구간을
+            # 사후에 복원하려면 이벤트를 되짚어야 했다.
+            "proposal": {c.id: c.proposal for c in world.countries.values()},
+        }
+
+    def _state_rows(self, turn: int, world, step: int | None = None):
         for aid in sorted(world.agents):
             a = world.agents[aid]
-            self._append("state", {
-                "turn": turn, "agent": aid, "country": a.country, "age": a.age,
+            yield {
+                "turn": turn, "step": step,
+                "agent": aid, "country": a.country, "age": a.age,
                 "lambda": round(a.lam, 4), "known_langs": sorted(a.known_langs),
                 "parent_langs": sorted(a.parent_langs),
                 "wellness_spent": round(a.wellness_spent, 4),
@@ -251,7 +293,14 @@ class RunWriter:
                 # **개체 차이** — 소득·처리량 배수 (8/22). 남에게는 안 보이지만
                 # 로그에는 남는다: 비교우위가 실제로 교환으로 이어졌는지 재려면 필요하다
                 "invest_mult": a.invest_mult,
-            })
+            }
+
+    def on_turn_end(self, turn: int, result) -> None:
+        """run_agentic 의 on_turn_end 훅으로 그대로 넘길 수 있다."""
+        self.last_turn = turn          # 크래시 행을 마지막 정상 턴 뒤에 놓기 위해
+        world = result.world
+        for row in self._state_rows(turn, world, step=None):
+            self._append("state", row)
         for m in result.messages_log:
             if m.get("turn") == turn and not m.get("_written"):
                 m["_written"] = True
@@ -322,19 +371,7 @@ class RunWriter:
         for lg in logs.values():
             ends[lg.get("ended_by", "?")] = ends.get(lg.get("ended_by", "?"), 0) + 1
         self._append("metrics", {
-            "turn": turn,
-            "alive": sum(1 for a in world.agents.values() if a.alive),
-            "progress": {c.id: round(c.progress, 3) for c in world.countries.values()},
-            "land": {c.id: c.land for c in world.countries.values()},
-            "national_capital": {c.id: round(c.national_capital, 3)
-                                 for c in world.countries.values()},
-            # **요격기 효율.** 시드마다 배정이 달라지므로 로그에 없으면 어느 나라가
-            # 최선이었는지 사후에 복원할 수 없다 — 결과 해석의 전제다.
-            "build_mult": {c.id: c.build_mult for c in world.countries.values()},
-            # **열린 제안.** vote 이벤트로만 남아 있어서, 제안이 열려 있던 구간을
-            # 사후에 복원하려면 이벤트를 되짚어야 했다 — 採決 전에 무슨 말이 오갔는지를
-            # 보려면 매 턴의 상태가 있어야 한다.
-            "proposal": {c.id: c.proposal for c in world.countries.values()},
+            **self._country_row(turn, world, step=None),
             "messages_this_turn": sum(1 for m in result.messages_log if m.get("turn") == turn),
             "agent_turns": len(logs), "llm_failures": failed,
             "llm_failure_rate": round(failed / len(logs), 4) if logs else 0.0,

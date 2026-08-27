@@ -224,3 +224,148 @@ def test_wellness_spend_accumulates_over_a_life():
 
     obs = prompts.render_observation(w, w.agents["Asla1"], cfg, KNOB)
     assert "120" not in obs                      # 관측에는 안 나온다
+
+
+def test_mid_turn_snapshots_are_marked_and_skipped_by_metrics(tmp_path, cfg):
+    """**해 도중에도 상태를 남긴다** (8/26 · Eddie).
+
+    순차 라운드로빈은 차례마다 `_settle_step` 이 즉시 정산하므로, 한 차례가 끝난 시점의
+    세계는 **완전히 일관된다** — 「아직 안 움직인 사람이 있는 해」 이고 그것이 그 순간의
+    진실이다. (병렬은 턴 끝에 한꺼번에 정산하므로 중간이 거짓이고, 그래서 훅이 없다.)
+
+    **그 줄이 지표에 섞이면 한 해가 여러 번 세어진다.** 그래서 `step` 으로 갈라 두고,
+    소비자 넷(`interview`·`score/metrics`·`score/xhat`·뷰어)이 `step is None` 만 읽는다.
+    이 테스트는 그 규약을 양쪽에서 못 박는다 — 표시가 붙는지, 그리고 읽는 쪽이 거르는지.
+    """
+    import itertools
+    import json
+    import random
+
+    from core import loop, run_io
+
+    w = run_io.RunWriter("t_step", cfg_raw={}, knob_ai=None, seed=1, root=tmp_path)
+    try:
+        world = loop.init_world(cfg, itertools.count(1), random.Random(0))
+        res = loop.RunResult(world=world)
+        w.on_step_end(3, 10, res)          # 해 도중
+        w.on_step_end(3, 20, res)
+        w.on_turn_end(3, res)              # 해 끝
+    finally:
+        w.close()
+
+    rows = [json.loads(l) for l in
+            (tmp_path / "t_step" / "state.jsonl").read_text(encoding="utf-8").splitlines()]
+    n = len(world.agents)
+    assert len(rows) == 3 * n
+    mid = [r for r in rows if r.get("step") is not None]
+    end = [r for r in rows if r.get("step") is None]
+    assert len(mid) == 2 * n and len(end) == n
+    assert sorted({r["step"] for r in mid}) == [10, 20]
+    # 중간 줄도 **완전한 상태**다 — 턴 끝 줄과 같은 필드를 갖는다
+    assert set(mid[0]) == set(end[0])
+
+    # **국가 집계도 스냅샷으로 남는다** (8/26). `state` 만 쓰면 뷰어의 「사람」 만 살고
+    # 「국가」 는 한 해 내내 「집계가 없습니다」 다 — 진척이 실시간으로 안 보인다.
+    mrows = [json.loads(l) for l in
+             (tmp_path / "t_step" / "metrics.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(mrows) == 3                                  # 스냅샷 둘 + 턴 끝 하나
+    mid_m = [r for r in mrows if r.get("step") is not None]
+    end_m = [r for r in mrows if r.get("step") is None]
+    assert sorted(r["step"] for r in mid_m) == [10, 20]
+    # 중간 줄은 **세계의 상태만** 담는다 — 턴 로그에서 나오는 것은 그 해가 끝나야 정해진다
+    assert set(mid_m[0]) < set(end_m[0]), "중간 줄이 턴 끝 줄보다 많이 담고 있다"
+    for k in ("progress", "land", "national_capital", "proposal", "alive"):
+        assert k in mid_m[0], k
+    for k in ("turn_wall_ms", "agent_turns", "messages_this_turn"):
+        assert k not in mid_m[0], k
+
+    # **읽는 쪽이 실제로 거른다** — 소비자의 코드를 구조로 본다
+    for path, needle in (
+            ("tools/interview.py", 'r.get("step") is None'),
+            ("tools/score/metrics.py", 'r.get("step") is None'),
+            ("tools/score/xhat.py", 'r.get("step") is None'),
+            ("viewer/index.html", "r.step == null")):
+        src = (run_io.ROOT / path).read_text(encoding="utf-8")
+        assert needle in src, path
+    # 뷰어는 **진행 중인 해에만** 스냅샷 집계를 쓴다 (끝난 해를 덮으면 값이 낡는다)
+    v = (run_io.ROOT / "viewer" / "index.html").read_text(encoding="utf-8")
+    assert "stepMetrics" in v
+    assert "if (b && !b.metric) b.metric = lastM[t];" in v
+    # 그리고 진행 중인 해에 「아무도 말하지 않았습니다」 라고 **거짓말하지 않는다**
+    assert "아직 집계 전입니다" in v
+
+
+def test_the_viewer_never_draws_a_turn_twice():
+    """**중간 스냅샷을 섞어 그리면 사람이 증식한다** (8/26 · Eddie 발견).
+
+    실측에서 1해가 9명이 아니라 **54줄**로 그려졌다 (스냅샷 5회 + 턴 끝 1회 = 6배).
+
+    갈라 두는 것만으로는 부족했다 — 처음엔 중간 줄을 **걸러내기만** 했는데, 그러면
+    진행 중인 해가 통째로 사라져 뷰어가 한 해 내내(2~4분) 옛 화면에 멈춘다.
+    스냅샷을 넣은 이유가 바로 그것이었으므로 정반대가 된다.
+
+    규칙은 둘이다:
+      · 끝난 해는 **턴 끝 줄**로 그린다 (스냅샷은 그 앞의 스냅사진일 뿐이다)
+      · 끝나지 않은 해는 **마지막 스냅샷**으로 그리고 「진행 중」 이라고 밝힌다
+    """
+    from core import run_io
+
+    src = (run_io.ROOT / "viewer" / "index.html").read_text(encoding="utf-8")
+    # 갈라 둔다
+    assert "g(\"state.jsonl\").filter(r => r.step == null)" in src
+    assert "stepRows" in src
+    # **진행 중인 해도 센다** — `turns` 계산에 stepRows 가 들어가야 한다
+    assert "...d.stepRows.map(s => s.turn)" in src
+    # **이미 끝난 해는 덮어쓰지 않는다** — 이 가드가 빠지면 다시 증식한다
+    assert "if (!b || b.state.length) return;" in src
+    # 진행 중임을 화면에 밝힌다
+    assert "진행 중" in src
+
+
+def test_settlement_events_share_one_ordering_key(tmp_path, cfg):
+    """**두 파일을 섞을 공통 순서 키가 없었다** (8/26 · #60 리뷰).
+
+    보드 뷰어가 「투자 전부 → 메시지 전부」 순으로 그려서 사람 sweep 처럼 보였다.
+    실제로는 순차 라운드로빈이라 한 사람이 말하고 투자하고, 다음 사람이 말하고… 인데
+    그 순서를 복원할 키가 없었다:
+
+        facility_gain   ['agent','amount','gain','to','turn','type']   순서 키 없음
+        messages        ['msg_id', ...]                                메시지에만
+
+    `msg_ids` 카운터를 정산 전체의 순서 키로 확장했다 — 새로 만들지 않은 이유는 그것이
+    이미 **체크포인트로 이어지고** 단조 증가하기 때문이다 (resume 뒤에도 순서가 이어진다).
+
+    두 로그가 **같은 필드 이름**(`seq`)을 쓰는 것이 요점이다. 뷰어가 한 필드만 보면 된다.
+    """
+    import itertools as _it
+    import random as _rnd
+
+    from core import loop
+    from core.agent_loop import Sink, execute_tool
+
+    world = loop.init_world(cfg, _it.count(1), _rnd.Random(1))
+    world.turn = 1
+    for c in world.countries.values():
+        c.land = "interceptor"
+    msg_ids = _it.count(1)
+    res = loop.RunResult(world=world)
+    for aid in ("Asla1", "Asla2", "Asla1"):
+        a = world.agents[aid]; a.ap = 1.0
+        sink = Sink()
+        execute_tool("invest", {"target": "facility", "to": "Asla", "reasoning": "r"},
+                     world, a, cfg, sink, None)
+        execute_tool("speak", {"to": "Asla3", "text": "やあ", "reasoning": "r"},
+                     world, a, cfg, sink, None)
+        loop._settle_step(world, cfg, _rnd.Random(3), sink, None, None,
+                          msg_ids, res, {}, [])
+
+    flows = ([("invest", e["agent"], e["seq"]) for e in res.facility_gains]
+             + [("msg", m["from"], m["seq"]) for m in res.messages_log])
+    flows.sort(key=lambda x: x[2])
+    # **한 사람의 투자와 발화가 붙어 있고, 사람이 바뀌면 seq 가 커진다**
+    assert [f[0] for f in flows] == ["invest", "msg"] * 3, flows
+    assert [f[1] for f in flows] == ["Asla1", "Asla1", "Asla2", "Asla2",
+                                     "Asla1", "Asla1"], flows
+    # 단조 증가이고 겹치지 않는다 — 두 로그가 같은 카운터를 나눠 쓴다
+    seqs = [f[2] for f in flows]
+    assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs), seqs

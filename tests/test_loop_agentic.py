@@ -379,14 +379,17 @@ def test_world_events_get_their_own_context_entry():
     world.turn = 2
     a = world.agents["Asla2"]
     box = [{"died": "Asla1", "born": "Asla4", "age": 14},
-           {"fac_gain": 61, "amount": 200.0, "to": "Asla"},
+           {"impact_by": "Asla3", "impact": 61, "now": 61, "land": "interceptor"},
            {"from": "Ranoa1", "label": None, "text": "SAID", "original": None}]
 
     ev = prompts.render_events(a, box)
     arrived = prompts.render_arrivals(a, box)
 
     assert "Asla1" in ev and "61" in ev and "SAID" not in ev
-    assert "起きたこと" in ev and "になりました" not in ev      # 해를 열지 않는다
+    # **「해를 열지 않는다」 를 정확히 본다** (8/26). 전에는 `"になりました" not in ev`
+    # 였는데, `impact` 문구가 「9 進んで 509 になりました」 라 걸렸다 — 이 테스트가
+    # 보려던 것은 **해 오프닝 문장**(「42 年になりました」)이 안 섞이는 것이다.
+    assert "起きたこと" in ev and "年になりました" not in ev
     assert "SAID" in arrived and "Asla1" not in arrived       # 사건은 여기 없다
     assert prompts.T["ja"]["in_hdr"] not in ev                # 머리말이 다르다
     # 사건만 왔으면 도착분은 빈 문자열 — 루프가 붙이지 않는다
@@ -490,9 +493,15 @@ def test_identical_rows_inside_one_batch_collapse():
                                     {"cap_up": True, "cap_gain": 0.07, "cap_total": 1.6}])
     assert ev3.count("上がりました") == 2
     # 값이 다르면 접히지 않는다
-    ev2 = prompts.render_events(a, [{"prog_up": 18, "now": 18},
-                                    {"prog_up": 34, "now": 52}])
-    assert ev2.count("進捗が") == 2
+    # **무엇이 진척했는지 적는다** (8/26) — 「自国の進捗」 이 아니라 「自国の interceptor」.
+    # `prog_up` 은 없앴고 `impact` 가 그 자리를 대신한다 (누가·얼마·그래서 지금 얼마).
+    ev2 = prompts.render_events(a, [
+        {"impact_by": "Asla2", "impact": 18, "now": 18, "land": "interceptor"},
+        {"impact_by": "Asla3", "impact": 34, "now": 52, "land": "interceptor"}])
+    assert ev2.count("interceptor が") == 2
+    # 국토가 안 정해졌으면 그렇게 적는다 — 진척이 있을 수 없는 상태다
+    assert "未定" in prompts.render_events(a, [
+        {"impact_by": "Asla2", "impact": 1, "now": 1, "land": None}])
 
 
 def test_a_notice_left_at_the_end_of_a_year_is_not_lost_in_the_parallel_path():

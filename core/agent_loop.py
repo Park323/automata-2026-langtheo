@@ -35,10 +35,12 @@ class Sink:
       정산 때 안정 정렬하면 결정론이 회복된다 (재현성 #1).
     """
     facility: list = field(default_factory=list)      # (to_country, amount, agent_id)
+    # **파괴는 투자와 완전 대칭이다** (8/26 · Eddie) — 같은 AP, 같은 양, 부호만 반대.
+    # 그래서 파괴도 역화 확률로 **상대를 돕는다.** 공격자도 확신할 수 없다.
+    destroy: list = field(default_factory=list)       # (to_country, amount, agent_id)
     wellness: list = field(default_factory=list)      # (agent_id, amount)
     national: list = field(default_factory=list)      # (country, amount, agent_id)
     messages: list = field(default_factory=list)      # 발신 dict (5장, 'from' 에 agent_id)
-    votes: list = field(default_factory=list)         # 제안 (agent_id, country, target)
     ballots: list = field(default_factory=list)       # 표 (agent_id, country, choice)
     learns: list = field(default_factory=list)        # (agent_id, lang) — 다음 턴부터 유효
     # **아이를 낳은 사람들** (8/21). 전에는 `procreations` 로 (id, 유언) 을 담았다 —
@@ -268,6 +270,32 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             return {"ok": True, "unchanged": True}, None
         return {"ok": True}, None      # 돈도 AP 도 안 든다 — 돌려줄 것이 없다
 
+    if name == "destroy":
+        # **투자와 완전 대칭** (8/26 · Eddie). 같은 AP, 같은 양, 부호만 반대.
+        # 대상 나라만 받는다 — `target` 이 없다 (wellness·national 을 파괴할 수는 없다).
+        # **기본값을 안 둔다** (8/26 · Eddie). 자국도 대상이 될 수 있지만 안내하지
+        # 않으므로, 생략하면 자국이 되는 편의는 **사고**를 만든다.
+        to = args.get("to")
+        if to not in world.countries:
+            return {"ok": False, "error": f"unknown nation: {to}"}, None
+        amount, ap_used = cfg.costs.unit * agent.invest_mult, cfg.ap.unit
+        if not _afford(agent.ap, ap_used):
+            return {"ok": False,
+                    "error": f"not enough action; one destroy needs {ap_used}, "
+                             f"have {agent.ap:.2f}"}, None
+        _spend(agent, ap_used)
+        sink.destroy.append((to, amount, agent.id))
+        # **투자와 같은 모양으로 답한다** — 실행 → AP 소모. 결과는 그 나라의 진척
+        # 변화로만 드러나고, **누가 했는지는 아무에게도 안 알린다.** 그것이 모호성이다:
+        # 진척이 준 것을 보고 「역화인가 파괴인가」 를 가릴 수 없다.
+        #
+        # 자국이 미정이면 그렇게 답한다 (`invest` 와 같은 이유). 타국은 안 알린다.
+        if to == agent.country and world.countries[to].land is None:
+            return {"ok": True, "ap_left": round(agent.ap, 3),
+                    "note": "your nation has not decided what to build, "
+                            "so this put nothing anywhere"}, None
+        return {"ok": True, "ap_left": round(agent.ap, 3)}, None
+
     if name == "invest":
         target = args.get("target")
         if target not in ("wellness", "national", "facility"):
@@ -303,12 +331,31 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
             # 그보다 싸다), "타국 사정은 소통해야만 안다" 는 전제가 통째로 무너진다.
             # 정해지지 않았으면 돈은 나가고 아무 일도 일어나지 않는다 — route=original 과
             # 같은 도박이다 (spec 4.1 은닉 목록: 타국의 진척·예산·국토·언어 능력).
-            # **내가 그 나라에 낸 누적**을 함께 돌려준다. learn 이 그러는데 여기만
-            # 안 그러고 있었다 (state.Agent.facility_invested).
+            # 누적은 **우리 로그에만** 남긴다 (`state.jsonl` 의 facility_invested).
             agent.facility_invested[to] = agent.facility_invested.get(to, 0.0) + amount
-            return {"ok": True,
-                    "your_total_into": round(agent.facility_invested[to], 1),
-                    "ap_left": round(agent.ap, 3)}, None
+            # **투자의 사이클은 「실행 → AP 소모 → 진척」 이 다다** (8/26 · Eddie).
+            #
+            # `your_total_into` 를 돌려주고 있었다. 그러면 비용표에서 지운 액수가
+            # **두 번의 호출로 복원된다** (차분이 곧 한 번의 액수), 그리고 `fac_gain` 의
+            # 진척과 나누면 국가 효율이 다시 나온다. 실제로 유언에 유통됐다 —
+            # 「J'ai investi 442 unités chez Asla」 · 「J'y ai versé 104」.
+            #
+            # 진척은 여기서 돌려줄 수 없다 — 정산은 이 호출 뒤에 일어난다. `fac_gain` 이
+            # 알린다 (「進捗が 18 進みました」). 그래서 여기는 AP 만 답한다.
+            # **자국이 미정이면 그렇게 답한다** (8/26 · Eddie). 정산 때 `land is None`
+            # 이면 추첨을 아예 안 돌려 진척이 0 이 되는데, 통지는 「0 진행됐다」 로만
+            # 와서 **왜 0 이었는지 알 수 없었다.** 실측에서 Asla3 이 採決 전 3해에
+            # 다섯 번을 헛되게 냈다 (그 해 AP 의 절반).
+            #
+            # **자국만이다.** 자국 국토는 관측에 이미 보이므로(PUBLIC) 누출이 아니고,
+            # 모르고 낸 것은 정보 부족이 아니라 부주의다. 타국은 안 알린다 — 그것을
+            # 알려주면 0.10 짜리 조회로 타국 국토를 읽게 되고, 「타국 사정은 소통으로만」
+            # 이 무너진다 (spec 4.1 은닉 목록).
+            if to == agent.country and world.countries[to].land is None:
+                return {"ok": True, "ap_left": round(agent.ap, 3),
+                        "note": "your nation has not decided what to build, "
+                                "so this put nothing anywhere"}, None
+            return {"ok": True, "ap_left": round(agent.ap, 3)}, None
         if target == "wellness":
             sink.wellness.append((agent.id, amount))
             return {"ok": True,                                  # λ 변화 비공개
@@ -373,9 +420,16 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
         done = done_before + gain
         # 남는 것은 **내가 몰랐던 것**뿐이다. 누적 진척과 그때그때의 필요액은 턴을
         # 넘나들며 바뀌고(국내 구사자가 생기면 절반이 된다), 계산으로 알 수 없다.
+        # **학습의 사이클은 「실행 → AP 소모 → 진척 y%」 다** (8/26 · Eddie).
+        #
+        # `progress 30 · required 80 · remaining 50` 을 돌려주고 있었다. 8/25 에 비용표의
+        # 「一度で 40 たまる」 를 「25% 進む」 로 바꿨는데 **응답이 절대 수치를 그대로
+        # 돌려주고 있었다** — 게다가 `required` 는 `learn_base` 를 직접 노출하고,
+        # 사유를 알면 회당 진척까지 나눗셈으로 나온다.
+        #
+        # 목표는 늘 100% 이므로 분모를 적지 않는다 (비용표의 「これまで N%」 와 같은 형식).
         return {"ok": True,
-                "progress": round(done, 1), "required": need,
-                "remaining": round(max(0.0, need - done), 1),
+                "progress_pct": round(done / need * 100),
                 # **일정을 말하지 않는다 — 다 냈는지만 적는다.**
                 #
                 # `can_read_next_turn` 이었는데, 순차 라운드로빈이 학습을 **차례마다**
@@ -492,35 +546,6 @@ def execute_tool(name: str, args: dict, world, agent, cfg, sink: Sink,
                 "years_until_impact": seen,
                 # 두 임계를 나란히 돌려준다 — 하나만 주면 그 하나가 설계가 미는 길이 된다
                 "interceptor_needs": thr_seen, "bunker_needs": bnk_seen,
-                "ap_left": round(agent.ap, 1)}, None
-
-    if name == "propose_vote":
-        # **무엇을 지을지는 여기서 정하지 않는다 — 採決을 소집하기만 한다.**
-        #
-        # 전에는 `target` 을 들고 「이것으로 하자」 를 열었고, `vote` 는 찬/반이었다.
-        # 그래서 같은 턴에 둘이 제안하면 둘 다 도구를 통과하는데 하나만 열렸고,
-        # 밀린 쪽은 AP 0.6 을 내고 **아무 일도 안 일어난 것을 알 방법이 없었다.**
-        #
-        # 소집에 내용이 없으면 겹칠 것이 없다. 둘이 소집해도 같은 採決이다.
-        c = world.countries[agent.country]
-        if c.proposal is not None:
-            return {"ok": False, "error":
-                    f"a ballot is already called for year "
-                    f"{_year(c.proposal['vote_turn'])}"}, None
-        if not _afford(agent.ap, cfg.ap.propose_vote):
-            return {"ok": False, "error": f"not enough action; propose_vote needs {cfg.ap.propose_vote}, have {agent.ap:.2f}"}, None
-        # **돈은 안 받는다.** 가난이 제안을 막으면 국토가 돈으로 정해진다. 무게는 AP 로만
-        # 준다 — 국가의 용도를 여는 행위라 한 턴의 절반이 넘는다.
-        _spend(agent, cfg.ap.propose_vote)
-        sink.votes.append((agent.id, agent.country))
-        # **이제 날짜를 돌려줄 수 있다.** 소집에 내용이 없으니 둘이 소집해도 같은
-        # 採決이고, 밀려서 안 열리는 일이 없다.
-        #
-        # **연도로 돌려준다** (#43). 여기만 `world.turn` 을 날것으로 흘리고 있었다 —
-        # 같은 採決을 `vote` 의 실패 응답은 `_year()` 로 「year 46」 이라고 부른다.
-        # 「년」 통일이 에러 메시지만 훑었고 **성공 응답은 그 그물 밖이었다.**
-        # 키 이름도 바꾼다 — 값만 고치면 `ballot_turn` 이 그 눈금을 계속 말한다.
-        return {"ok": True, "ballot_year": _year(world.turn + loop_vote_delay()),
                 "ap_left": round(agent.ap, 1)}, None
 
     if name == "vote":
@@ -716,12 +741,6 @@ def _year(turn: int) -> int:
     return FIRST_YEAR + turn - 1
 
 
-def loop_vote_delay() -> int:
-    """`core.loop.VOTE_DELAY`. 여기서 import 하면 순환이 되므로 호출 시점에 읽는다."""
-    from core.loop import VOTE_DELAY
-    return VOTE_DELAY
-
-
 def _redact_args(name: str, args: dict) -> dict:
     """호출 인자에서 **다른 곳에 온전히 있는 것만** 뺀다.
 
@@ -743,16 +762,14 @@ def can_act(agent, cfg, knob_ai: float) -> bool:
     > 종료는 `end_turn` 이고, 폭주는 `RUNAWAY_CAP`(64) 이 막습니다. 그래도 **정직하게
     > 계산합니다** — 여기서 거짓으로 False 를 돌려주면 합법적인 행동을 잘라내게 됩니다.
     """
-    # **공짜 행동이 사라졌다** (8/21). `procreate` 가 AP 0 이었고 `memory_write` 도
-    # 0 인데 압박선 위에서만 열린다. 출산 행위가 없어진 뒤로 공짜 행동은 그것뿐이라, AP 가 0 이면
-    # 실제로 할 수 있는 것이 없을 수 있다 — 그래서 정직하게 센다.
-    free_ap = cfg.ap.memory_write if agent.memory_open else None
-    if free_ap is not None and free_ap <= 0:
+    # **공짜 행동이 아예 없어졌다** (8/26 · Eddie · `ap.memory_write` 0.0 → 0.04).
+    # 전에는 여기 특례가 있었다 — 기억이 열려 있고 그 값이 0 이면 무조건 참. 이제 모든
+    # 행동이 AP 를 물므로 종료 판정이 **AP 하나로** 정리된다. 특례가 없다는 것이
+    # `can_act` 를 정직하게 만든다 (#47 은 그 특례가 만든 버그였다).
+    if agent.memory_open and _afford(agent.ap, cfg.ap.memory_write):
         return True
     # **돈 조건이 사라졌다** (8/25 · AP 전면 통일). 남은 것은 AP 뿐이다.
     if _afford(agent.ap, cfg.ap.speak):
-        return True
-    if _afford(agent.ap, cfg.ap.propose_vote):
         return True
     # 투자·학습은 **고정 단위**다 (8/19). 예전엔 금액 비례라 「AP 가 조금이라도 있으면
     # 참」 이었는데, 단위가 고정된 뒤로도 그 말이 남아 있었다.

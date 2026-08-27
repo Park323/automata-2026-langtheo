@@ -42,8 +42,15 @@ class TurnCfg:
 
 @dataclass(frozen=True)
 class AP:
-    speak: float
-    propose_vote: float
+    speak: float          # 자국 내 발신
+    # **국경을 넘는 값** (8/26 · Eddie). 전에는 자국과 국제-original 이 같은 값이라,
+    # 국경을 넘는 마찰이 **오직 언어뿐**이었다. 원래 의도는 발신 자체에 차등을 두는
+    # 것이었다 — AI 번역은 **언어** 마찰을 없애지 거리 마찰을 없애지 않으므로,
+    # 노브(ai)도 이 국제 프리미엄을 그대로 진다.
+    speak_intl: float
+    # **`propose_vote` 를 지웠다** (8/26 · Eddie). 採決을 시계가 열게 되어 도구가
+    # 사라졌다 (`World.ballot_every`). 값을 남겨 두면 코드가 읽지 않는 설정이 되고,
+    # 「있으면 거짓말을 한다」 — Inheritance 에 적어 둔 그 이유 그대로다.
     memory_write: float
     # **기본값을 두지 않는다.** 넷 다 기본값이 있었고 셋이 yaml 과 달랐다
     # (give 0.2/0.1 · observe_risk 0.3/0.5 · unit 0.1/0.2). 「숫자를 두 군데 적으면
@@ -117,11 +124,47 @@ class World:
     agents_per_country: int
     total_turns: int
     epoch_turns: int
-    success_prob: float
+    success_prob: float          # 역화가 아닐 때 한 시행이 성공할 확률
+    # **투자는 잃을 수도 있다** (8/26 · Eddie). 전에는 `Binom(n, 0.3)` 이라 진척이 절대
+    # 음수가 안 됐다 — 「투자」 라고 부르면서 원금 손실이 없었다.
+    #
+    #     역화 아님 (1−q)   +Binom(n, success_prob)
+    #     역화     (q)      −Binom(n, backfire_hit)
+    #
+    # 기댓값은 **오른다** (0.30n → 0.3375n) 는데 표준편차가 2.8배가 된다. 그리고 음수
+    # 확률이 **규모와 무관하게** 15% 다 — 역화가 부호를 뒤집는 혼합분포라 분산의 큰
+    # 몫이 `n` 과 무관하기 때문이다. 「크게 투자하면 안전」 이 안 된다.
+    #
+    # 옛 스냅샷에는 이 둘이 없다. 0 이면 `Binom(n, success_prob)` 그대로다.
+    backfire_prob: float = 0.0
+    backfire_hit: float = 0.0
     # 초기 나이를 1..이 값에서 뽑는다. 전원 0살이면 한꺼번에 죽어 세계가 백지가 된다.
     init_age_max: int = 10
     # **성인 나이.** 이 나이부터 아이를 낳을 수 있고, 이 나이부터 소득을 받는다.
     # 그전에는 부모가 주는 돈이 전부다.
+    #
+    # ── 採決을 시계가 연다 (8/26 · Eddie) ──────────────────────────────────
+    #
+    # 전에는 `propose_vote` 로 사람이 열었다. 그것이 **두 가지로 무너졌다.**
+    #
+    #   ① 한 해의 발의 차이가 30해를 정했다. 260826-008 에서 Asla1·Miris2 가 1해에,
+    #      Ranoa2 가 2해에 소집했다 — 採決이 3해/4해로 갈리고 4해에 Asla 113 / Ranoa 0
+    #      이 찍혔다. 그 뒤로 아무도 순위를 의심하지 않았고, **배수 1.3 인 Ranoa 가
+    #      배수 1.0 인 Asla 에게 숙주 자리를 넘겼다.** 전략이 아니라 사고다.
+    #
+    #   ② 제안자가 죽으면 採決이 빈다. Ranoa10 이 15해에 소집하고 16해에 죽었고,
+    #      17해 採決에 Ranoa 는 **한 표도 안 냈다.** 수명이 5해인 세계에서 절차를
+    #      한 사람의 발의에 매달면 그 사람과 함께 사라진다.
+    #
+    # `ballot_from` 해부터 `ballot_every` 해마다 전 국가가 동시에 採決한다. 소집도
+    # 유예도 없다 — 사이의 해가 논의 기간이다. **첫 해부터 강제**하는 것은 의도된
+    # 선택이다 (Eddie): 정보 교환이 거의 없는 시점에 확정지어 버리는 것도 조건이다.
+    ballot_every: int = 3
+    ballot_from: int = 1
+    # **국토 전환 때 무엇이 남는지는 설정이 아니라 규칙이다** —
+    # `Country.kept_on_switch()` 가 자국이 쌓은 몫만 남긴다. 소각률 손잡이를 두었다가
+    # 지웠다: 균등 소각은 어떤 값으로도 「숙주가 무료로 배신하는 구간」 을 못 없앤다
+    # (0.5 면 마지막 25%, 0.7 이면 전환 자체가 다시 불가능).
 
 
 @dataclass(frozen=True)
@@ -229,13 +272,22 @@ class Config:
 
     @property
     def k(self) -> float:
-        """진척 환산 계수 = facility.eff × world.success_prob.
+        """진척 환산 계수 = facility.eff × **한 시행의 기댓값**.
 
         임계값은 **진척 단위**다. 소득을 그대로 비교하면 안 된다 (spec 7장).
         이 프로퍼티를 반드시 경유하게 만들어라 — 단위 오류가 Phase 0 에서
         실제로 나온 결함 1번이다.
+
+        **역화가 들어오면서 기댓값이 `success_prob` 이 아니게 됐다** (8/26):
+
+            (1−q) × success_prob  −  q × backfire_hit
+            = 0.85 × 0.45 − 0.15 × 0.30 = 0.3375
+
+        여기를 안 고치면 창(★A·B·C·E)이 12.5% 낮은 기댓값으로 계산된다.
         """
-        return self.facility.eff * self.world.success_prob
+        q = self.world.backfire_prob
+        return self.facility.eff * ((1.0 - q) * self.world.success_prob
+                                   - q * self.world.backfire_hit)
 
 
 def _world_from(d: dict) -> World:
@@ -266,7 +318,10 @@ def from_dict(d: dict) -> Config:
         costs=Costs(**d["costs"]),
         thresholds=Thresholds(**d["thresholds"]),
         turn=TurnCfg(**d["turn"]),
-        ap=AP(**d["ap"]),
+        # **옛 스냅샷은 `speak_intl` 이 없다** (8/26). 그 세계들은 자국과 국제-original 이
+        # **같은 값**이었으므로, 없을 때 `speak` 을 넣는 것이 그 런의 진실이다. 기본값을
+        # dataclass 에 두지 않는 이유 — 새 config 가 값을 빼먹으면 여기서 드러나야 한다.
+        ap=AP(**{"speak_intl": d["ap"]["speak"], **d["ap"]}),
         growth=Growth(**d["growth"]),
         survival=SurvivalCfg(**d["survival"]),
         wellness=Wellness(**d["wellness"]),

@@ -104,11 +104,35 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "building — which may not be what you think it is, and a nation that has not "
         "yet decided what to build has nothing to put it into, so it buys "
         "no progress. "
-        "Only that nation knows which it is.",
+        "Only that nation knows which it is. "
+        # **역화를 적는다** (8/26 · Eddie). `destroy` 에는 「逆に進むこともある」 가 있는데
+        # `invest` 에는 없었다 — 그 비대칭이 실측에서 값을 치렀다. 6해 Ranoa6 이 자기
+        # 투자가 음수로 나온 것을 보고 **「내가 도구를 잘못 썼나」** 로 읽고 설명을 두 번
+        # 다시 읽었다. 규칙에 없는 일이 일어나면 도구를 의심한다.
+        #
+        # **`facility` 에만 붙인다.** `wellness`·`national` 은 직접 더해지고 추첨이 없다.
+        "Putting into a facility can backfire: sometimes it sets that nation's "
+        "facility back instead.",
         {"target": {"type": "string", "enum": ["wellness", "national", "facility"]},
          "to": {"type": "string", "description": "facility only: any nation id, yours or another's. "
                                "Defaults to your own nation"}},
         ["target"]),
+
+    fn("destroy",
+        "Set back a nation's facility. Costs the same action as one invest and works the "
+        "same way in reverse — the same amount, the opposite sign. It can backfire: "
+        "sometimes it advances that nation's facility instead. "
+        "What you set back is whatever that nation is currently building — which may "
+        "not be what you think it is, and a nation that has not yet decided what to "
+        "build has nothing to set back. Nobody is told who did it.",
+        # **자국을 명시하지 않는다** (8/26 · Eddie). 가능하지만 안내하지 않는다 —
+        # 「자기 나라를 부술 수 있다」 를 적으면 그것이 곧 제안이 된다. `invest` 는
+        # 자국·타국을 다 적는데, 그건 권하는 행위이기 때문이다.
+        #
+        # **그래서 `to` 를 필수로 둔다.** 생략하면 자국이 되던 시절엔 실수로 자기 나라를
+        # 부순다 — 안내하지 않는 경로를 사고로 밟게 만들면 안 된다.
+        {"to": {"type": "string", "description": "the nation whose facility to set back"}},
+        ["to"]),
 
     fn("learn",
         "Put one fixed amount toward learning another nation's language; one payment "
@@ -132,16 +156,12 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "sees it.",
         {}, []),
 
-    fn("propose_vote",
-        "Call a ballot on what your nation should build. Your nation only. You do not "
-        "say what to build — the ballot itself decides that. Nothing changes yet: time "
-        "passes so people can talk it over, and then everyone casts a choice; your "
-        "observation tells you which year that is. **Only people of your own nation may "
-        "vote** — a foreigner cannot, no "
-        "matter what they say. If a ballot is already called, calling again does nothing. "
-        "It costs nothing to fund — nobody is priced out of proposing — but it "
-        "takes more than half of your action points for the year.",
-        {}, []),
+    # **`propose_vote` 를 지웠다** (8/26 · Eddie). 採決을 시계가 연다 — 1해부터
+    # 3해마다 전 국가가 동시에 개표한다 (`world.ballot_every`). 사람이 소집하던 때
+    # 발의 한 해 차이가 30해를 정했고, 제안자가 죽으면 採決이 비었다.
+    #
+    # 도구를 남겨 두면 0.20 을 내고 아무 일도 안 일어난다 — 이 프로젝트에서 가장
+    # 반복된 실패다 (「조용한 무시가 가장 나쁜 실패다」).
 
     fn("vote",
         "Choose what **your own nation** builds — `interceptor`, `bunker`, or `abstain`. "
@@ -149,7 +169,14 @@ def _build(reasoning_arg: bool) -> list[dict]:
         "observation tells you which year that is. The choice with the most votes wins; "
         "`abstain` counts for neither. If the two tie, or nobody votes, your nation keeps "
         "what it has and its progress survives. It costs almost no action "
-        "points, so voting never takes away your chance to speak on the day it matters most.",
+        "points, so voting never takes away your chance to speak on the day it matters "
+        # **결과가 자국 밖으로 나가지 않는다** (8/26 · Eddie). 이것이 없으면, 국토를 바꾼
+        # 것을 출자한 타국이 당연히 알 것이라고 읽는다 — 그러면 「내가 쌓아준 것이
+        # 사라졌다」 를 알아챌 단서가 있다고 오해한 채로 계산한다. SYSTEM 이 「그 나라
+        # 사람만 안다」 를 말하고, 여기서 採決에 대해 그것을 되짚는다.
+        "most. The outcome stays inside your nation: no other nation is told what was "
+        # 「turned」 는 못 쓴다 — 「turn」 금지 그물이 부분문자열로 잡는다 (실제로 잡혔다).
+        "chosen, or that it changed to something else at all.",
         {"choice": {"type": "string", "enum": ["interceptor", "bunker", "abstain"]}},
         ["choice"]),
 

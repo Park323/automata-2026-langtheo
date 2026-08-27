@@ -35,8 +35,10 @@ def _with(**overrides) -> Config:
 
 def test_valid_config_loads():
     cfg = config.load(BASE)
-    assert cfg.thresholds.interceptor == 16048     # 행동력 용량 창의 0.30 지점 (8/25)
-    assert cfg.k == pytest.approx(0.3)          # eff 1.0 × success_prob 0.3
+    assert cfg.thresholds.interceptor == 10899     # 행동력 용량 창의 0.30 지점 (8/26 · 역화)
+    # **역화가 들어와 `k` 가 `success_prob` 이 아니다** (8/26):
+    #   (1−0.15) × 0.45 − 0.15 × 0.30 = 0.3375
+    assert cfg.k == pytest.approx(0.3375)
 
 
 def test_window_values():
@@ -113,16 +115,30 @@ def test_bunker_just_above_floor():
     assert any("벙커↓" in f for f in fails)
 
 
-def test_break_success_prob_half():
-    """임계는 그대로 두고 success_prob 만 0.5 → 임계가 진척 단위임이 드러나 검사가 걸린다.
+def test_break_the_yield_and_the_window_catches_it():
+    """임계는 그대로 두고 **수익률만** 흔들면 검사가 걸린다 — 임계가 진척 단위이기 때문이다.
 
-    ⚠ 과제 A-4 표는 ★C 라 적었지만, 스펙 공식으로 계산하면 창이 위로 이동(E=10800)해
-       interceptor(8019)가 하한 아래로 내려가 실제로는 ★E 가 걸린다. 요점(임계가 진척
-       단위라 재계산을 잊으면 검사가 잡는다)은 동일. → A-4 라벨이 스펙과 어긋나는 지점.
+    **값을 박지 않는다** (8/26). 전에는 `success_prob: 0.5` 를 박아 뒀는데, 역화가
+    들어와 `k` 가 0.3375 로 오르면서 창도 함께 넓어졌다 — 0.5 는 이제 창 안이고 테스트가
+    **아무것도 안 잡았다.** 임계가 진척 단위라는 요점은 그대로이므로, 창을 벗어나는 값을
+    **찾아서** 흔든다.
+
+    아래·위 양쪽을 다 본다. 한쪽만 보면 「창이 한 방향으로만 열려 있다」 를 놓친다.
     """
-    fails = asserts.check_all(_with(**{"world.success_prob": 0.5}))
-    assert fails                              # 어떤 검사든 반드시 걸려야 한다
-    assert any("★E" in f for f in fails)      # 스펙 공식상 실제로 걸리는 것은 ★E
+    lo_hit = hi_hit = None
+    for sp in [round(x * 0.05, 2) for x in range(1, 20)]:
+        fails = asserts.check_all(_with(**{"world.success_prob": sp}))
+        if not fails:
+            continue
+        if sp < 0.45 and lo_hit is None:
+            lo_hit = (sp, fails)
+        if sp > 0.45 and hi_hit is None:
+            hi_hit = (sp, fails)
+    assert lo_hit, "수익률을 낮춰도 아무 검사가 안 걸린다 — 창이 아래로 안 닫힌다"
+    assert hi_hit, "수익률을 올려도 아무 검사가 안 걸린다 — 창이 위로 안 닫힌다"
+    # 낮추면 ★C(도달 가능)가, 올리면 ★A·★E(미루기·지속 참여)가 걸린다
+    assert any("★C" in f for f in lo_hit[1]), lo_hit
+    assert any("★E" in f or "★A" in f for f in hi_hit[1]), hi_hit
 
 
 def test_break_knob_below_speak():

@@ -26,16 +26,20 @@ def _run(cfg, seed):
 
 def test_survival_numbers(cfg):
     lam, k = cfg.survival.lambda_base, cfg.survival.k
-    # **16.52 → 10.09** (8/25). 올렸던 근거는 「왕복 하나에 두 턴」 이었는데 순차
-    # 라운드로빈은 같은 해에 배달한다 — 그 근거가 낡았다. 세계 50해 ÷ 10해 = 다섯 세대.
-    assert survival.expected_life(lam, k) == pytest.approx(10.00, abs=0.02)
-    # k=8 은 꼬리가 짧다 — 수명의 1.2배를 넘길 확률이 2% 아래다
-    assert survival.survival(12, lam, k) == pytest.approx(0.018, abs=0.005)
-    assert survival.survival(15, lam, k) < 1e-4
-    haz = [round(survival.hazard(a, lam, k), 2) for a in range(0, 20, 2)]
-    # λ 10.09 · k 8 (8/25) · 짝수 나이만. 앞쪽이 평평하고 뒤가 급하다 — k 가 8 이라
-    # 꼬리가 짧다. 나이 12 에서 이미 66%, 14 에서 97% 가 그 해에 죽는다.
-    assert haz == [0.00, 0.00, 0.00, 0.04, 0.22, 0.66, 0.97, 1.00, 1.00, 1.00]
+    # **10.09 → 4.78** (8/26 · 세계 축소). 세계 30해 ÷ 5해 = 여섯 세대.
+    # **상대 분산은 그대로다** — sd/평균이 0.144 → 0.146 으로 같다 (k 를 안 건드렸다).
+    assert survival.expected_life(lam, k) == pytest.approx(5.00, abs=0.02)
+    # k=8 은 꼬리가 짧다 — 수명의 1.2배(6해)를 넘길 확률이 1% 아래다
+    assert survival.survival(6, lam, k) < 0.01
+    assert survival.survival(8, lam, k) < 1e-4
+    # **모양을 수명에 상대적으로 본다** — 절대 나이를 박으면 세계를 줄일 때마다 낡는다.
+    haz = [round(survival.hazard(lam * f, lam, k), 2)
+           for f in (0.4, 0.8, 1.0, 1.2, 1.4)]
+    assert haz == [0.02, 0.60, 0.97, 1.00, 1.00], haz
+    # ⚠ 옛 세계(λ 10.09)는 같은 상대 지점에서 [0.00, 0.23, 0.68, 0.98, 1.00] 이었다.
+    #   **연속 분산은 같은데**(sd/평균 0.144 → 0.146) 이산 위험률이 다르다 — 한 해가
+    #   수명의 10% 에서 **21%** 로 굵어졌기 때문이다. 세계를 줄이면 죽음이 그만큼
+    #   덩어리진다. 수명을 더 줄일 거라면 이 값을 먼저 봐야 한다.
 
 
 # ── 합격 기준 표 ─────────────────────────────────────────────────────────────

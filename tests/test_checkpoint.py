@@ -63,7 +63,10 @@ def test_checkpoint_carries_what_state_jsonl_cannot(tmp_path, cfg):
     인박스 큐가 거기 없다. 하나라도 빠지면 이어붙인 뒤가 다른 세계가 된다."""
     ck = tmp_path / "checkpoint.json"
     r = _run(cfg, 2, checkpoint_to=ck)
-    a = r.world.agents["Asla1"]
+    # **살아 있는 사람을 고른다** (8/26). `Asla1` 을 박아 두었는데, 수명을 5 로 줄인
+    # 뒤로는 두 해 안에 죽어 `KeyError` 가 났다. 세대 교체가 빠른 세계에서는 이름을
+    # 박으면 안 된다.
+    a = next(x for x in r.world.agents.values() if x.country == "Asla")
     a.memory = "기억"
     a.lang_progress = {"zh": 120.0}
     r.world.countries["Asla"].proposal = {"target": "bunker", "by": "Asla2",
@@ -71,7 +74,7 @@ def test_checkpoint_carries_what_state_jsonl_cannot(tmp_path, cfg):
     checkpoint.save(ck, r.world, random.Random(1), 99, 77)
 
     w, rng, uid, mid, done = checkpoint.load(ck)
-    b = w.agents["Asla1"]
+    b = w.agents[a.id]
     assert b.memory == "기억" and b.lang_progress == {"zh": 120.0}
     assert b.convo == a.convo and b.convo != []          # 대화 이력이 통째로
     assert isinstance(b.known_langs, set)                # set 으로 복원

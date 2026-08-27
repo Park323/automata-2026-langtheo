@@ -23,7 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import yaml  # noqa: E402
 
 from tools.balance.sweep import (  # noqa: E402
-    POLICIES, POLICY_COEF, W_TARGET, Cfg, bounds, evaluate, expected_life, passes_asserts, required_w, required_w_growth,
+    POLICIES, POLICY_COEF, W_TARGET, Cfg, bounds, evaluate, expected_life,
+    passes_asserts, required_w, required_w_growth, yield_per_trial,
 )
 
 # 무성장 0.30 / 성장 0.25 — 못 박을 때 실측한 값.
@@ -48,6 +49,9 @@ def cfg_from_yaml(path: Path) -> Cfg:
         total_turns=d["world"]["total_turns"],
         epoch_turns=d["world"]["epoch_turns"],
         success_prob=d["world"]["success_prob"],
+        # **역화를 빼먹으면 `k` 가 12.5% 낮게 계산된다** (8/26). 옛 스냅샷에는 없다.
+        backfire_prob=d["world"].get("backfire_prob", 0.0),
+        backfire_hit=d["world"].get("backfire_hit", 0.0),
         agents=d["world"]["agents_per_country"],
         growth_coef=d["growth"]["growth_coef"],
         growth_scale=d["growth"]["growth_scale"],
@@ -64,7 +68,8 @@ def cfg_from_yaml(path: Path) -> Cfg:
 def report(c: Cfg, seeds: int) -> int:
     A, B, C, E = bounds(c)
     lo, hi = max(A, B, E), C * POLICY_COEF
-    k = c.facility_eff * c.success_prob
+    k = c.facility_eff * yield_per_trial(c.success_prob, c.backfire_prob,
+                                              c.backfire_hit)
     # **두 줄이 같은 자를 써야 한다** (#48). 아래 줄에만 나이 배수가 빠져 있어서 전 기간
     # 진척을 5,400 으로 찍었다 — 실제 7,361 보다 27% 낮다. 그 수로 보면 벙커 4,900 이
     # 전 기간의 91% 라 「상한에 거의 붙었다」 로 읽히는데, 실제로는 67% 다.
@@ -75,7 +80,9 @@ def report(c: Cfg, seeds: int) -> int:
 
     print(f"세계   {c.total_turns}턴 · 주기 {c.epoch_turns} · 국가당 {c.agents}명 · "
           f"소득 {c.income:.0f}/턴 · 기대수명 {expected_life(c.surv_lambda, c.surv_k):.2f}턴")
-    print(f"       eff {c.facility_eff} × success_prob {c.success_prob} = k {k}")
+    print(f"       eff {c.facility_eff} × 시행 기댓값 "
+          f"({1-c.backfire_prob:.2f}×{c.success_prob} − {c.backfire_prob}×{c.backfire_hit}) "
+          f"= k {k:.4f}")
     print()
 
     print("요격기 임계가 놓여야 할 창 (진척 단위)")

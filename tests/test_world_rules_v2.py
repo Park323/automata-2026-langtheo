@@ -60,11 +60,19 @@ def _do(world, cfg, agent, name, args):
 
 # ── 국토 배타성 ─────────────────────────────────────────────────────────────────
 
-def _call(world, cfg, who):
-    """採決을 소집한다. **무엇을 지을지는 여기서 정하지 않는다.**"""
-    sink = Sink()
-    sink.votes = [(who, world.agents[who].country)]
-    return _settle(world, cfg, sink)
+def _open(world, cfg, result=None):
+    """採決을 연다 — **시계가 연다.** 소집자는 없다."""
+    result = result or loop.RunResult(world=world)
+    loop.open_ballots(world, cfg, result)
+    return result
+
+
+def _ballot_turn(cfg, at_least=5):
+    """`at_least` 이상인 첫 採決일."""
+    t = cfg.world.ballot_from
+    while t < at_least:
+        t += cfg.world.ballot_every
+    return t
 
 
 def _ballot(world, cfg, *votes):
@@ -74,122 +82,179 @@ def _ballot(world, cfg, *votes):
     return _settle(world, cfg, sink)
 
 
-def test_calling_a_ballot_changes_nothing_for_three_turns(cfg, world):
-    """소집한 순간에는 아무 일도 일어나지 않는다. **유예가 상의할 시간이다.**"""
+def test_the_clock_opens_the_ballot_not_a_person(cfg, world):
+    """**발의 한 해 차이가 30해를 정했다** (8/26 · 260826-008).
+
+    Asla1·Miris2 가 1해에, Ranoa2 가 2해에 소집해서 採決이 3해/4해로 갈렸다. 4해에
+    Asla 113 / Ranoa 0 이 찍히고, 그 뒤로 아무도 순위를 의심하지 않았다 — **배수 1.3 인
+    Ranoa 가 배수 1.0 인 Asla 에게 숙주 자리를 넘겼다.** 전략이 아니라 사고다.
+
+    그리고 제안자가 죽으면 採決이 비었다: Ranoa10 이 15해에 소집하고 16해에 죽자
+    17해 採決에 Ranoa 는 한 표도 안 냈다.
+
+    이제 시계가 연다. `by` 는 없다 — 아무도 부르지 않았다.
+    """
+    every, start = cfg.world.ballot_every, cfg.world.ballot_from
+    world.turn = start
+    r = _open(world, cfg)
+    assert all(world.countries[c].proposal is not None for c in world.countries), \
+        "첫 해부터 강제다 — 정보 교환이 거의 없는 시점에 확정짓는 것도 조건이다"
+    for c in world.countries.values():
+        assert c.proposal["by"] is None                  # 소집자가 없다
+        assert c.proposal["vote_turn"] == world.turn     # 유예도 없다
+    assert [v["by"] for v in r.votes_log if v["kind"] == "propose"] == [None] * 3
+
+    # 採決일이 아닌 해에는 열리지 않는다
+    for c in world.countries.values():
+        c.proposal = None
+    world.turn = start + 1
+    _open(world, cfg)
+    assert all(c.proposal is None for c in world.countries.values())
+
+    # 주기대로 돌아온다
+    assert [t for t in range(1, 3 * every + 2) if loop.is_ballot_turn(t, cfg)] \
+        == [start + i * every for i in range((3 * every + 1 - start) // every + 1)]
+
+
+def test_switching_land_keeps_only_what_the_nation_itself_built(cfg, world):
+    """**세 규칙을 차례로 겪었다** (8/26 · Eddie).
+
+    ① 전액 소각 → 전환이 산술적으로 불가능해 採決이 형식이 됐다. 260826-008 17해에
+       Asla 는 진척 2823 · 남은 14해였고 벙커까지 20.2해가 필요했다. 3표 만장일치 유지.
+    ② 균등 50% → 요격기 8,200 을 넘기면 전환 즉시 벙커(4,100)가 완성된다. **세 나라가
+       힘을 모아 숙주를 밀어 올리는 순간 숙주가 무료로 배신**할 수 있었다 (마지막 25%).
+    ③ 타국 몫만 소각 → 그 구멍이 스스로 닫힌다. 무료 배신은 `진척 × 자국비중 ≥ 벙커임계`
+       일 때만 생기므로 **도움을 많이 받은 나라일수록 못 빠져나간다.**
+    """
     c = world.countries["Ranoa"]
-    c.land, c.progress = "interceptor", 295.0
-    world.turn = 10
-    _call(world, cfg, "Ranoa1")
-    assert (c.land, c.progress) == ("interceptor", 295.0)
-    assert c.proposal["by"] == "Ranoa1" and c.proposal["vote_turn"] == 10 + loop.VOTE_DELAY
-    assert "target" not in c.proposal          # 소집에는 내용이 없다
+    c.land = "interceptor"
+    c.progress, c.domestic_progress = 400.0, 120.0        # 자국 120 · 타국 280
+    world.turn = _ballot_turn(cfg)
+    _open(world, cfg)
+    r = _ballot(world, cfg, ("Ranoa1", "bunker"))
+    assert (c.land, c.progress) == ("bunker", 120.0)
+    assert c.domestic_progress == 120.0, "새 시설의 출발점은 전부 자국 몫이다"
+    (ch,) = [x for x in r.land_changes if x["country"] == "Ranoa"]
+    assert ch["progress_lost"] == 280.0 and ch["progress_kept"] == 120.0
 
 
-def test_calling_a_ballot_carries_no_choice(cfg, world):
-    """**전에는 `target` 을 들고 「이것으로 하자」 를 열었다.** 같은 턴에 둘이 제안하면
-    둘 다 도구를 통과하는데 하나만 열렸고, 밀린 쪽은 AP 0.6 을 내고 아무 일도 안 일어난
-    것을 알 방법이 없었다. 소집에 내용이 없으면 겹칠 것이 없다."""
-    from core.agent_loop import execute_tool
-    from domains.meteor.prompts import FIRST_YEAR
-    world.turn = 10
-    a = world.agents["Ranoa1"]; a.ap = 1.0
-    res, _ = execute_tool("propose_vote", {"reasoning": "r"}, world, a, cfg, Sink(), KNOB)
-    # **연도로 답한다** (#43). 「턴」 은 에이전트에게 존재하지 않는 눈금이다
-    assert res["ok"] and res["ballot_year"] == FIRST_YEAR + (10 + loop.VOTE_DELAY) - 1
-    assert "ballot_turn" not in res
+def test_a_nation_that_took_no_help_loses_nothing_when_it_turns(cfg, world):
+    """자립한 나라는 자유롭게 돌아설 수 있다. **민첩성을 남이 정한다** — 투자를 거부할
+    수 없으므로 남이 부어주는 만큼 묶인다. 그래서 투자가 족쇄를 채우는 수단이 된다."""
+    c = world.countries["Ranoa"]
+    c.land = "interceptor"
+    c.progress = c.domestic_progress = 900.0
+    world.turn = _ballot_turn(cfg)
+    _open(world, cfg)
+    _ballot(world, cfg, ("Ranoa1", "bunker"))
+    assert (c.land, c.progress) == ("bunker", 900.0)
 
 
-def test_two_people_calling_the_same_ballot_is_harmless(cfg, world):
-    """둘이 소집해도 **같은 採決**이다. 유령 제안이 생기지 않는다."""
-    world.turn = 10
-    sink = Sink()
-    sink.votes = [("Ranoa1", "Ranoa"), ("Ranoa3", "Ranoa")]
-    r = _settle(world, cfg, sink)
-    calls = [v for v in r.votes_log if v["kind"] == "propose"]
-    assert [c["opened"] for c in calls] == [True, False]     # id 순으로 앞선 것만 연다
-    assert all(c["vote_turn"] == 10 + loop.VOTE_DELAY for c in calls)  # 같은 날짜다
-    assert world.countries["Ranoa"].proposal["by"] == "Ranoa1"
+def test_the_kept_share_is_clamped_to_what_is_actually_there(cfg, world):
+    """타국의 역화가 총량을 자국 기여 아래로 끌어내릴 수 있다. 그때 「남은 것이 지금
+    있는 것보다 많다」 가 되면 안 된다."""
+    c = world.countries["Ranoa"]
+    c.land = "interceptor"
+    c.progress, c.domestic_progress = 50.0, 300.0     # 타국 역화가 총량을 깎았다
+    assert c.kept_on_switch() == 50.0
+    c.domestic_progress = -20.0                       # 자국민이 자국을 부순 끝
+    assert c.kept_on_switch() == 0.0
 
 
-def test_ballot_only_counts_on_the_ballot_turn(cfg, world):
-    """유예 중에 던진 표는 무효다 — 그때 정해지면 상의할 시간이 사라진다."""
-    from core.agent_loop import execute_tool
-    world.turn = 10
-    _call(world, cfg, "Ranoa1")
-    a = world.agents["Ranoa2"]; a.ap = 1.0
-    # 유예 안쪽. **VOTE_DELAY 를 4 에서 2 로 줄이면서 12 가 採決일 자체가 됐다** —
-    # 상수를 고쳤을 때 이 숫자가 함께 움직이지 않으면 테스트가 조용히 다른 것을 잰다.
-    world.turn = 10 + loop.VOTE_DELAY - 1
-    res, _ = execute_tool("vote", {"choice": "bunker", "reasoning": "r"},
-                          world, a, cfg, Sink(), KNOB)
-    # **연도로 말한다.** 「turn 14」 라고 말하고 있었다 — 세계는 55년인데 내부 인덱스다.
-    from domains.meteor.prompts import FIRST_YEAR
-    assert not res["ok"] and str(FIRST_YEAR + 10 + loop.VOTE_DELAY - 1) in res["error"]
-    assert "turn" not in res["error"]
+def test_progress_is_credited_to_the_investors_nation(cfg, world):
+    """**적용분으로 귀속한다 — 추첨값이 아니다.** 0 에서 잘리므로 둘이 다르고, 추첨값으로
+    쌓으면 바닥에서 자국 몫이 음수로 남아 자국민이 올려도 회복되지 않는다."""
+    c = world.countries["Ranoa"]
+    c.land, c.progress, c.domestic_progress = "interceptor", 0.0, 0.0
+    loop.apply_progress(world, c, 30, "Ranoa1")            # 자국민
+    assert (c.progress, c.domestic_progress) == (30.0, 30.0)
+    loop.apply_progress(world, c, 20, "Asla1")             # 타국민
+    assert (c.progress, c.domestic_progress) == (50.0, 30.0)
+    # 타국의 역화가 바닥을 치면 **적용분만** 타국 쪽에서 깎인다
+    loop.apply_progress(world, c, -80, "Asla1")
+    assert c.progress == 0.0 and c.domestic_progress == 30.0
+    assert c.kept_on_switch() == 0.0                       # 지금 있는 것이 0 이다
+
+
+def test_the_ballot_result_says_what_survived_not_only_what_died(cfg, world):
+    """잃은 값만 주면 「전부 날아갔다」 로 읽힌다 — 남은 것도 함께 알린다."""
+    from domains.meteor import prompts
+    c = world.countries["Ranoa"]
+    c.land = "interceptor"
+    c.progress, c.domestic_progress = 400.0, 150.0      # 자국 150 · 타국 250
+    world.turn = _ballot_turn(cfg)
+    _open(world, cfg)
+    _ballot(world, cfg, ("Ranoa1", "bunker"))
+    a = world.agents["Ranoa1"]
+    seen = [e for e in world.inbox_queue
+            if e["to"] == a.id and e["msg"].get("ballot") == "changed"]
+    assert seen, "採決 결과가 그 나라에 통지돼야 한다"
+    txt = prompts.render_events(a, [e["msg"] for e in seen])
+    assert "250" in txt, f"잃은 것을 말해야 한다: {txt}"
+    assert "150" in txt, f"남은 것도 말해야 한다: {txt}"
 
 
 def test_one_vote_decides_when_nobody_else_shows_up(cfg, world):
     """**한 표만 나오면 그 한 표가 나라를 정한다.**
 
     한 사람이 나라를 망칠 수 있다는 것이 의도이고, 막는 것은 규칙이 아니라 사람들이다.
-    유예 3턴은 그러라고 준 시간이다.
+    採決 사이의 해가 그러라고 준 시간이다.
     """
     c = world.countries["Ranoa"]
     c.land, c.progress = "interceptor", 295.0
-    world.turn = 10
-    _call(world, cfg, "Ranoa1")
-    world.turn = 10 + loop.VOTE_DELAY
+    world.turn = _ballot_turn(cfg)
+    _open(world, cfg)
     r = _ballot(world, cfg, ("Ranoa1", "bunker"))
-    assert (c.land, c.progress) == ("bunker", 0.0)
-    (ch,) = r.land_changes
+    assert c.land == "bunker"
+    (ch,) = [x for x in r.land_changes if x["country"] == "Ranoa"]
     assert ch["chosen"] == "bunker" and ch["changed"] is True
     assert ch["counts"] == {"interceptor": 0, "bunker": 1, "abstain": 0}
-    assert ch["progress_lost"] == 295.0 and c.proposal is None
+    assert c.proposal is None
 
 
 def test_the_majority_choice_wins(cfg, world):
     """설득에 성공하면 막힌다. 진척은 그대로 남는다."""
     c = world.countries["Ranoa"]
     c.land, c.progress = "interceptor", 295.0
-    world.turn = 10
-    _call(world, cfg, "Ranoa1")
-    world.turn = 10 + loop.VOTE_DELAY
+    world.turn = _ballot_turn(cfg)
+    _open(world, cfg)
     r = _ballot(world, cfg, ("Ranoa1", "bunker"),
                 ("Ranoa2", "interceptor"), ("Ranoa3", "interceptor"))
     assert (c.land, c.progress) == ("interceptor", 295.0)
-    (ch,) = r.land_changes
+    (ch,) = [x for x in r.land_changes if x["country"] == "Ranoa"]
     assert ch["chosen"] == "interceptor" and ch["changed"] is False     # 이미 그것이다
     assert ch["progress_lost"] == 0.0
 
 
 def test_a_tie_keeps_what_the_nation_has(cfg, world):
-    """**동수면 현 상태 그대로고 진척도 살아 있다.**
+    """**동수면 현 상태 그대로고 진척도 온전하다.**
 
-    합의 실패의 대가를 진척 파괴로 물리면, 소집 한 번이 남의 나라 진척을 지우는
-    무기가 된다.
+    합의 실패의 대가를 진척 파괴로 물리면, 採決 한 번이 진척을 지우는 무기가 된다.
     """
     c = world.countries["Ranoa"]
     c.land, c.progress = "interceptor", 295.0
-    world.turn = 10
-    _call(world, cfg, "Ranoa1")
-    world.turn = 10 + loop.VOTE_DELAY
+    world.turn = _ballot_turn(cfg)
+    _open(world, cfg)
     r = _ballot(world, cfg, ("Ranoa1", "bunker"), ("Ranoa2", "interceptor"))
     assert (c.land, c.progress) == ("interceptor", 295.0)
-    (ch,) = r.land_changes
+    (ch,) = [x for x in r.land_changes if x["country"] == "Ranoa"]
     assert ch["chosen"] is None and ch["changed"] is False
     assert c.proposal is None                     # 정해지지 않아도 採決은 닫힌다
 
 
 def test_nobody_voting_keeps_what_the_nation_has(cfg, world):
-    """아무도 표를 안 내면 정해지지 않는다 — 0 > 0 이 아니다."""
+    """아무도 표를 안 내면 정해지지 않는다 — 0 > 0 이 아니다.
+
+    採決이 3해마다 강제로 열리므로 **빈 採決이 흔해진다.** 그때 진척이 사라지면
+    시계가 세계를 지우는 무기가 된다.
+    """
     c = world.countries["Ranoa"]
     c.land, c.progress = "interceptor", 295.0
-    world.turn = 10
-    _call(world, cfg, "Ranoa1")
-    world.turn = 10 + loop.VOTE_DELAY
+    world.turn = _ballot_turn(cfg)
+    _open(world, cfg)
     r = _ballot(world, cfg)
     assert (c.land, c.progress) == ("interceptor", 295.0)
-    assert r.land_changes[0]["chosen"] is None
+    assert [ch for ch in r.land_changes if ch["country"] == "Ranoa"][0]["chosen"] is None
 
 
 def test_abstain_counts_for_neither_but_is_recorded(cfg, world):
@@ -197,26 +262,32 @@ def test_abstain_counts_for_neither_but_is_recorded(cfg, world):
     근거와 함께 로그에 남아 지표가 읽는다."""
     c = world.countries["Ranoa"]
     c.land = None
-    world.turn = 10
-    _call(world, cfg, "Ranoa1")
-    world.turn = 10 + loop.VOTE_DELAY
+    world.turn = _ballot_turn(cfg)
+    _open(world, cfg)
     r = _ballot(world, cfg, ("Ranoa1", "abstain"), ("Ranoa2", "abstain"),
                 ("Ranoa3", "bunker"))
-    (ch,) = r.land_changes
+    ch = [x for x in r.land_changes if x["country"] == "Ranoa"][0]
     assert ch["counts"] == {"interceptor": 0, "bunker": 1, "abstain": 2}
     assert ch["chosen"] == "bunker"                # 기권은 어느 쪽으로도 안 센다
     votes = [v for v in r.votes_log if v["kind"] == "ballot"]
     assert sorted(v["choice"] for v in votes) == ["abstain", "abstain", "bunker"]
 
 
-def test_only_one_ballot_at_a_time(cfg, world):
-    """採決이 열려 있으면 새로 소집할 수 없다 — 안 그러면 유예가 무의미해진다."""
+def test_the_propose_vote_tool_is_gone(cfg, world):
+    """**남겨 두면 0.20 을 내고 아무 일도 안 일어난다.**
+
+    採決을 시계가 여는 순간 이 도구는 할 일이 없어진다. 이 프로젝트에서 가장 반복된
+    실패가 「조용한 무시」 였으므로 값도 도구도 함께 지운다 — 「코드가 읽지 않는 설정은
+    있으면 거짓말을 한다」.
+    """
+    from core import tools
     from core.agent_loop import execute_tool
-    world.turn = 10
-    _call(world, cfg, "Ranoa1")
-    a = world.agents["Ranoa2"]; a.ap = 1.0
+    assert "propose_vote" not in {t["function"]["name"] for t in tools.TOOLS}
+    assert not hasattr(cfg.ap, "propose_vote")
+    a = world.agents["Ranoa1"]; a.ap = 1.0
     res, _ = execute_tool("propose_vote", {"reasoning": "r"}, world, a, cfg, Sink(), KNOB)
-    assert not res["ok"] and "already called" in res["error"]
+    assert not res["ok"] and "unknown tool" in res["error"]
+    assert a.ap == 1.0                             # 없는 도구는 AP 를 먹지 않는다
 
 
 def test_only_nationals_may_vote(cfg, world):
@@ -228,13 +299,15 @@ def test_only_nationals_may_vote(cfg, world):
     """
     from core import tools
     d = {t["function"]["name"]: t["function"]["description"] for t in tools.TOOLS}
-    assert "own nation" in d["propose_vote"] and "foreigner cannot" in d["propose_vote"]
     assert "your own nation" in d["vote"] and "another nation" in d["vote"]
 
     # 말뿐이 아니라 코드도 막는다 — vote 는 언제나 부른 사람 자신의 나라에만 들어간다
     from core.agent_loop import execute_tool
-    world.turn = 10
-    _call(world, cfg, "Ranoa1")                        # Ranoa 에 採決이 열림
+    world.turn = _ballot_turn(cfg)
+    for c in world.countries.values():
+        c.proposal = None
+    world.countries["Ranoa"].proposal = {"by": None, "opened_turn": world.turn,
+                                         "vote_turn": world.turn}
     a = world.agents["Asla1"]; a.ap = 1.0
     res, _ = execute_tool("vote", {"choice": "bunker", "reasoning": "r"},
                           world, a, cfg, Sink(), KNOB)
@@ -380,14 +453,16 @@ def test_progress_gain_is_reported_after_the_fact(cfg, world):
     by = {g["agent"]: g for g in r.facility_gains}
     assert by["Asla1"]["amount"] == 90.0 and by["Asla1"]["to"] == "Ranoa"
     assert sum(g["gain"] for g in r.facility_gains) == world.countries["Ranoa"].progress
-    # 출자자에게 다음 턴 인박스로 간다. **자국민은 액수까지, 외국인은 여부만.**
-    gains = [e for e in world.inbox_queue
-             if "fac_gain" in e["msg"] or "fac_moved" in e["msg"]]
-    assert {e["to"] for e in gains} == {"Asla1", "Ranoa2"}
-    assert all(e["deliver_turn"] == world.turn + 1 for e in gains)
-    by = {e["to"]: e["msg"] for e in gains}
-    assert "fac_gain" in by["Ranoa2"] and "fac_moved" not in by["Ranoa2"]
-    assert "fac_moved" in by["Asla1"] and "fac_gain" not in by["Asla1"]
+    # **자국민은 `impact` 로 받는다** (8/26). 그 줄이 「누가 · 얼마 · 그래서 지금 얼마」 를
+    # 다 말하므로 자기 몫 통지를 따로 안 보낸다 — 같은 값이 두 번 오던 것을 없앴다.
+    imp = [e for e in world.inbox_queue if "impact_by" in e["msg"]]
+    assert {e["msg"]["impact_by"] for e in imp} == {"Asla1", "Ranoa2"}
+    # 그 나라 사람 전원이 받는다 (행위자의 국적과 무관하게)
+    assert {e["to"] for e in imp} >= {"Ranoa1", "Ranoa2", "Ranoa3"}
+    # 외국인은 `impact` 를 못 받으므로 여부만 따로 온다
+    moved = [e for e in world.inbox_queue if "fac_moved" in e["msg"]]
+    assert {e["to"] for e in moved} == {"Asla1"}
+    assert all(e["deliver_turn"] == world.turn + 1 for e in moved)
 
 
 def test_gain_notice_reaches_a_foreign_contributor(cfg, world):
@@ -442,7 +517,11 @@ def test_year_starts_at_42(cfg, world):
     a = world.agents["Asla1"]
     assert "42" in prompts.render_turn_open(world, a, cfg, KNOB, [])
     obs = prompts.render_observation(world, a, cfg, KNOB)
-    assert "42" not in obs and prompts.T["ja"]["year"].split(":")[0] not in obs
+    # **라벨 조각으로 재면 안 된다** (8/26). 전에는 `year.split(":")[0]` == 「今年」 로
+    # 쟀는데, 採決일 줄이 「★ 今年が採決の年です」 라 걸린다 — 그건 연도 진술이 아니라
+    # 상대 시점이다. 실제로 금지하려는 것은 **연도 줄 그 자체**다.
+    assert "42" not in obs
+    assert prompts.T["ja"]["year"].format(y=42) not in obs
 
 
 def test_threshold_is_no_longer_free(cfg, world):
@@ -1081,13 +1160,15 @@ def test_foreign_gain_amount_is_hidden(cfg, world):
     sink = Sink()
     sink.facility = [("Ranoa", 200.0, "Asla1"), ("Ranoa", 200.0, "Ranoa2")]
     _settle(world, cfg, sink)
-    msgs = {e["to"]: e["msg"] for e in world.inbox_queue
-            if "fac_gain" in e["msg"] or "fac_moved" in e["msg"]}
-    # 외국인: 숫자가 한 글자도 없다
-    assert msgs["Asla1"] == {"msg_id": msgs["Asla1"]["msg_id"], "amount": 200.0,
+    msgs = {e["to"]: e["msg"] for e in world.inbox_queue if "fac_moved" in e["msg"]}
+    # **외국인에게는 숫자가 한 글자도 없다.** `amount` 도 뺐다 (8/26) — 액수 자체가
+    # 누출이었다.
+    assert msgs["Asla1"] == {"msg_id": msgs["Asla1"]["msg_id"],
                              "to": "Ranoa", "fac_moved": True}
-    # 자국민: 그대로 — 자국 진척 델타로 어차피 보이는 값이다
-    assert isinstance(msgs["Ranoa2"].get("fac_gain"), int)
+    # 자국민은 `impact` 로 받는다 — 그 나라 사람 전원이 같은 줄을 본다
+    imp = [e["msg"] for e in world.inbox_queue
+           if "impact_by" in e["msg"] and e["to"] == "Ranoa2"]
+    assert len(imp) == 2 and {m["impact_by"] for m in imp} == {"Asla1", "Ranoa2"}
 
 
 def test_the_notice_still_tells_whether_anything_moved(cfg, world):
@@ -1112,20 +1193,29 @@ def test_the_prompt_never_prints_a_foreign_gain_number(cfg, world):
             out = prompts.render_inbox(
                 [{"msg_id": 3, "from": None, "text": None, "label": None,
                   "original": None, "amount": 200.0, "to": "Ranoa", "fac_moved": moved}], lang)
-            assert "200" in out                      # 내가 낸 액수는 내가 안다
+            # **액수는 이제 어디에도 안 적는다** (8/26). 「あなたの facility 出資 200 は…」
+            # 이었는데, 그 200 과 진척을 나누면 국가 효율이 나온다 — 어제 비용표에서
+            # 지운 값이 이 문구에 그대로 남아 있었다.
+            assert "200" not in out
             assert "Ranoa" in out
             # 진척 숫자가 될 수 있는 다른 수가 없다
-            nums = [n for n in re.findall(r"\d+", out) if n not in ("3", "200")]
+            nums = [n for n in re.findall(r"\d+", out) if n != "3"]
             assert not nums, (lang, moved, out)
 
 
 # ── 내가 그 나라에 낸 누적 (8/18) ───────────────────────────────────────────
 
-def test_facility_investment_returns_my_running_total(cfg, world):
-    """**`learn` 은 누적을 돌려주는데 `facility` 는 안 돌려주고 있었다.**
+def test_investment_answers_only_with_action_spent(cfg, world):
+    """**투자의 사이클은 「실행 → AP 소모 → 진척」 이 다다** (8/26 · Eddie).
 
-    실측에서 13턴에 885원을 한 나라에 나눠 낸 에이전트가 자기가 얼마 냈는지를
-    **메모로만** 알았다 — `memory_write` 로 덮이면 그마저 사라진다.
+    `your_total_into`(누적 액수)를 돌려주고 있었다. 그러면 비용표에서 지운 액수가
+    **두 번의 호출로 복원된다** — 차분이 곧 한 번의 액수이고, `fac_gain` 의 진척과
+    나누면 국가 효율이 다시 나온다. 실제로 유언에 유통됐다:
+
+        「J'ai investi 442 unités chez Asla」 · 「J'y ai versé 104」 · 「versé 294」
+
+    진척은 이 호출에서 돌려줄 수 없다 — 정산이 뒤에 온다. `fac_gain` 이 알린다.
+    그래서 응답은 **AP 하나뿐**이고, 누적은 우리 로그(`state.jsonl`)에만 남는다.
     """
     from core.agent_loop import Sink, execute_tool
     world.countries["Ranoa"].land = "interceptor"
@@ -1136,8 +1226,10 @@ def test_facility_investment_returns_my_running_total(cfg, world):
         r, _ = execute_tool("invest", {"target": "facility",
                                        "to": "Ranoa", "reasoning": "r"},
                             world, a, cfg, sink, KNOB)
-        assert r["your_total_into"] == n * cfg.costs.unit
-    assert a.facility_invested == {"Ranoa": 3 * cfg.costs.unit}
+        assert set(r) == {"ok", "ap_left"}, r
+        assert r["ap_left"] == pytest.approx(1.0 - cfg.ap.unit)
+    # 누적은 **우리 쪽**에 남는다 — 분석은 그대로 된다
+    assert a.facility_invested == {"Ranoa": 3 * cfg.costs.unit * a.invest_mult}
 
 
 def test_the_running_total_is_per_nation_and_leaks_nothing_about_them(cfg, world):
@@ -1161,42 +1253,70 @@ def test_the_running_total_is_per_nation_and_leaks_nothing_about_them(cfg, world
     assert not any("progress" in o for o in outs)
 
 
-def test_the_observation_shows_only_my_own_contributions(cfg, world):
-    """관측에도 적는다 — `learn` 진척이 그러는 것과 같다. 낸 적 없는 나라는 안 나온다."""
+def test_the_observation_names_where_i_gave_but_never_how_much(cfg, world):
+    """**어디에 냈는지는 내 일, 얼마인지는 액수다** (8/26 · Eddie).
+
+    전에는 「Ranoa の施設にこれまで出した額: 210」 이었다. 액수는 세계가 말하는 값이
+    아니고(AP 가 유일한 단위다), `fac_gain` 의 진척과 나누면 국가 효율이 된다.
+    """
     from domains.meteor import prompts
     a = world.agents["Asla1"]
     a.facility_invested = {"Ranoa": 210.0}
     world.countries["Miris"].progress = 7777.0
     obs = prompts.render_observation(world, a, cfg, KNOB)
-    assert "210" in obs and "Ranoa" in obs
+    assert "Ranoa" in obs                             # 어디에 냈는지는 적는다
+    assert "210" not in obs                           # 얼마인지는 안 적는다
     assert "7777" not in obs                          # 타국 진척은 여전히 없다
 
 
 
 
 def test_the_observation_never_describes_the_old_ballot(cfg, world):
-    """**규칙을 고치고 문구를 두면 그대로 남는다.** 소집이 내용을 갖지 않게 된 뒤에도
-    관측이 「제안」·「찬반」 을 말하고 있으면 에이전트는 옛 세계를 산다.
-
-    그리고 `propose_vote` 행에는 오래도록 설명이 **비어 있었다** — 다른 행은 다 있는데
-    성격이 바뀐 바로 그 도구만 없었다.
-    """
+    """**규칙을 고치고 문구를 두면 그대로 남는다.** 소집이 사라진 뒤에도 관측이
+    「제안」·「소집자」 를 말하고 있으면 에이전트는 옛 세계를 산다."""
     from domains.meteor import prompts
     STALE = ("賛否", "赞成", "反対", "提案なし", "没有提案", "Aucune proposition",
-             "prononcer")
-    world.turn = 10
+             "prononcer", "召集", "convoqué", "propose_vote")
+    world.turn = cfg.world.ballot_from + 1
     for aid in ("Asla1", "Ranoa1", "Miris1"):
         obs = prompts.render_observation(world, world.agents[aid], cfg, KNOB)
         for w in STALE:
             assert w not in obs, (aid, w)
-        # propose_vote 행에 설명이 있고, 그 설명이 「고르지 않는다」 를 말한다
-        (line,) = [l for l in obs.splitlines() if l.strip().startswith("propose_vote")]
-        assert len(line.split()) >= 3, line
-    # 採決 당일에는 세 선택지가 이름 그대로 보인다
-    world.countries["Asla"].proposal = {"by": "Asla2", "opened_turn": 6, "vote_turn": 10}
-    obs = prompts.render_observation(world, world.agents["Asla1"], cfg, KNOB)
-    for w in ("interceptor", "bunker", "abstain"):
-        assert w in obs
+
+
+def test_the_rules_say_a_nations_facility_is_its_own_secret(cfg, world):
+    """**전환이 남의 눈에 안 보인다는 것을 SYSTEM 에서 추론할 수 있어야 한다** (8/26 · Eddie).
+
+    이 규칙이 없으면 출자자는 「내가 쌓아준 것이 사라졌다」 를 알아챌 단서가 있다고
+    오해한 채로 계산한다. 그런데 실제로는 아무 통지도 가지 않는다 — `ballot_result` 는
+    그 나라에만 간다.
+
+    두 겹으로 적는다. SYSTEM 이 「그 나라 사람만 안다」 를 말하고(그래서 전환도 안 보인다는
+    것이 따라 나온다), `vote` 가 採決 결과에 대해 그것을 되짚는다.
+    """
+    from core import tools
+    from domains.meteor import prompts
+
+    # ① SYSTEM — 무엇을 짓는지도, 진척도, 그 나라 사람만 안다
+    for lang, mark in (("ja", "その国の人だけが知ります"),
+                       ("zh", "只有那个国家的人知道"),
+                       ("fr", "seuls les siens le savent")):
+        a = next(x for x in world.agents.values() if x.native_lang == lang)
+        assert mark in prompts.system_for(a, world, cfg, KNOB), lang
+
+    # ② vote — 採決 결과가 자국 밖으로 나가지 않는다
+    d = {t["function"]["name"]: t["function"]["description"] for t in tools.TOOLS}
+    assert "stays inside your nation" in d["vote"]
+    assert "no other nation is told" in d["vote"]
+
+    # ③ 그리고 코드가 실제로 그렇다 — 전환 통지는 그 나라에만 간다
+    c = world.countries["Ranoa"]
+    c.land, c.progress, c.domestic_progress = "interceptor", 400.0, 100.0
+    world.turn = _ballot_turn(cfg)
+    _open(world, cfg)
+    _ballot(world, cfg, ("Ranoa1", "bunker"))
+    told = {e["to"] for e in world.inbox_queue if e["msg"].get("ballot") == "changed"}
+    assert told and all(t.startswith("Ranoa") for t in told), told
 
 
 def test_learn_reports_completion_not_a_schedule(cfg, world):
@@ -1216,7 +1336,7 @@ def test_learn_reports_completion_not_a_schedule(cfg, world):
     a.parent_langs = set()                # 배율을 정가로 고정해 계산을 단순하게
     r, _ = execute_tool("learn", {"country": "Ranoa", "reasoning": "r"},
                         world, a, cfg, sink, KNOB)
-    assert r["complete"] is True and r["remaining"] == 0.0
+    assert r["complete"] is True and r["progress_pct"] == 100
     assert not any("turn" in k for k in r)        # 일정을 말하는 필드가 없다
 
     # 그리고 순차 정산은 실제로 같은 턴에 반영한다
@@ -1263,42 +1383,42 @@ def test_the_note_names_the_right_reason_and_the_yield(cfg, world):
     assert "0%" in lines[i + 1]
 
 
-def test_no_prose_hardcodes_the_grace_period(cfg, world):
+def test_no_prose_hardcodes_the_ballot_cadence(cfg, world):
     """**숫자를 두 군데 적으면 하나가 낡는다.**
 
     `VOTE_DELAY` 를 4 에서 2 로 줄였을 때 도구 설명은 *"three years pass … in the fourth
-    year"* 로 남아 있었다. 이번 주에 그 부류를 다섯 번 겪었다 — `can_read_next_turn` ·
-    採決 문구 · wellness 무료 · 「기술력이 비율을 올린다」 · 「메시지는 다음 해에 도착」.
-
-    유예 길이는 **관측만** 말한다 (「採決은 44년」). 도구 설명은 모양만 말한다.
+    year"* 로 남아 있었다. 주기가 설정값이 된 지금 「3해마다」 를 문장에 박으면 같은 일이
+    다시 난다 — 관측은 **계산한 연도**를 말한다.
     """
     from core import tools
-    d = next(t["function"]["description"] for t in tools.TOOLS
-             if t["function"]["name"] == "propose_vote")
-    for stale in ("three years", "fourth year", "two years", "third"):
-        assert stale not in d, stale
-    assert "which year that is" in d          # 대신 관측이 알려준다고 적는다
-
-    # 관측이 실제 날짜를 말한다
     from domains.meteor import prompts
-    world.turn = 10
-    _call(world, cfg, "Ranoa1")
+    blob = " ".join(t["function"]["description"] for t in tools.TOOLS) + " " + \
+        " ".join(v for lang in prompts.T.values() for v in lang.values()
+                 if isinstance(v, str))
+    for stale in ("three years", "fourth year", "every three", "3年ごと", "每三年"):
+        assert stale not in blob, stale
+
+    # 관측이 다음 採決 연도를 **계산해서** 말한다
+    every, start = cfg.world.ballot_every, cfg.world.ballot_from
+    world.turn = start + 1                                  # 採決이 아닌 해
     obs = prompts.system_for(world.agents["Ranoa2"], world, cfg, KNOB)
-    from domains.meteor.prompts import FIRST_YEAR
-    assert str(FIRST_YEAR + 10 + loop.VOTE_DELAY - 1) in obs
+    assert str(prompts.FIRST_YEAR + (start + every) - 1) in obs
 
 
-def test_the_grace_is_one_year_now(cfg, world):
-    """**3해는 메시지 왕복에 두 해가 들던 때 정해진 길이다.** 순차 라운드로빈은 같은 해에
-    왕복이 되므로, 소집한 해의 대화 + 한 해면 충분하다.
+def test_the_ballot_comes_back_on_the_clock(cfg, world):
+    """採決은 주기로 돌아온다 — 그것이 **한 번의 실수를 되돌릴 수 있게** 만든다.
 
-    기대수명이 16해인데 다섯 해를 절차에 쓰면 한 사람이 겪는 採決이 세 번뿐이다.
+    260826-008 에서는 3해에 정한 국토가 17해까지 한 번도 다시 물어지지 않았다. 그 사이
+    선두가 굳고, 배수 1.3 인 나라가 배수 1.0 인 나라에 숙주를 넘겼다.
     """
-    assert loop.VOTE_DELAY == 2
-    world.turn = 10
-    _call(world, cfg, "Ranoa1")
-    p = world.countries["Ranoa"].proposal
-    assert p["opened_turn"] == 10 and p["vote_turn"] == 12   # 소집 · 유예 11 · 採決 12
+    from core import survival
+    every, start = cfg.world.ballot_every, cfg.world.ballot_from
+    days = [t for t in range(1, cfg.world.total_turns + 1) if loop.is_ballot_turn(t, cfg)]
+    assert days[0] == start, "첫 해부터 강제다"
+    assert all(b - a == every for a, b in zip(days, days[1:]))
+    # 한 사람의 생애에 採決이 여러 번 온다 — 절차가 세대를 넘기지 않는다
+    life = survival.expected_life(cfg.survival.lambda_base, cfg.survival.k)
+    assert life / every >= 1.5, "생애에 採決이 한 번뿐이면 다시 묻는 의미가 없다"
 
 
 def test_exactly_affordable_is_affordable(cfg, world):
@@ -1319,9 +1439,23 @@ def test_exactly_affordable_is_affordable(cfg, world):
     # 썼는데, `speak` 이 0.1 이 된 뒤로 1.0 에서 0.2 씩 빼서는 0.1 에 **닿지 못한다**.
     # 격자를 확인하는 테스트가 격자를 못 쓰고 있었다.
     left = cfg.ap.speak
-    for tool, args, step in (("invest", {"target": "wellness"}, cfg.ap.unit),
-                             ("speak", {"to": "Ranoa2", "text": "x"}, cfg.ap.speak)):
-        while round(a.ap - step, 3) >= left:
+    # **조합을 찾아서 쓴다** (8/26). 전에는 큰 단위로 내려가다 작은 단위로 마무리했는데,
+    # `invest` 0.10 과 `speak` 0.08 로 바뀐 뒤로는 그 방식이 `left` 에 **닿지 못한다**
+    # (1.00 에서 0.10 씩 빼면 0.10, 0.08 이 안 나온다). 격자를 확인하는 테스트가 격자를
+    # 못 쓰면 안 되므로, 값에서 조합을 **유도한다** — 가격이 또 바뀌어도 낡지 않는다.
+    steps = (("invest", {"target": "wellness"}, cfg.ap.unit),
+             ("speak", {"to": "Ranoa2", "text": "x"}, cfg.ap.speak))
+    need = round(cfg.turn.action_points - left, 3)
+    plan = None
+    for i in range(int(need / steps[0][2]) + 1):
+        rest = round(need - i * steps[0][2], 3)
+        j = round(rest / steps[1][2], 6)
+        if rest >= 0 and abs(j - round(j)) < 1e-9:
+            plan = [(steps[0], i), (steps[1], int(round(j)))]
+            break
+    assert plan, (need, [x[2] for x in steps])
+    for (tool, args, _step), n in plan:
+        for _ in range(n):
             assert _do(world, cfg, a, tool, args)["ok"], (tool, a.ap)
     assert a.ap == left                      # 0.19999… 이 아니라 정확히 그 값
 
@@ -1386,9 +1520,8 @@ def test_one_person_gets_one_vote(cfg, world):
     라운드로빈은 한 해에 같은 사람을 두 번 방문할 수 있다 (메일로 깨우는 경로).
     """
     a = world.agents["Ranoa1"]
-    _call(world, cfg, "Ranoa1")
-    # **採決일을 제안에서 읽는다** — 숫자를 여기 적으면 VOTE_DELAY 를 고칠 때 낡는다
-    world.turn = world.countries["Ranoa"].proposal["vote_turn"]
+    world.turn = _ballot_turn(cfg)
+    _open(world, cfg)
     a.ap = 1.0
 
     r = _do(world, cfg, a, "vote", {"choice": "interceptor"})
@@ -1408,30 +1541,30 @@ def test_the_ballot_day_says_only_that_it_is_today(cfg, world):
         表决将在 44 年举行（由 Ranoa3 召集）。建什么在那时决定
         ★ 今年就是表决之年。可以用 vote 选 …
 
-    유예를 한 해로 줄이면서 이 겹침이 제안 수명의 3분의 1 이 됐다. 그날은 「오늘이다」
-    한 줄만 내보내고, 소집자는 그 줄이 데려간다.
+    그날은 「오늘이다」 한 줄만 낸다. 그리고 **소집자를 말하지 않는다** — 시계가 열었으므로
+    부른 사람이 없다.
     """
     from domains.meteor import prompts
-    _call(world, cfg, "Ranoa1")
-    p = world.countries["Ranoa"].proposal
 
-    def prop_lines(w):
+    def prop_lines():
         obs = prompts.system_for(world.agents["Ranoa2"], world, cfg, KNOB)
         # 비용표에도 「表决」 이 있다 — 제안 블록만 본다
-        return [l for l in obs.splitlines() if "表决将在" in l or "★" in l]
+        return [l for l in obs.splitlines() if "下一次表决" in l or "★" in l]
 
-    year = str(prompts.FIRST_YEAR + p["vote_turn"] - 1)
-    world.turn = p["opened_turn"]                    # 소집한 해 — 예정만
-    (line,) = prop_lines(world)
-    assert year in line and "★" not in line
+    day = _ballot_turn(cfg)
+    world.turn = day
+    _open(world, cfg)
+    (line,) = prop_lines()
+    assert "★" in line and "下一次表决" not in line
+    assert "Ranoa" not in line, "소집자가 없다 — 시계가 열었다"
 
-    world.turn = p["vote_turn"]                      # 採決일 — 「오늘」 만
-    (line,) = prop_lines(world)
-    assert "★" in line and "Ranoa1" in line
-    assert year not in line                          # 예정 줄이 겹치지 않는다
+    world.turn = day + 1                                  # 다음 採決 예고만
+    for c in world.countries.values():
+        c.proposal = None
+    (line,) = prop_lines()
+    assert "★" not in line
+    assert str(prompts.FIRST_YEAR + day + cfg.world.ballot_every - 1) in line
 
-
-# ── 주기 (8/22) ───────────────────────────────────────────────────────────────
 
 def _exec(name, args, world, agent, cfg, sink, knob=48.0):
     from core import agent_loop
@@ -1646,3 +1779,240 @@ def test_a_finished_interceptor_can_still_be_destroyed(cfg, world):
     assert final["outcome"] == "intercept_failed"
     assert final["survivors"] == []
     assert final["interceptor_best"] == 0.0
+
+
+def test_investment_can_lose_the_principal(cfg):
+    """**투자는 잃을 수도 있다** (8/26 · Eddie).
+
+    전에는 `Binom(n, 0.3)` 이라 진척이 절대 음수가 안 됐다 — 「투자」 라고 부르면서
+    원금 손실이 없었다. 이제 역화가 부호를 뒤집는다:
+
+        역화 아님 (1−q)   +Binom(n, success_prob)
+        역화     (q)      −Binom(n, backfire_hit)
+
+    기댓값은 **오르고**(0.30n → 0.3375n) 표준편차는 2.8배가 된다. 그리고 음수 확률이
+    **규모와 무관하다** — 혼합분포라 분산의 큰 몫이 `n` 과 무관하기 때문이다.
+    「크게 투자하면 안전」 이 안 되고, 위험이 계층과 무관하게 남는다.
+    """
+    import random as _rnd
+    import statistics as _st
+
+    rng = _rnd.Random(11)
+    q = cfg.world.backfire_prob
+    assert q > 0, "역화가 꺼져 있으면 이 세계가 아니다"
+    exp = (1 - q) * cfg.world.success_prob - q * cfg.world.backfire_hit
+    assert cfg.k == pytest.approx(cfg.facility.eff * exp)
+
+    for n in (5, 20, 41):
+        xs = [loop.draw_gain(n, cfg, rng) for _ in range(6000)]
+        assert _st.mean(xs) == pytest.approx(exp * n, rel=0.10), n
+        neg = sum(1 for x in xs if x < 0) / len(xs)
+        # 음수 확률이 규모와 무관하다 — 큰 투자도 안전해지지 않는다
+        assert abs(neg - q) < 0.03, (n, neg)
+    # 부호를 뒤집으면 파괴다 — **완전 대칭**
+    xs = [loop.draw_gain(20, cfg, rng, sign=-1) for _ in range(6000)]
+    assert _st.mean(xs) == pytest.approx(-exp * 20, rel=0.10)
+    # 그래서 파괴도 q 의 확률로 **상대를 돕는다**
+    assert abs(sum(1 for x in xs if x > 0) / len(xs) - q) < 0.03
+
+
+def test_destroy_is_indistinguishable_from_a_backfire(cfg, world):
+    """**파괴인지 역화인지 가릴 수 없다** (8/26 · Eddie).
+
+    그 나라 사람이 받는 것은 `prog_up` **하나**이고, 그 안에서 「투자 · 역화 · 파괴」 가
+    갈리지 않는다. 그것이 불확실성을 늘리고, 늘어난 불확실성이 소통을 요구한다.
+
+    **행위자에게도 결과를 안 알린다.** 투자는 `fac_gain` 으로 자기 몫을 보는데 파괴는
+    그것도 없다 — 알려주면 부호를 보고 역화 여부를 알게 되고, 그러면 파괴가 확실한
+    수단이 된다. 파괴는 끝까지 도박이어야 한다.
+    """
+    import random as _rnd
+
+    from core.agent_loop import Sink, execute_tool
+
+    world.countries["Ranoa"].land = "interceptor"
+    world.countries["Ranoa"].progress = 500.0
+    a = world.agents["Asla1"]; a.ap = 1.0
+    sink = Sink()
+    r, _ = execute_tool("destroy", {"to": "Ranoa", "reasoning": "r"},
+                        world, a, cfg, sink, KNOB)
+    # 투자와 **같은 모양**으로 답한다 — 실행 → AP 소모. 결과는 없다.
+    assert set(r) == {"ok", "ap_left"}, r
+    assert r["ap_left"] == pytest.approx(1.0 - cfg.ap.unit)
+    assert sink.destroy == [("Ranoa", cfg.costs.unit * a.invest_mult, "Asla1")]
+
+    res = loop.RunResult(world=world)
+    loop._settle_step(world, cfg, _rnd.Random(3), sink, None, None,
+                      itertools.count(900), res, {}, [])
+    assert world.countries["Ranoa"].progress < 500.0
+
+    told = [q["msg"] for q in world.inbox_queue if q["to"].startswith("Ranoa")]
+    # **`prog_up` 은 없앴다** (8/26) — `impact` 가 「누가 · 얼마 · 그래서 지금 얼마」 를
+    # 알리므로 합계 줄이 통째로 겹쳤다.
+    assert not any("prog_up" in m for m in told), told
+    ups = [m for m in told if "impact_by" in m]
+    assert ups, told
+    for m in ups:
+        assert m["impact"] < 0
+        # **무엇을 하려 했는지가 없다** — 이 필드가 생기면 모호성이 통째로 무너진다
+        for leak in ("kind", "tool", "intent"):
+            assert leak not in m, (leak, m)
+
+    # **행위자에게는 알린다** (8/26 · Eddie) — `invest` 가 그러므로 대칭이다.
+    # 타국이면 「후퇴시켰나」 만, 값은 없다 (값을 주면 상대국 효율이 새어 나온다).
+    mine = [q["msg"] for q in world.inbox_queue if q["to"] == "Asla1"]
+    hit = [m for m in mine if "dst_moved" in m or "dst_hit" in m]
+    assert len(hit) == 1, mine
+    assert "dst_moved" in hit[0] and "dst_hit" not in hit[0]
+    assert not any("fac_gain" in m for m in mine), mine
+
+    # **자국을 지목할 수 있다 — 그러나 안내하지 않는다** (8/26 · Eddie).
+    from core import tools as _tools
+    d = [x for x in _tools.tools_for(cfg, ai=False)
+         if x["function"]["name"] == "destroy"][0]["function"]
+    assert d["parameters"]["required"] == ["to"], "생략하면 실수로 자국을 부순다"
+    blob = d["description"] + str(d["parameters"])
+    for hint in ("your own", "yours", "own nation"):
+        assert hint not in blob, hint
+    a.ap = 1.0
+    ok, _ = execute_tool("destroy", {"to": "Asla", "reasoning": "r"},
+                         world, a, cfg, Sink(), KNOB)
+    assert ok["ok"], ok                       # 가능하다
+    bad, _ = execute_tool("destroy", {"reasoning": "r"},
+                          world, a, cfg, Sink(), KNOB)
+    assert not bad["ok"]                      # 생략은 사고가 아니라 거절이다
+
+
+def test_progress_never_falls_below_zero(cfg, world):
+    """**없는 것보다 나쁜 시설은 없다.** 바닥이 없으면 파괴가 무한히 쌓여 복구가 불가능해진다."""
+    import random as _rnd
+
+    from core.agent_loop import Sink, execute_tool
+
+    world.countries["Ranoa"].land = "interceptor"
+    world.countries["Ranoa"].progress = 3.0
+    sink = Sink()
+    for aid in ("Asla1", "Asla2", "Asla3"):
+        a = world.agents[aid]; a.ap = 1.0
+        for _ in range(8):
+            execute_tool("destroy", {"to": "Ranoa", "reasoning": "r"},
+                         world, a, cfg, sink, KNOB)
+    loop._settle_step(world, cfg, _rnd.Random(5), sink, None, None,
+                      itertools.count(900), loop.RunResult(world=world), {}, [])
+    assert world.countries["Ranoa"].progress == 0.0
+
+
+def test_capital_buys_lower_risk_not_just_higher_yield(cfg, world):
+    """**생산성이 오르면 위험이 줄어든다** (8/26 · Eddie).
+
+    `q` 를 상수로 두면 **크기를 키워도 상대 위험이 안 줄어든다.** 분산이 이렇게 갈린다:
+
+        var = 성분 내부 (∝ n)  +  성분 간 (∝ n²)
+        성분 간 = q(1−q) · (p+h)² · n²
+
+    부호가 뒤집히는 거리가 `n` 에 비례하니 `sd ∝ n` 이 되고 `sd/평균` 이 0.79 에서
+    멈춘다. 손실 상한을 씌워도 안 된다 — 뒤집힐 때 잃는 것은 **받았을 이득**이므로
+    거리가 여전히 `n` 에 비례한다. **`q` 자체가 줄어야 한다.**
+
+    그래서 `q` 를 국가 자본 배수로 나눈다. **창은 성장을 빼고 계산하므로**(설계)
+    자본 0 에서 배수가 1.0 이고 `cfg.k` 는 그대로다 — 성장은 창의 전제가 아니라 그 위의
+    이득이고, 이제 그 이득에 **위험 감소**가 하나 더 붙는다.
+
+    이것이 `national` 투자의 **세 번째 의미**다: 진척 효율 · 관측 정확도 · **위험 감소**.
+    """
+    poor, rich = world.countries["Asla"], world.countries["Ranoa"]
+    poor.national_capital = 0.0
+    rich.national_capital = 30000.0
+    assert loop.backfire_prob(poor, cfg) == pytest.approx(cfg.world.backfire_prob)
+    assert loop.backfire_prob(rich, cfg) < loop.backfire_prob(poor, cfg)
+
+    import random as _rnd
+    import statistics as _st
+    rng = _rnd.Random(19)
+
+    def spread(country, n):
+        q = loop.backfire_prob(country, cfg)
+        xs = [loop.draw_gain(n, cfg, rng, q=q) for _ in range(8000)]
+        return _st.mean(xs), _st.pstdev(xs), sum(1 for x in xs if x < 0) / len(xs)
+
+    # **같은 n 으로 비교한다** — 순수하게 `q` 의 효과만 본다
+    m_p, s_p, neg_p = spread(poor, 20)
+    m_r, s_r, neg_r = spread(rich, 20)
+    assert m_r > m_p                       # 기댓값도 오른다 (역화가 덜하므로)
+    assert s_r / m_r < s_p / m_p           # **상대 위험이 내려간다**
+    assert neg_r < neg_p                   # 손실 확률도 내려간다
+
+
+def test_the_target_learns_who_but_never_why(cfg, world):
+    """**누가 · 얼마만큼은 알고, 의도는 모른다** (8/26 · Eddie).
+
+    투자와 파괴가 **같은 통지**를 쓴다. 그리고 역화가 있으므로 부호도 의도를 말하지
+    않는다 — 투자가 음수일 수 있고 파괴가 양수일 수 있다. 그래서 「Asla1 이 우리
+    interceptor 를 7 진행시켰다」 를 받고도 **그가 도우려 했는지 부수려 했는지 모른다.**
+    """
+    import random as _rnd
+
+    from core.agent_loop import Sink, execute_tool
+
+    seen = {}
+    for tool, args in (("invest", {"target": "facility", "to": "Ranoa"}),
+                       ("destroy", {"to": "Ranoa"})):
+        w = loop.init_world(cfg, itertools.count(1), random.Random(1))
+        w.turn = 1
+        w.countries["Ranoa"].land = "interceptor"
+        w.countries["Ranoa"].progress = 500.0
+        a = w.agents["Asla1"]; a.ap = 1.0
+        sink = Sink()
+        execute_tool(tool, {**args, "reasoning": "r"}, w, a, cfg, sink, KNOB)
+        loop._settle_step(w, cfg, _rnd.Random(9), sink, None, None,
+                          itertools.count(900), loop.RunResult(world=w), {}, [])
+        told = [q["msg"] for q in w.inbox_queue if q["to"] == "Ranoa1"]
+        imp = [m for m in told if "impact_by" in m]
+        assert len(imp) == 1, (tool, told)
+        # 누가 했는지는 안다
+        assert imp[0]["impact_by"] == "Asla1"
+        # **무엇을 하려 했는지는 어디에도 없다**
+        for leak in ("kind", "tool", "intent", "destroy", "invest"):
+            assert leak not in imp[0], (tool, leak)
+        seen[tool] = set(imp[0])
+    # 두 통지의 **필드 모양이 같다** — 모양으로도 구분되지 않는다
+    assert seen["invest"] == seen["destroy"], seen
+
+
+def test_the_impact_notice_carries_the_change_and_the_running_total(cfg, world):
+    """**변화량과 시설 누적을 함께** (8/26 · Eddie) — `prog_up` 과 같은 형식이다.
+
+    「누가 얼마 움직였고, 그래서 지금 얼마가 됐다」 가 한 줄이 된다. 그 나라 사람은
+    누가 관여했는지와 크기를 알고, 그 결과가 지금 어디에 있는지도 안다 —
+    **그러나 의도는 여전히 모른다** (투자와 파괴가 같은 문구이고 역화가 부호를 뒤집는다).
+
+    ⚠ 처음엔 **사람별 누적**으로 만들었다가 되돌렸다. 시설 누적이 맞다 — 사람별은
+      다섯 해 수명에서 표본이 두세 건뿐이고, 역화 한 번이 결론을 뒤집어 「기록」 이라고
+      부를 수 없다.
+    """
+    import random as _rnd
+
+    from core.agent_loop import Sink, execute_tool
+
+    world.countries["Ranoa"].land = "interceptor"
+    world.countries["Ranoa"].progress = 500.0
+    for tool in ("destroy", "invest"):
+        a = world.agents["Asla1"]; a.ap = 1.0
+        sink = Sink()
+        args = {"to": "Ranoa", "reasoning": "r"}
+        if tool == "invest":
+            args["target"] = "facility"
+        execute_tool(tool, args, world, a, cfg, sink, KNOB)
+        world.inbox_queue.clear()
+        loop._settle_step(world, cfg, _rnd.Random(7), sink, None, None,
+                          itertools.count(900), loop.RunResult(world=world), {}, [])
+        imp = [q["msg"] for q in world.inbox_queue
+               if q["to"] == "Ranoa1" and "impact_by" in q["msg"]]
+        assert len(imp) == 1, (tool, world.inbox_queue)
+        m = imp[0]
+        assert m["impact_by"] == "Asla1"
+        # **누적은 시설의 것이다** — 통지 시점의 그 나라 진척과 같아야 한다
+        assert m["now"] == pytest.approx(world.countries["Ranoa"].progress)
+        # 사람별 기록은 두지 않는다 (되돌린 설계)
+        assert "impact_total" not in m
+        assert not hasattr(world.countries["Ranoa"], "impact_log")

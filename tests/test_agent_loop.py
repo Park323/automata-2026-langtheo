@@ -77,7 +77,11 @@ def test_speaking_stops_when_the_year_runs_out(cfg, world):
     # 「not enough AP」 → 「not enough action」. **에이전트에게 AP 는 없는 말이다** —
     # 관측·비용표가 「行動力 / 行动力 / action」 이라고 부른다. 그리고 남은 값을 알려준다.
     fail = next(r for r in oks if not r["ok"])
-    assert "not enough action" in fail["error"] and "have 0.00" in fail["error"]
+    # **나머지가 0 이라고 박지 않는다** (8/26). `speak` 0.08 은 한 해 1.00 을 정수로
+    # 나누지 않으므로 12번 뒤에 0.04 가 남는다 — 남지만 **한 번 값에 못 미친다**.
+    left = round(cfg.turn.action_points - n * cfg.ap.speak, 3)
+    assert left < cfg.ap.speak
+    assert "not enough action" in fail["error"] and f"have {left:.2f}" in fail["error"]
 
 
 # ── #3 예산 고갈 ─────────────────────────────────────────────────────────────
@@ -195,15 +199,18 @@ def test_learn_is_paid_in_instalments(cfg, world):
     assert [r["charged"] for r in sink.learns] == [cfg.costs.unit] * 2
     assert [r["progress_before"] for r in sink.learns] == [0.0, cfg.costs.unit]
     (rec,) = sink.learns[:1]
-    assert rec["required"] == L
-    # **응답은 내가 몰랐던 것만 담는다** — 요청한 국가·액수는 되돌려주지 않는다.
-    res = [r for r in _results(client) if "progress" in r]
-    # **회당 수확은 `costs.unit × 배율`** — Asla2 → Miris 는 도움이 없어 정가다
+    assert rec["required"] == L            # 우리 로그에는 절대 수치가 남는다
+    # **학습의 사이클은 「실행 → AP 소모 → 진척 y%」 다** (8/26 · Eddie).
+    # 전에는 `progress 30 · required 80 · remaining 50` 이었다 — 8/25 에 비용표를
+    # 「25% 進む」 로 바꿨는데 응답이 절대 수치를 그대로 돌려주고 있었고, `required` 는
+    # `learn_base` 를 직접 노출했다. 목표는 늘 100% 이므로 분모를 적지 않는다.
+    res = [r for r in _results(client) if "progress_pct" in r]
     u = cfg.costs.unit
-    assert [r["progress"] for r in res] == [u, 2 * u]   # 같은 해에도 쌓인다
-    assert res[-1]["remaining"] == L - 2 * u
+    assert [r["progress_pct"] for r in res] == [
+        round(u / L * 100), round(2 * u / L * 100)]     # 같은 해에도 쌓인다
     assert res[-1]["complete"] is False   # 일정이 아니라 사실만
-    assert "toward" not in res[0]         # 요청한 국가를 되돌려주지 않는다
+    for gone in ("progress", "required", "remaining", "toward"):
+        assert gone not in res[0], gone
 
 
 def test_learn_never_takes_more_than_needed(cfg, world):
@@ -215,7 +222,7 @@ def test_learn_never_takes_more_than_needed(cfg, world):
     sink = Sink()
     r, _ = execute_tool("learn", {"country": "Miris", "reasoning": "r"},
                         world, a, cfg, sink, KNOB)
-    assert r["ok"] and r["progress"] == L and r["complete"] is True
+    assert r["ok"] and r["progress_pct"] == 100 and r["complete"] is True
     assert sink.learns[0]["charged"] == 5
 
 
@@ -401,6 +408,7 @@ def test_writing_the_same_memory_again_does_not_loop_forever(cfg, world):
     from core.agent_loop import Sink, execute_tool
     a = world.agents["Asla2"]
     a.memory_open = True                    # 압박 아래 — 목록에 있다
+    a.ap = cfg.turn.action_points           # **값이 붙었다** (8/26) — 낼 AP 가 있어야 한다
     sink = Sink()
 
     first, _ = execute_tool("memory_write", {"text": "メモ"}, world, a, cfg, sink, KNOB)
@@ -446,3 +454,38 @@ def test_the_repeat_guard_counts_calls_that_changed_nothing(cfg, world):
     # 요점은 **끊기지 않았다**는 것이다 — 다섯 번이 다 통했다
     assert log2["ended_by"] != "repeat_guard", log2["ended_by"]
     assert len(sink2.wellness) == 5
+
+
+def test_investing_before_your_nation_decides_says_so(cfg, world):
+    """**採決 전 투자가 조용히 버려졌다** (8/26 · 260826-007-risk-noai 3해).
+
+    정산은 `c.land is None` 이면 추첨을 아예 안 돌린다. 그런데 통지는 「0 진행됐다」
+    로만 와서 Asla3 은 다섯 번을 헛되게 낸 뒤에도 **왜 0 이었는지 알 수 없었다**
+    (시행 28 에서 추첨이 0 일 확률은 사실상 0 이니 우연도 아니다). 그 해 AP 의 절반이다.
+
+    **자국만 알린다.** 자국 국토는 관측에 이미 있으므로 누출이 아니고, 모르고 낸 것은
+    정보 부족이 아니라 부주의다. 타국까지 알리면 0.10 짜리 조회로 타국 국토를 읽는
+    길이 생겨 「타국 사정은 소통으로만」 이 무너진다.
+    """
+    world.countries["Asla"].land = None
+    world.countries["Ranoa"].land = None
+    script = [assistant_msg(tool_call("invest", "1", target="facility", to="Asla")),
+              assistant_msg(tool_call("destroy", "2", to="Asla")),
+              assistant_msg(tool_call("invest", "3", target="facility", to="Ranoa")),
+              assistant_msg(tool_call("end_turn", "4"))]
+    _, _, client, _ = _run(world, cfg, "Asla1", script)
+    own_invest, own_destroy, foreign = _results(client)[:3]
+
+    for r in (own_invest, own_destroy):
+        assert r["ok"] is True and "note" in r, r      # 실행은 됐고, 알려준다
+        assert "has not decided" in r["note"], r
+    assert "note" not in foreign, foreign              # 타국은 침묵한다
+
+    # 자국이 정해지면 아무 말도 붙지 않는다 — 이 문구가 상수로 굳으면 안 된다.
+    # **사람을 바꾼다** — `agent.convo` 는 턴 사이에 남으므로 같은 Asla1 을 다시
+    # 돌리면 `_results` 가 위쪽 run 의 응답을 먼저 집는다.
+    world.countries["Asla"].land = "interceptor"
+    _, _, client2, _ = _run(world, cfg, "Asla2",
+                            [assistant_msg(tool_call("invest", "1", target="facility", to="Asla")),
+                             assistant_msg(tool_call("end_turn", "2"))])
+    assert "note" not in _results(client2)[0], _results(client2)[0]
