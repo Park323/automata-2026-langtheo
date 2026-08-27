@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>langtheo — 보드</title>
+<style>
+  :root{ --ja:#e8a33d; --zh:#e05561; --fr:#5b9df9;
+    --ink:#e6edf3; --dim:#8b95a3; --line:#26324c; --panel:#0f1524; }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#000;color:var(--ink);
+    font-family:"Segoe UI",system-ui,sans-serif;overflow:hidden}
+
+  /* 흐름 오버레이 */
+  #flow{position:fixed;inset:0;z-index:5;pointer-events:none}
+  /* 나라 패널 */
+  #stage{position:fixed;inset:0;z-index:2;transform-origin:left center;
+    transition:transform .3s ease;will-change:transform}
+  /* 가운데 지구 — 크게, 위쪽 곡면만 보이고 나라들이 그 위에 앉는다 (아래는 화면 밖) */
+  .globe{position:absolute;transform:translate(-50%,-50%);border-radius:50%;
+    width:min(1120px,96vw);height:min(1120px,96vw);
+    background:transparent url('planet.png') center / cover no-repeat}
+  /* 대륙 위 시설 마커 (진척 링 + 아이콘) */
+  .cmark{position:absolute;transform:translate(-50%,-50%);text-align:center;pointer-events:none;
+    filter:drop-shadow(0 3px 8px rgba(0,0,0,.7))}
+  .cring{width:72px;height:72px;border-radius:50%;position:relative;display:grid;place-items:center;margin:0 auto;
+    background:conic-gradient(var(--c) calc(var(--p)*3.6deg), rgba(0,0,0,.5) 0);
+    box-shadow:0 0 0 2px rgba(0,0,0,.4), 0 0 16px var(--c)}
+  .cring::before{content:"";position:absolute;inset:8px;border-radius:50%;background:rgba(4,18,12,.92)}
+  .cicon{position:relative;font-size:30px;z-index:1}
+  .clabel{font-size:14px;font-weight:800;margin-top:4px;text-shadow:0 1px 4px #000,0 0 8px #000}
+  .nation{position:absolute;transform:translate(-50%,-50%);width:400px;
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 18px 18px}
+  .nhead{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+  .ndot{width:13px;height:13px;border-radius:50%;box-shadow:0 0 10px currentColor}
+  .nname{font-weight:700;font-size:17px}
+  .nland{margin-left:auto;font-size:11px;color:var(--dim);border:1px solid var(--line);
+    border-radius:999px;padding:2px 9px}
+  /* 진척 바 */
+  .prow{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin:2px 2px 4px}
+  .prow .dlt{color:#7ee39a;font-weight:700}
+  .bar{height:10px;border-radius:6px;background:#0b1120;border:1px solid var(--line);overflow:hidden}
+  .bar>i{display:block;height:100%;width:0;border-radius:6px;transition:width .4s ease}
+  /* 투표·국토 알림 */
+  .vnotes{margin:4px 0 2px}
+  .vnote{font-size:11px;border-radius:7px;padding:3px 8px;margin-top:4px;display:block;
+    border:1px solid var(--line);background:#12213a;color:#cdd6e4}
+  .vnote.propose{color:#8ab4f8;border-color:#2b3f66;background:#111c33}
+  .vnote.land{color:#7fe0ff;border-color:#2b6f8a;background:#0e2530}
+  .vnote.land.lost{color:#ffb0b0;border-color:#7a2b2b;background:#241316}
+  .vnote .tal{color:var(--dim);font-size:10px;margin-left:4px}
+  .vnote .lost{color:#ff8a8a;font-weight:700;margin-left:4px}
+  /* 사망 알림 */
+  .deaths{margin-top:8px;min-height:0}
+  .death{font-size:11px;color:#ff8a8a;background:#241316;border:1px solid #5a2b2b;
+    border-radius:7px;padding:3px 7px;margin-top:4px;display:inline-block}
+  .agents{position:relative;height:250px;margin-top:8px}
+  .agent{position:absolute;text-align:center;width:76px}
+  .tok{width:60px;height:60px;margin:0 auto;border-radius:50%;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;color:#fff;
+    border:3px solid var(--k);background:#0b1120;transition:transform .15s}
+  .tok:hover{transform:scale(1.08)}
+  .agent.dead{opacity:.28}
+  .agent.dead .tok{filter:grayscale(1);border-color:var(--line)}
+  .agent.born .tok{border-color:#3fb950;box-shadow:0 0 0 3px rgba(63,185,80,.3),0 0 18px rgba(63,185,80,.55)}
+  .asub{font-size:12px;color:#c3ccda;margin-top:6px}
+  .asub .new{color:#7ee39a;font-weight:700}
+  /* 쓸 수 있는 언어 점 — 사람(토큰) 위에 */
+  .pips{position:absolute;top:-5px;left:50%;transform:translateX(-50%);display:flex;gap:3px}
+  .pips i{width:10px;height:10px;border-radius:50%;border:1.5px solid #0b1120;box-shadow:0 0 6px currentColor}
+  /* 학습 진척 */
+  .learn{margin-top:5px;font-size:10px;color:#ffd24a}
+  .lbar{height:5px;width:56px;margin:2px auto 0;border-radius:4px;background:#0b1120;border:1px solid #4a3d12;overflow:hidden}
+  .lbar>i{display:block;height:100%;background:#ffd24a}
+  /* 메모 버튼 */
+  .memo{margin-top:5px;font-size:11px;cursor:pointer;background:#132038;border:1px solid var(--line);
+    border-radius:7px;padding:2px 7px;color:#bcd2ff}
+  .memo:hover{border-color:#3a557f}
+  /* 유언 버튼 (사망 알림 안) */
+  .will{cursor:pointer;text-decoration:underline;color:#ffd0d0}
+  /* 모달 */
+  #modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;
+    justify-content:center;z-index:50}
+  #modal[hidden]{display:none}
+  .mcard{width:min(560px,92vw);max-height:74vh;background:#0f1524;border:1px solid var(--line);
+    border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+  .mhead{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);font-weight:700}
+  .mhead button{margin-left:auto;background:#16213a;color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:4px 10px;cursor:pointer}
+  #mbody{padding:14px 16px;overflow:auto;line-height:1.6;font-size:13.5px;color:#dbe3ef}
+  #mbody .dsec{margin-bottom:14px}
+  #mbody .dsec h4{margin:0 0 6px;font-size:12px;color:var(--dim);font-weight:700;
+    text-transform:none;border-bottom:1px solid var(--line);padding-bottom:4px}
+  #mbody .drow{padding:5px 8px;margin-bottom:5px;background:#0b1120;border:1px solid var(--line);border-radius:8px}
+  #mbody .drow.foreign{border-color:#8a3f66}
+  #mbody .drow.own{border-color:#2b6f8a}
+  #mbody .gain{color:#7ee39a;font-weight:700;margin-left:6px}
+  #mbody .txt{white-space:pre-wrap;margin-top:3px;color:#c9d3e2;font-size:13px}
+  #mbody .tag{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid var(--line);margin-left:5px;color:var(--dim)}
+  #mbody .tag.ai{color:#c9a9ff;border-color:#5a3f8a}
+  #mbody .tag.original{color:#9be7b3;border-color:#2f6a45}
+  /* 사이드 패널 (사람 집중) */
+  #side{position:fixed;top:0;right:0;width:380px;height:100%;z-index:30;
+    background:#0d1320f2;border-left:1px solid var(--line);backdrop-filter:blur(8px);
+    display:flex;flex-direction:column;box-shadow:-14px 0 40px rgba(0,0,0,.5);
+    transform:translateX(0);transition:transform .3s ease}
+  #side[hidden]{display:flex;transform:translateX(100%)}   /* 닫히면 오른쪽으로 스르륵 */
+  .shead{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  #stitle{font-weight:700;font-size:15px}
+  .shead button{margin-left:auto;background:#16213a;color:var(--ink);border:1px solid #3a557f;
+    border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px}
+  #sbody{padding:14px 16px;overflow:auto;flex:1;font-size:13.5px;line-height:1.6;color:#dbe3ef}
+  #sbody .dsec{margin-bottom:14px}
+  #sbody .dsec h4{margin:0 0 6px;font-size:12px;color:var(--dim);font-weight:700;border-bottom:1px solid var(--line);padding-bottom:4px}
+  #sbody .drow{padding:6px 9px;margin-bottom:5px;background:#0b1120;border:1px solid var(--line);border-radius:8px}
+  #sbody .drow.foreign{border-color:#8a3f66}
+  #sbody .drow.own{border-color:#2b6f8a}
+  #sbody .gain{color:#7ee39a;font-weight:700;margin-left:6px}
+  #sbody .txt{white-space:pre-wrap;margin-top:3px;color:#c9d3e2;font-size:13px}
+  #sbody .tag{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid var(--line);margin-left:5px;color:var(--dim)}
+  #sbody .tag.ai{color:#c9a9ff;border-color:#5a3f8a}
+  #sbody .tag.original{color:#9be7b3;border-color:#2f6a45}
+  /* 선택된 사람 */
+  .tok.sel{border-color:#fff!important;box-shadow:0 0 0 3px rgba(255,255,255,.45),0 0 22px rgba(255,255,255,.6)}
+
+  /* 하단 컨트롤 */
+  #dock{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:20;
+    display:flex;gap:12px;align-items:center;background:#0f1524cc;border:1px solid var(--line);
+    border-radius:14px;padding:10px 14px;backdrop-filter:blur(6px)}
+  #dock button{background:#16213a;color:var(--ink);border:1px solid var(--line);
+    border-radius:9px;padding:7px 12px;font-size:15px;cursor:pointer}
+  #dock button:hover{border-color:#3a557f}
+  #scrub{width:min(44vw,520px);accent-color:var(--fr)}
+  #dock select{background:#16213a;color:var(--ink);border:1px solid var(--line);
+    border-radius:9px;padding:6px 8px;font-size:13px;cursor:pointer}
+  #dock .yr{font-variant-numeric:tabular-nums;font-size:14px;min-width:64px;text-align:center}
+
+  /* 필터 */
+  #filters{position:fixed;top:14px;right:16px;z-index:20;display:flex;gap:8px}
+  #filters button{background:#0f1524cc;color:var(--dim);border:1px solid var(--line);
+    border-radius:9px;padding:6px 11px;font-size:12px;cursor:pointer;backdrop-filter:blur(6px)}
+  #filters button.on{color:var(--ink);border-color:#3a557f;background:#16213a}
+  /* 선 범례 */
+  #legend{position:fixed;left:16px;bottom:22px;z-index:20;display:flex;flex-direction:column;gap:6px;
+    background:#0f1524cc;border:1px solid var(--line);border-radius:12px;padding:10px 12px;backdrop-filter:blur(6px)}
+  #legend span{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#c3ccda;white-space:nowrap}
+  #legend i{width:22px;height:3px;border-radius:2px;flex:none}
+  #legend i.dash{background:none!important;border-top:3px dashed #3fb950;height:0}
+  /* 그 해에 던진 표 · 採決 알림 · 국토 결정과 전환의 구분 (8/27) */
+  .bal{font-size:10px;margin-top:2px;padding:1px 5px;border-radius:6px;white-space:nowrap;
+       border:1px solid currentColor;opacity:.9}
+  .bal.interceptor{color:#7fe0ff} .bal.bunker{color:#ffcf7a} .bal.abstain{color:#8b949e}
+  .vnote.first{opacity:.7}
+  .vnote .kept{color:#3fb950;margin-left:4px}
+  #hud{position:fixed;top:14px;left:16px;z-index:20;font-size:13px;color:var(--dim);
+    display:flex;gap:14px;align-items:center}
+  #hud b{color:var(--ink)}
+  #hud .lg{display:inline-flex;align-items:center;gap:5px}
+  #hud .lg i{width:10px;height:10px;border-radius:50%;box-shadow:0 0 6px currentColor}
+  #drop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:14px;color:var(--dim);background:#000}
+  #drop button{background:#16213a;color:var(--ink);border:1px solid var(--line);
+    border-radius:10px;padding:9px 16px;font-size:14px;cursor:pointer}
+</style>
+</head>
+<body>
+<svg id="flow"></svg>
+
+<div id="filters">
+  <button id="f-invest" class="on">🎯 투자</button>
+  <button id="f-msg" class="on">💬 대화</button>
+</div>
+
+<div id="hud">
+  <b id="runname">—</b>
+  <span class="lg"><i style="background:#e8a33d"></i>Asla어</span>
+  <span class="lg"><i style="background:#e05561"></i>Ranoa어</span>
+  <span class="lg"><i style="background:#5b9df9"></i>Miris어</span>
+</div>
+<div id="stage"></div>
+
+<div id="legend">
+  <span><i style="background:#a371f7"></i>AI 번역 대화</span>
+  <span><i class="dash" style="background:#3fb950"></i>원어 대화</span>
+  <span><i class="dash" style="background:#ff6b6b"></i>파괴</span>
+  <span><i style="background:#7f8db0"></i>자국 대화</span>
+  <span><i style="background:#f778ba"></i>타국투자</span>
+  <span><i style="background:#7fe0ff"></i>자국투자</span>
+</div>
+
+<div id="dock">
+  <button id="back">⏮</button>
+  <button id="play">▶</button>
+  <button id="fwd">⏭</button>
+  <span class="yr">해 <b id="yr">1</b></span>
+  <input type="range" id="scrub" min="1" max="1" value="1">
+  <select id="speed" title="속도">
+    <option value="4200">느리게</option>
+    <option value="2800" selected>보통</option>
+    <option value="1600">빠르게</option>
+  </select>
+  <button id="loadbtn">📁</button>
+</div>
+
+<div id="drop">
+  <div>런 폴더를 고르거나 주소에 <code>?run=폴더이름</code></div>
+  <button id="dropbtn">📁 런 폴더 선택</button>
+</div>
+<input type="file" id="picker" webkitdirectory directory multiple style="display:none">
+
+<div id="modal" hidden>
+  <div class="mcard">
+    <div class="mhead"><span id="mtitle"></span><button id="mclose">✕</button></div>
+    <div id="mbody"></div>
+  </div>
+</div>
+
+<div id="side" hidden>
+  <div class="shead"><span id="stitle"></span><button id="sclose">✕ 닫기</button></div>
+  <div id="sbody"></div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const NATLANG={Asla:"ja", Ranoa:"zh", Miris:"fr"};
+const LANGNAT={ja:"Asla", zh:"Ranoa", fr:"Miris"};   // 언어 → 나라 이름
+const HEX={ja:"#e8a33d", zh:"#e05561", fr:"#5b9df9"};
+const langName=l=>(LANGNAT[l]||l)+"어";
+// 삼각 배치: Ranoa 위, Asla 좌하, Miris 우하
+const POS={ Ranoa:{x:.50,y:.28}, Asla:{x:.18,y:.52}, Miris:{x:.82,y:.52} };
+// 대륙 중심 (지구 이미지 내부 % 좌표) — 나라와 짝
+const CONT={ Ranoa:[50,35], Asla:[34,51], Miris:[66,51] };
+const NAMES=["state.jsonl","metrics.jsonl","events.jsonl","messages.jsonl","config_snapshot.yaml","summary.json"];
+const natOf=a=>String(a).replace(/\d+$/,"");
+// 지구 대륙 (울퉁불퉁한 땅 모양, 구에 클립)
+const GLOBE_SVG=`<svg viewBox="0 0 100 100" preserveAspectRatio="none">
+  <defs>
+    <clipPath id="gclip"><circle cx="50" cy="50" r="50"/></clipPath>
+    <linearGradient id="gland" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#43ab68"/><stop offset="1" stop-color="#1f6a3e"/>
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#gclip)" fill="url(#gland)" stroke="#6fd49a" stroke-width="0.5" stroke-opacity="0.4">
+    <path d="M28,17 C31,10 41,8 47,11 C52,7 61,8 63,14 C69,13 74,18 71,23 C75,27 71,33 65,31 C62,36 54,35 50,31 C45,35 37,33 35,27 C29,28 24,23 28,18 C25,18 25,17 28,17 Z"/>
+    <path d="M11,41 C13,33 22,31 28,34 C34,30 42,33 43,40 C48,42 47,50 41,52 C43,58 33,60 28,54 C22,58 13,55 12,48 C7,47 6,41 11,41 Z"/>
+    <path d="M58,39 C60,31 69,29 75,32 C81,28 89,31 90,38 C95,41 93,49 87,49 C88,55 78,57 73,51 C67,55 58,53 57,46 C52,45 53,39 58,39 Z"/>
+  </g>
+</svg>`;
+
+let D=null, turn=1, playing=false;
+let showMsg=true, showInvest=true, focusAgent=null;   // 필터·집중
+
+function jsonl(t){ return (t||"").split("\n").filter(Boolean).map(l=>{try{return JSON.parse(l)}catch{return null}}).filter(Boolean); }
+
+async function readFetch(run){
+  const files={};
+  await Promise.all(NAMES.map(async n=>{
+    try{ const r=await fetch(`../runs/${run}/${n}?t=${Date.now()}`,{cache:"no-store"});
+      if(r.ok) files[n]=await r.text(); }catch(e){}
+  }));
+  return files;
+}
+
+function build(files){
+  const state=jsonl(files["state.jsonl"]);
+  const metrics=jsonl(files["metrics.jsonl"]);
+  const events=jsonl(files["events.jsonl"]);
+  const messages=jsonl(files["messages.jsonl"]);
+  const turns=Math.max(1,...state.map(s=>s.turn));
+  const byTurn={};
+  for(let t=1;t<=turns;t++) byTurn[t]={agents:{},nations:{},births:new Set(),deaths:[],flows:[],
+    succ:{},lands:[],ballotDay:new Set(),ballots:{}};
+  state.forEach(s=>{ if(byTurn[s.turn]) byTurn[s.turn].agents[s.agent]=s; });
+  metrics.forEach(m=>{ if(byTurn[m.turn]) byTurn[m.turn].nations=m; });
+  events.forEach(e=>{ const b=byTurn[e.turn]; if(!b) return;
+    if(e.type==="birth") b.births.add(e.id);
+    else if(e.type==="death"){ b.deaths.push({who:e.who, born:e.born, age:e.age, country:e.country});
+      b.succ[e.who]=e.born; }   // 그 해에 죽은 행위자 → 후손(같은 자리)
+    else if(e.type==="land_change" && e.changed) b.lands.push({country:e.country, chosen:e.chosen,
+      from:e.from, counts:e.counts||{}, lost:e.progress_lost||0, kept:e.progress_kept||0});
+    // **採決은 시계가 연다** — 소집자가 없다. `by` 는 언제나 null 이고 유예도 없다.
+    else if(e.type==="vote" && e.kind==="propose" && e.opened!==false)
+      b.ballotDay.add(e.country);
+    // 개별 표. 採決이 주기로 돌아오므로 「누가 무엇에 던졌나」 가 계속 갱신된다
+    else if(e.type==="vote" && e.kind==="ballot") b.ballots[e.by]=e.choice;
+    // **파괴는 투자가 아니다** — 부호가 반대인 행위라 같은 화살표로 그리면 거짓이다
+    else if(e.type==="facility_gain") b.flows.push({kind:e.kind==="destroy"?"destroy":"invest",
+      from:e.agent, toNat:e.to, seq:e.seq,
+      foreign: natOf(e.agent)!==e.to, amount:e.amount, gain:e.gain}); });
+  // 대화 = 메시지 (개인 → 개인) — 내용도 담는다
+  messages.forEach(m=>{ const b=byTurn[m.turn]; if(!b) return;
+    const meta=m.meta||{};
+    b.flows.push({kind:"msg", from:m.from, to:m.to, route:m.route, seq:m.seq,
+      text:(meta.text_delivered||meta.text_sent||"").trim()}); });
+  // **실제 스텝 순서로 세운다** (요청 1). `seq` 는 투자와 메시지가 한 카운터를 쓰므로
+  // 섞어 정렬하면 그 해에 실제로 일어난 차례가 된다. 파일 순서 프록시를 대신한다.
+  // 옛 런에는 `seq` 가 없다 — 그때는 넣은 순서를 그대로 둔다.
+  for(const t in byTurn){
+    const f=byTurn[t].flows;
+    if(f.some(x=>x.seq!=null)) f.sort((p,q)=>(p.seq??1e9)-(q.seq??1e9));
+  }
+  // 임계값(목표) — config_snapshot.yaml 에서 읽는다
+  const cfg=files["config_snapshot.yaml"]||"";
+  const gi=cfg.match(/^\s*interceptor:\s*([\d.]+)/m);
+  const gb=cfg.match(/^\s*bunker:\s*([\d.]+)/m);
+  const threshold={ interceptor: gi?+gi[1]:null, bunker: gb?+gb[1]:null };
+  const glb=cfg.match(/learn_base:\s*([\d.]+)/);
+  const learnBase=glb?+glb[1]:200;
+  // 사망 이벤트를 who 로 찾아 유언 조회
+  const testaments={};
+  events.forEach(e=>{ if(e.type==="death" && (e.testament||"").trim()) testaments[e.who]=e.testament; });
+  return {turns, byTurn, threshold, learnBase, testaments};
+}
+
+// 한 나라의 그 해 에이전트(번호순, 최대 3)
+function agentsOf(frame,nat){
+  return Object.values(frame.agents)
+    .filter(a=>String(a.agent).replace(/\d+$/,"")===nat)
+    .sort((p,q)=>(+p.agent.match(/\d+/))-(+q.agent.match(/\d+/)))
+    .slice(0,3);
+}
+
+function render(){
+  const st=$("#stage"); st.innerHTML="";
+  const frame=D.byTurn[turn];
+  // 가운데 지구 (패널보다 먼저 = 뒤에 깔린다)
+  const globe=document.createElement("div"); globe.id="globe"; globe.className="globe";
+  globe.style.left="50%"; globe.style.top="78%"; st.appendChild(globe);
+  for(const nat of Object.keys(POS)){
+    const p=POS[nat], lang=NATLANG[nat];
+    const land=(frame.nations.land&&frame.nations.land[nat])||null;
+    const prog=(frame.nations.progress&&frame.nations.progress[nat])||0;
+    // 이번 해 늘어난 진척
+    const prev=(turn>1 && D.byTurn[turn-1].nations.progress)?(D.byTurn[turn-1].nations.progress[nat]||0):0;
+    const delta=Math.round(prog-prev);
+    // 목표 임계: 벙커면 벙커, 아니면 요격기
+    const thr=(land==="bunker"?D.threshold.bunker:D.threshold.interceptor)||null;
+    const pct=thr?Math.min(100,prog/thr*100):0;
+    const done=thr&&prog>=thr;
+    const el=document.createElement("div");
+    el.className="nation"; el.id="nat-"+nat; el.style.left=(p.x*100)+"%"; el.style.top=(p.y*100)+"%";
+    el.innerHTML=`
+      <div class="nhead">
+        <span class="ndot" style="color:${HEX[lang]}"></span>
+        <span class="nname">${nat}</span>
+        <span class="nland">${land?(land==="interceptor"?"🛰 요격기":"🕳 벙커"):"미정"}</span>
+      </div>
+      <div class="prow"><span>진척${delta>0?` <span class="dlt">▲${delta}</span>`:""}</span><span>${Math.round(prog)} / ${thr?Math.round(thr):"?"}${done?" ✅":""}</span></div>
+      <div class="bar" id="bar-${nat}"><i style="width:${pct}%;background:${done?"#3fb950":HEX[lang]}"></i></div>
+      <div class="vnotes"></div>
+      <div class="agents"></div>
+      <div class="deaths"></div>`;
+    st.appendChild(el);
+    // 투표 소집 · 국토 결정(진척 소실) 알림
+    const vbox=el.querySelector(".vnotes");
+    // **소집자가 없다** — 시계가 연다. 「누가 불렀나」 대신 「올해가 採決의 해」 다.
+    if(frame.ballotDay.has(nat)){
+      const n=document.createElement("div"); n.className="vnote propose";
+      n.textContent="🗳 올해는 採決의 해"; vbox.appendChild(n); }
+    frame.lands.filter(x=>x.country===nat).forEach(x=>{
+      // **처음 정하는 것과 갈아엎는 것은 다른 사건이다.** 첫 採決이 1해에 강제되면서
+      // 미정→결정도 `changed: true` 로 남는다 (`from` 이 null 이다).
+      const first=!x.from;
+      const n=document.createElement("div");
+      n.className="vnote land"+(x.lost>0?" lost":"")+(first?" first":"");
+      const ico=x.chosen==="bunker"?"🕳 벙커":"🛰 요격기";
+      const cc=x.counts||{}; const tally=`요격 ${cc.interceptor||0}·벙커 ${cc.bunker||0}·기권 ${cc.abstain||0}`;
+      n.innerHTML=(first?`🗳 국토 결정 ${ico}`:`🗳 국토 전환 → ${ico}`)+
+        ` <span class="tal">${tally}</span>`+
+        // 잃은 것만 적으면 「전부 날아갔다」 로 읽힌다 — 남은 것도 함께.
+        // 새 규칙에서 남는 것은 **자국이 쌓은 몫**이다 (타국 기여만 사라진다).
+        (x.lost>0?` <span class="lost">−${Math.round(x.lost)} 소실</span>`+
+                  (x.kept>0?` <span class="kept">${Math.round(x.kept)} 남음</span>`:``):``);
+      vbox.appendChild(n); });
+    // 대륙 위 시설 마커 (땅 정해지면)
+    if(land && CONT[nat]){
+      const col=land==="bunker"?"#ffcf7a":"#7fe0ff";
+      const m=document.createElement("div"); m.className="cmark";
+      m.style.left=CONT[nat][0]+"%"; m.style.top=CONT[nat][1]+"%";
+      m.style.setProperty("--c",col); m.style.setProperty("--p",Math.round(pct));
+      m.innerHTML=`<div class="cring"><span class="cicon">${land==="bunker"?"🕳️":"🛰️"}</span></div>`+
+        `<div class="clabel" style="color:${col}">${done?"완성 ✅":Math.round(pct)+"%"}</div>`;
+      globe.appendChild(m);
+    }
+    const ags=el.querySelector(".agents");
+    for(const a of agentsOf(frame,nat)){
+      const isNew=frame.births.has(a.agent);
+      const native=a.native_lang||lang;
+      const learned=(a.known_langs||[]).filter(l=>l!==native);   // 배운 외국어만
+      const lp=a.lang_progress||{};                              // 학습 중
+      const ag=document.createElement("div");
+      ag.className="agent"+(a.alive?"":" dead")+(isNew?" born":"");
+
+      const pips=learned.map(l=>`<i style="background:${HEX[l]||'#ffd24a'};color:${HEX[l]||'#ffd24a'}"></i>`).join("");
+      let learnHtml="";
+      for(const [l,v] of Object.entries(lp)){
+        if(v>=D.learnBase) continue;            // 완료된 건 마스터 점으로만
+        const col=HEX[l]||"#ffd24a";
+        learnHtml+=`<div class="learn" style="color:${col}">📖 ${langName(l)} ${Math.round(v)}/${D.learnBase}`+
+          `<div class="lbar" style="border-color:${col}66"><i style="width:${Math.min(100,v/D.learnBase*100)}%;background:${col}"></i></div></div>`;
+      }
+      const hasMem=(a.memory||"").trim()!=="";
+      const sel=a.agent===focusAgent?" sel":"";
+      // **그 해에 던진 표** (8/27). 採決이 주기로 돌아오므로 「누가 무엇에 던졌나」 가
+      // 계속 갱신되는 정보다 — 260827-001 의 결말도 28해 요격1:벙커2 에서 갈렸다.
+      const ch=frame.ballots[a.agent];
+      const voteHtml=ch?`<div class="bal ${ch}">${
+        ch==="interceptor"?"🛰 요격기":ch==="bunker"?"🕳 벙커":"– 기권"}에 투표</div>`:"";
+      ag.innerHTML=`
+        <div class="tok${sel}" id="tok-${a.agent}" style="--k:${HEX[lang]}">${a.agent.match(/\d+/)[0]}</div>
+        ${pips?`<div class="pips">${pips}</div>`:""}
+        <div class="asub">${isNew?'<span class="new">🐣 탄생</span>':a.age+"살"}${hasMem?' 📝':''}</div>
+        ${voteHtml}
+        ${learnHtml}`;
+      // 토큰 클릭 → 사이드 상세 + 집중
+      ag.querySelector(".tok").onclick=e=>{ e.stopPropagation(); openSide(a.agent); };
+      ags.appendChild(ag);
+    }
+    // 부채꼴 — 나라→지구 벡터 방향으로 3토큰을 아크에 펼친다 (#6)
+    { const EC={x:.5,y:.80};
+      let ex=EC.x-POS[nat].x, ey=EC.y-POS[nat].y; const el2=Math.hypot(ex,ey)||1; const ux=ex/el2, uy=ey/el2;
+      const R=180, ANG=52*Math.PI/180;
+      // 슬롯 3개(아크). 가운데(부채 꼭지)는 항상 2, 양옆은 위·왼쪽부터 1·3
+      const slots=[-1,0,1].map(k=>{ const th=k*ANG;
+        const rx=ux*Math.cos(th)-uy*Math.sin(th), ry=ux*Math.sin(th)+uy*Math.cos(th);
+        return {ox:R*(rx-ux), oy:R*(ry-uy)}; });
+      const out=[slots[0],slots[2]].sort((a,b)=> (a.oy-b.oy) || (a.ox-b.ox));
+      const ordered=[out[0], slots[1], out[1]];   // #1(위/왼) · #2(가운데) · #3
+      const minOy=Math.min(...ordered.map(s=>s.oy)), maxOy=Math.max(...ordered.map(s=>s.oy));
+      [...ags.children].forEach((ag,i)=>{ const s=ordered[i];
+        ag.style.left="50%"; ag.style.top=(s.oy-minOy+8)+"px";
+        ag.style.transform=`translateX(calc(-50% + ${s.ox}px))`; });
+      ags.style.height=(maxOy-minOy+8+108)+"px"; }
+
+    // 이 해에 이 나라에서 죽은 이 (+ 유언)
+    const dbox=el.querySelector(".deaths");
+    frame.deaths.filter(d=>d.country===nat).forEach(d=>{
+      const n=document.createElement("div"); n.className="death";
+      n.append(`☠ ${d.who} (${d.age}살) → ${d.born} `);
+      const will=D.testaments[d.who];
+      if(will){
+        const w=document.createElement("span"); w.className="will"; w.textContent="📜 유언";
+        w.onclick=()=>openModal(`${d.who} 의 유언`, will);
+        n.appendChild(w);
+      }
+      dbox.appendChild(n);
+    });
+  }
+  $("#yr").textContent=turn;
+  $("#scrub").value=turn;
+  if(focusAgent && !$("#side").hidden) renderSide();   // 해 넘어가면 상세도 갱신
+}
+
+// ── 개인 행동선 ─────────────────────────────────────────────────────
+const SVG="http://www.w3.org/2000/svg";
+let flowPhase=0, flowRaf=null, flowLast=0;
+const routeCol={ai:"#a371f7", original:"#3fb950", domestic:"#7f8db0"};
+function qbez(a,c,b,t){ const u=1-t;
+  return {x:u*u*a.x+2*u*t*c.x+t*t*b.x, y:u*u*a.y+2*u*t*c.y+t*t*b.y}; }
+function ctrl(a,b,bow){ const mx=(a.x+b.x)/2,my=(a.y+b.y)/2,dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy)||1;
+  return {x:mx-dy/L*bow, y:my+dx/L*bow}; }
+function ptOf(id){ const el=document.getElementById(id); if(!el) return null;
+  const r=el.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2}; }
+function svgEl(tag,attrs){ const e=document.createElementNS(SVG,tag);
+  for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
+
+function drawFlows(){
+  const svg=$("#flow"); svg.innerHTML="";
+  if(!D) return;
+  svg.setAttribute("viewBox",`0 0 ${innerWidth} ${innerHeight}`);
+  const frame=D.byTurn[turn]; if(!frame) return;
+  const TOKR=33;
+  const tokPt=id=>ptOf("tok-"+id) || (frame.succ[id]?ptOf("tok-"+frame.succ[id]):null);
+  const canon=id=>frame.succ[id]||id;          // 죽은 행위자 → 후손 (집중 매칭용)
+
+  // 같은 쌍 합치기 (대화: 사람→사람 · 투자: 사람→나라)
+  const edges=new Map();
+  frame.flows.forEach((f,fi)=>{
+    if(f.kind==="msg" && !showMsg) return;
+    if(f.kind!=="msg" && !showInvest) return;
+    // **투자와 파괴를 한 통에 넣지 않는다** — 부호가 반대라 합치면 서로를 지운다
+    const key=f.kind==="msg"?`m|${f.from}|${f.to}`:`${f.kind[0]}|${f.from}|${f.toNat}`;
+    let e=edges.get(key);
+    if(!e){ e={kind:f.kind, from:f.from, to:f.to, toNat:f.toNat, foreign:f.foreign,
+      count:0, amount:0, gain:0, ai:false, orig:false, idx:0}; edges.set(key,e); }
+    e.count++; e.idx=fi;   // 등장 순서 (파일 순 ≈ 시간 순)
+    if(f.kind!=="msg"){ e.amount+=f.amount||0; e.gain+=f.gain||0; }
+    else { if(f.route==="ai")e.ai=true; if(f.route==="original")e.orig=true; }
+  });
+  const SPREAD=0.82, GROW=0.14;
+  const list=[...edges.values()].sort((a,b)=>a.idx-b.idx);
+  const M=list.length||1;
+  list.forEach((e,i)=>{ e._s=(i/M)*SPREAD; e._i=i; });   // 등장 시각
+  // #2 FIFO — 사람마다 나온 순서대로, 최근 것이 진하고 오래된 건 흐려지며 사라진다
+  const grp={}; list.forEach(e=>{ (grp[e.from]=grp[e.from]||[]).push(e); });
+  for(const s in grp){ grp[s].forEach(e=>e._rank=99);
+    grp[s].filter(e=>flowPhase>=e._s).sort((a,b)=>b._s-a._s).forEach((e,r)=>e._rank=r); }
+  const recOp=r=> r===0?1 : r===1?0.42 : r===2?0.12 : 0;   // 최근2 진하게, 그 뒤 페이드아웃
+  const inFocus=e=> !focusAgent || canon(e.from)===focusAgent || (e.kind==="msg"&&canon(e.to)===focusAgent);
+
+  list.forEach((e,i)=>{
+    const local=(flowPhase - e._s)/GROW;
+    if(local<=0) return;
+    const rec=recOp(e._rank);          // FIFO 최근도
+    if(rec<=0.02) return;              // 오래된 건 사라짐
+    const td=Math.min(1,local), growing=td<1, dim=focusAgent && !inFocus(e);
+    // **파괴는 투자와 다른 그림이어야 한다** (8/27). 전에는 `facility_gain` 을 전부
+    // 투자로 그렸는데, `destroy` 는 진척을 **깎는** 행위다 — 같은 화살표로 그리면
+    // 보드가 거짓을 말한다. 붉게, 반대로 휘고, 점선으로 가른다.
+    let src,dst,col,bow,dash="", invest=e.kind==="invest", wreck=e.kind==="destroy";
+    if(invest||wreck){ src=tokPt(e.from); dst=ptOf("bar-"+e.toNat);
+      col=wreck?"#ff6b6b":(e.foreign?"#f778ba":"#7fe0ff");
+      bow=(e.foreign?46:22)*(wreck?-1:1); if(wreck)dash="3 6"; }
+    else{ src=tokPt(e.from); dst=tokPt(e.to);
+      col=e.ai?routeCol.ai:e.orig?routeCol.original:routeCol.domestic;
+      bow=(natOf(e.from)===natOf(e.to))?18:42; if(e.orig&&!e.ai)dash="5 5"; }
+    if(!src||!dst) return;
+    bow += ((i%3)-1)*15;
+    const d0={x:dst.x-src.x,y:dst.y-src.y}, L0=Math.hypot(d0.x,d0.y)||1;
+    const a={x:src.x+d0.x/L0*TOKR, y:src.y+d0.y/L0*TOKR};
+    const backR=(invest||wreck)?14:TOKR;
+    const cRaw=ctrl(a,dst,bow);
+    const tg={x:dst.x-cRaw.x,y:dst.y-cRaw.y}, tl=Math.hypot(tg.x,tg.y)||1;
+    const bEnd={x:dst.x-tg.x/tl*backR, y:dst.y-tg.y/tl*backR};
+    const c=ctrl(a,bEnd,bow);
+    const op=(dim?0.08:0.85)*rec;
+    const w=(invest||wreck) ? 5.5+Math.min(6,e.amount/45) : 4.2+Math.min(4,(e.count-1)*0.9);
+    // 아크: 그 자리에 자라 쌓이며 멈춘다 (사라졌다 다시 안 나옴)
+    let dstr=`M${a.x} ${a.y}`;
+    for(let k=1;k<=14;k++){ const p=qbez(a,c,bEnd,td*k/14); dstr+=` L${p.x} ${p.y}`; }
+    // 어두운 테두리 — 지구 위에서도 선이 보이게
+    svg.appendChild(svgEl("path",{d:dstr, fill:"none", stroke:"#04070e", "stroke-width":w+3.4,
+      "stroke-linecap":"round", "stroke-opacity":(dim?0.05:0.55)*rec, ...(dash?{"stroke-dasharray":dash}:{}) }));
+    svg.appendChild(svgEl("path",{d:dstr, fill:"none", stroke:col, "stroke-width":w,
+      "stroke-linecap":"round", "stroke-opacity":op, ...(dash?{"stroke-dasharray":dash}:{}) }));
+    svg.appendChild(svgEl("circle",{cx:a.x, cy:a.y, r:4.2, fill:col, opacity:(dim?0.1:0.7)*rec}));
+    if(growing && !dim){ const hd=qbez(a,c,bEnd,td);
+      const dot=svgEl("circle",{cx:hd.x, cy:hd.y, r:invest?6.5:5.5, fill:col, opacity:0.95*rec});
+      dot.style.filter=`drop-shadow(0 0 6px ${col})`; svg.appendChild(dot); }
+    if(td>=0.98 && !dim){ const ang=Math.atan2(tg.y,tg.x), ah=16;
+      svg.appendChild(svgEl("path",{fill:col, opacity:0.85*rec,
+        d:`M${bEnd.x} ${bEnd.y} L${bEnd.x-ah*Math.cos(ang-0.42)} ${bEnd.y-ah*Math.sin(ang-0.42)} `+
+          `L${bEnd.x-ah*Math.cos(ang+0.42)} ${bEnd.y-ah*Math.sin(ang+0.42)} Z`})); }
+  });
+}
+function animate(ts){ if(!flowLast)flowLast=ts; const dt=ts-flowLast; flowLast=ts;
+  const LOOP=+($("#speed")?.value||2800);     // 한 해의 흐름 한 바퀴 (ms)
+  flowPhase += dt/LOOP;
+  if(flowPhase>=1){
+    if(playing){
+      if(turn>=D.turns){ playing=false; $("#play").textContent="▶"; flowPhase=1; }
+      else{ turn++; render(); flowPhase=0; }   // 다음 해로 넘어가며 한 번 더 흐른다
+    }else flowPhase=1;                          // 정지 중엔 한 바퀴 후 멈춰서 전체를 보여준다
+  }
+  drawFlows();
+  flowRaf=requestAnimationFrame(animate); }
+
+const esc=s=>(s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+function openModal(title,text){ $("#mtitle").textContent=title; $("#mbody").textContent=text;
+  $("#modal").hidden=false; }
+function openModalHTML(title,html){ $("#mtitle").textContent=title; $("#mbody").innerHTML=html;
+  $("#modal").hidden=false; }
+function closeModal(){ $("#modal").hidden=true; }
+
+// 사람 클릭 → 사이드 패널에 그 해 그 사람이 한 것 전부 + 그 사람 선만 집중
+function shiftBoard(){ $("#stage").style.transform = $("#side").hidden ? "" : "scale(.7)"; }
+function markSelected(){ document.querySelectorAll(".tok.sel").forEach(t=>t.classList.remove("sel"));
+  if(focusAgent){ const t=document.getElementById("tok-"+focusAgent); if(t) t.classList.add("sel"); } }
+function openSide(agent){ focusAgent=agent; flowPhase=1;   // 애니 없이 바로 하이라이트
+  $("#side").hidden=false; shiftBoard(); markSelected(); renderSide(); }   // transform 으로 부드럽게 축소
+function closeSide(){ focusAgent=null; $("#side").hidden=true; shiftBoard(); markSelected(); }
+function renderSide(){
+  if(!focusAgent){ return; }
+  const frame=D.byTurn[turn], canon=id=>frame.succ[id]||id, agent=focusAgent, st=frame.agents[agent]||{};
+  const sent=frame.flows.filter(f=>canon(f.from)===agent);
+  const recv=frame.flows.filter(f=>f.kind==="msg" && canon(f.to)===agent);
+  const inv=sent.filter(f=>f.kind==="invest"), talk=sent.filter(f=>f.kind==="msg");
+  const totalInv=inv.reduce((s,f)=>s+(f.amount||0),0), totalGain=inv.reduce((s,f)=>s+(f.gain||0),0);
+  let h="";
+  if(inv.length){ h+=`<div class="dsec"><h4>🎯 투자 · 합계 ${Math.round(totalInv)} → 진척 +${Math.round(totalGain)}</h4>`;
+    inv.forEach(f=>{ const own=natOf(agent)===f.toNat;
+      h+=`<div class="drow ${own?'own':'foreign'}">→ <b>${f.toNat}</b> ${own?'자국':'타국'} 시설 · ${Math.round(f.amount)} 투자 <span class="gain">진척 +${f.gain}</span></div>`; });
+    h+=`</div>`; }
+  if(talk.length){ h+=`<div class="dsec"><h4>💬 보낸 말 (${talk.length})</h4>`;
+    talk.forEach(f=>{ const tag=f.route==="ai"?"AI번역":f.route==="original"?"원어":"자국";
+      h+=`<div class="drow"><b>→ ${f.to}</b> <span class="tag ${f.route}">${tag}</span><div class="txt">${esc(f.text)||"<i>내용 없음</i>"}</div></div>`; });
+    h+=`</div>`; }
+  if(recv.length){ h+=`<div class="dsec"><h4>📥 받은 말 (${recv.length})</h4>`;
+    recv.forEach(f=>{ h+=`<div class="drow"><b>${f.from} →</b><div class="txt">${esc(f.text)}</div></div>`; });
+    h+=`</div>`; }
+  const lp=Object.entries(st.lang_progress||{}).filter(([l,v])=>v<D.learnBase);
+  if(lp.length){ h+=`<div class="dsec"><h4>📖 학습 중</h4>`;
+    lp.forEach(([l,v])=>h+=`<div class="drow">${langName(l)} ${Math.round(v)}/${D.learnBase}</div>`); h+=`</div>`; }
+  const mem=(st.memory||"").trim();
+  if(mem) h+=`<div class="dsec"><h4>📝 메모</h4><div class="txt">${esc(mem)}</div></div>`;
+  if(!h) h=`<div class="drow">이 해엔 기록된 행동이 없어요.</div>`;
+  $("#stitle").textContent=`${agent}${st.age!=null?" · "+st.age+"살":""}`;
+  $("#sbody").innerHTML=h;
+}
+
+function goto(t){ turn=Math.min(D.turns,Math.max(1,t)); flowPhase=0; render(); }
+function play(){ playing=!playing; $("#play").textContent=playing?"⏸":"▶";
+  if(playing && turn>=D.turns){ turn=1; } flowPhase=0; flowLast=0; }
+function stop(){ playing=false; $("#play").textContent="▶"; }
+
+function start(data,name){
+  D=data; turn=1; $("#drop").style.display="none";
+  $("#runname").textContent=name;
+  $("#scrub").min=1; $("#scrub").max=D.turns;
+  render();
+  if(!flowRaf) flowRaf=requestAnimationFrame(animate);
+}
+
+async function loadRun(run){
+  const files=await readFetch(run);
+  if(!files["state.jsonl"]) return false;
+  start(build(files),run); return true;
+}
+
+function bind(){
+  $("#back").onclick=()=>{stop();goto(turn-1);};
+  $("#fwd").onclick=()=>{stop();goto(turn+1);};
+  $("#play").onclick=play;
+  $("#scrub").oninput=e=>{stop();goto(+e.target.value);};
+  const pick=()=>$("#picker").click();
+  $("#loadbtn").onclick=pick; $("#dropbtn").onclick=pick;
+  $("#picker").onchange=async e=>{
+    const files={}; let name="업로드";
+    for(const f of e.target.files){ if(NAMES.includes(f.name)) files[f.name]=await f.text();
+      if(f.webkitRelativePath) name=f.webkitRelativePath.split("/")[0]; }
+    if(files["state.jsonl"]) start(build(files),name);
+  };
+  $("#f-invest").onclick=()=>{ showInvest=!showInvest; $("#f-invest").classList.toggle("on",showInvest); flowPhase=0; };
+  $("#f-msg").onclick=()=>{ showMsg=!showMsg; $("#f-msg").classList.toggle("on",showMsg); flowPhase=0; };
+  $("#sclose").onclick=closeSide;
+  $("#stage").onclick=e=>{ if(e.target.id==="stage") closeSide(); };   // 빈 곳 클릭 → 집중해제
+  $("#mclose").onclick=closeModal;
+  $("#modal").onclick=e=>{ if(e.target.id==="modal") closeModal(); };
+  addEventListener("resize",()=>{ if(D) render(); });
+  addEventListener("keydown",e=>{ if(e.key==="Escape"){closeModal();closeSide();}
+    if($("#modal").hidden===false) return;
+    if(e.key===" "){e.preventDefault();play();}
+    if(e.key==="ArrowRight")$("#fwd").click(); if(e.key==="ArrowLeft")$("#back").click(); });
+}
+
+(async function init(){
+  bind();
+  const q=new URLSearchParams(location.search).get("run");
+  if(q && await loadRun(q)) return;
+  if(await loadRun("260826-002-ai010")) return;
+  $("#drop").style.display="flex";
+})();
+</script>
+</body>
+</html>
