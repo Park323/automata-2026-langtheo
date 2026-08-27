@@ -34,6 +34,9 @@
     background:linear-gradient(var(--tint), var(--tint)), var(--panel);
     border:1px solid var(--k, var(--line));border-radius:16px;padding:16px 18px 18px}
   .nhead{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+  /* 이름표가 아래로 — 위를 비워 나라 사이 화살표가 지나가게 한다 */
+  .nation.headfoot{display:flex;flex-direction:column}
+  .nation.headfoot .nhead{order:9;margin:10px 0 0}
   .ndot{width:13px;height:13px;border-radius:50%;box-shadow:0 0 10px currentColor}
   .nname{font-weight:700;font-size:17px}
   .nland{margin-left:auto;font-size:11px;color:var(--dim);border:1px solid var(--line);
@@ -50,12 +53,13 @@
   .sidebar{position:fixed;top:46%;transform:translateY(-50%);
     display:flex;flex-direction:column;align-items:center;gap:8px;z-index:3;pointer-events:none}
   .sidebar.left{left:22px} .sidebar.right{right:22px}
-  .sidebar .slabel{font-size:12px;font-weight:700;letter-spacing:.04em}
+  /* **가로 바와 같은 결로** (8/27 · Eddie). 굵기·모서리·숫자 스타일을 그대로 쓰고,
+     국가명은 안 적는다 — 패널이 바로 옆에서 이미 말한다. */
   .sidebar .snum{font-size:11px;color:var(--dim);white-space:nowrap}
-  .bar.vert{height:min(38vh,340px);width:16px;border-radius:9px;   /* 아래 범례를 피한다 */
+  .bar.vert{height:min(38vh,340px);width:10px;border-radius:6px;   /* 아래 범례를 피한다 */
     display:flex;flex-direction:column;justify-content:flex-end}
   /* 세로 바는 **아래에서 위로** 찬다 — 쌓이는 것이라 그 방향이 자연스럽다 */
-  .bar.vert>i{width:100%;height:0;border-radius:9px;transition:height .4s ease}
+  .bar.vert>i{width:100%;height:0;border-radius:6px;transition:height .4s ease}
   /* 투표·국토 알림 */
   .vnotes{margin:4px 0 2px}
   .vnote{font-size:11px;border-radius:7px;padding:3px 8px;margin-top:4px;display:block;
@@ -396,7 +400,10 @@ function render(){
     const pct=thr?Math.min(100,prog/thr*100):0;
     const done=thr&&prog>=thr;
     const el=document.createElement("div");
-    el.className="nation"; el.id="nat-"+nat; el.style.left=(p.x*100)+"%"; el.style.top=(p.y*100)+"%";
+    // **헤더를 아래로** (8/27 · Eddie). 위에 있으면 나라 사이를 잇는 화살표가 이름표를
+    // 가로지른다. 옆 두 나라만 — Ranoa 는 맨 위라 위쪽에 지나갈 화살표가 없다.
+    el.className="nation"+(POS[nat].x!==0.5?" headfoot":"");
+    el.id="nat-"+nat; el.style.left=(p.x*100)+"%"; el.style.top=(p.y*100)+"%";
     // **국적을 여기서 말한다** (8/27). 토큰의 색 테두리를 걷어낸 자리를 패널이 받는다 —
     // 아주 옅은 바탕과 옅은 테두리로. 진하면 그 자체가 또 시선을 끌어 행위자를 가린다.
     el.style.setProperty("--tint", HEX[lang]+"14");     // 8%
@@ -419,8 +426,6 @@ function render(){
     if(side){
       const bar=el.querySelector(".bar"), prow=el.querySelector(".prow");
       side.innerHTML="";
-      const lab=document.createElement("div"); lab.className="slabel";
-      lab.style.color=HEX[lang]; lab.textContent=nat; side.appendChild(lab);
       bar.classList.add("vert");
       const fill=bar.querySelector("i");
       fill.style.width=""; fill.style.height=pct+"%";
