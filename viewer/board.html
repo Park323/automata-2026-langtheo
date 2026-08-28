@@ -193,7 +193,14 @@
     background:#0f1524cc;border:1px solid var(--line);border-radius:12px;padding:10px 12px;backdrop-filter:blur(6px)}
   #legend span{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#c3ccda;white-space:nowrap}
   #legend i{width:22px;height:3px;border-radius:2px;flex:none}
-  #legend i.dash{background:none!important;border-top:3px dashed #3fb950;height:0}
+  /* 점선 색을 초록으로 **고정**하고 있었다 — 그래서 「파괴」 범례가 붉은 점선이 아니라
+     초록 점선으로 나왔다. 색은 각 줄이 정한다. */
+  #legend i.dash{background:none!important;border-top:3px dashed;height:0}
+  #legend b{font-size:10px;color:#7e8ba3;letter-spacing:.08em;margin-top:4px}
+  #legend b:first-child{margin-top:0}
+  #legend .marks{gap:5px;font-size:11px;color:#9fb0c9}
+  #legend .marks em{font-style:normal;font-size:13px;margin-left:5px}
+  #legend .marks em:first-child{margin-left:0}
   /* 採決의 해 — 국가 패널 **위에** 붙는 서브 블럭 (8/27 · Eddie).
      패널이 `position:absolute` 라 `bottom:100%` 로 그 위에 얹힌다. */
   .ballotbar{position:absolute;left:0;right:0;bottom:calc(100% + 10px);
@@ -210,8 +217,13 @@
   .btally .bi{color:#7fe0ff} .btally .bb{color:#ffcf7a} .btally .ba{color:#8b949e}
   /* 그 해에 던진 표 · 採決 알림 · 국토 결정과 전환의 구분 (8/27) */
   .bal{font-size:10px;margin-top:2px;padding:1px 5px;border-radius:6px;white-space:nowrap;
-       border:1px solid currentColor;opacity:.9}
+       border:1px solid currentColor;opacity:.9;transition:opacity .2s,transform .2s}
   .bal.interceptor{color:#7fe0ff} .bal.bunker{color:#ffcf7a} .bal.abstain{color:#8b949e}
+  /* **표는 던지는 순간에 나타난다** (8/28 · Eddie). 그 해 처음부터 떠 있으면 위의 집계는
+     한 장씩 올라가는데 아래 뱃지는 이미 다 나와 있어, 둘이 서로 다른 시점을 가리킨다. */
+  .bal.pending{opacity:0;transform:translateY(-3px)}
+  .btally b{display:inline-block;transition:transform .18s}
+  .btally b.bump{transform:scale(1.5)}
   .vnote.first{opacity:.7}
   .vnote .kept{color:#3fb950;margin-left:4px}
   #hud{position:fixed;top:14px;left:16px;z-index:20;font-size:13px;color:var(--dim);
@@ -255,12 +267,18 @@
 <div id="stage"></div>
 
 <div id="legend">
-  <span><i style="background:#a371f7"></i>AI 번역 대화</span>
-  <span><i class="dash" style="background:#3fb950"></i>원어 대화</span>
-  <span><i class="dash" style="background:#ff6b6b"></i>파괴</span>
-  <span><i style="background:#7f8db0"></i>자국 대화</span>
-  <span><i style="background:#f778ba"></i>타국투자</span>
-  <span><i style="background:#7fe0ff"></i>자국투자</span>
+  <b>투자 · 건설</b>
+  <span><i style="background:#7fe0ff"></i>자국 시설</span>
+  <span><i style="background:#4c9aff"></i>타국 시설</span>
+  <span><i class="dash" style="border-top-color:#ff5c5c"></i>파괴</span>
+  <b>대화</b>
+  <span><i style="background:#a371f7"></i>AI 번역</span>
+  <span><i class="dash" style="border-top-color:#3fb950"></i>원어</span>
+  <span><i style="background:#8b97b5"></i>자국</span>
+  <b>그 밖의 차례</b>
+  <span class="marks"><em>📖</em>학습<em>🔭</em>관측<em>🗳</em>투표</span>
+  <span class="marks"><em>📝</em>메모<em>🏦</em>곳간<em>🌿</em>수명<em>✕</em>실패</span>
+  <span><i class="dash" style="border-top-color:#e8c98a"></i>죽음 · 계승</span>
 </div>
 
 <div id="dock">
@@ -355,7 +373,12 @@ function build(files){
   events.forEach(e=>{ const b=byTurn[e.turn]; if(!b) return;
     if(e.type==="birth") b.births.add(e.id);
     else if(e.type==="death"){ b.deaths.push({who:e.who, born:e.born, age:e.age, country:e.country});
-      b.succ[e.who]=e.born; }   // 그 해에 죽은 행위자 → 후손(같은 자리)
+      b.succ[e.who]=e.born;     // 그 해에 죽은 행위자 → 후손(같은 자리)
+      // **죽음과 계승도 그 해의 행위다** (8/28 · Eddie). 전에는 패널 구석의 글줄로만
+      // 남아서, 사람이 바뀐 해인지 흘려 보면 몰랐다. 정산에서 일어나는 일이므로
+      // `seq` 를 그 해 밖으로 크게 잡아 **행위가 다 흐른 뒤 맨 끝**에 세운다.
+      b.flows.push({kind:"succeed", from:e.who, to:e.born, age:e.age, country:e.country,
+        seq:1e9+b.flows.length}); }
     else if(e.type==="land_change" && e.changed) b.lands.push({country:e.country, chosen:e.chosen,
       from:e.from, counts:e.counts||{}, lost:e.progress_lost||0, kept:e.progress_kept||0});
     // **採決은 시계가 연다** — 소집자가 없다. `by` 는 언제나 null 이고 유예도 없다.
@@ -381,6 +404,42 @@ function build(files){
     const meta=m.meta||{};
     b.flows.push({kind:"msg", from:m.from, to:m.to, route:m.route, seq:m.seq,
       text:(meta.text_delivered||meta.text_sent||"").trim()}); });
+  // **차례를 썼는데 화면이 비던 해** (8/28 · Eddie). 「현재 턴인 애한테 불만은 들어오는데
+  // 행동이 없는 때가 있다」 — 맞았고, 짚은 원인(메모 쓰기)도 맞았다.
+  //
+  // `events.jsonl` 에 남는 것은 **성공한 바깥 행위**뿐이다. 그 해 실측으로
+  // 메모 쓰기 90건 · 실패한 투자 92건 · 실패한 대화 78건이 아무 자국도 남기지 않았다.
+  // 말을 듣고 메모만 적고 끝낸 사람은 보드에서 그 차례가 통째로 사라져, 「불만은
+  // 들어오는데 아무것도 안 한 사람」 으로 보였다.
+  //
+  // `agent_turn.reasonings` 가 그 차례에 부른 도구를 **순서대로** 갖고 있다. 기록에
+  // 남은 행위와 앞에서부터 맞춰 가며, 사이에 낀 것들에 그 직전 `seq` 의 소수 자리를
+  // 준다 — 순서는 지키되 기록된 행위의 자리를 밀지 않는다.
+  const TOOLED={speak:1, observe_risk:1, learn:1, vote:1};
+  events.filter(e=>e.type==="agent_turn").forEach(e=>{
+    const b=byTurn[e.turn]; if(!b) return;
+    const mine=b.flows.filter(f=>f.from===e.agent && f.seq!=null).sort((p,q)=>p.seq-q.seq);
+    // `calls` 가 인자까지 갖고 있어 정확하다. 옛 런에는 없으므로 `reasonings` 로 물러선다.
+    const calls=(e.calls&&e.calls.length) ? e.calls
+              : (e.reasonings||[]).filter(r=>r.source==="tool" && r.tool);
+    let pi=0, last=(mine.length?mine[0].seq-1:0), eps=0;
+    for(const r of calls){
+      if(!r.tool || r.tool==="end_turn") continue;
+      const ok=r.ok!==false;
+      // **투자라고 다 시설이 아니다.** `national`(나라 곳간)·`wellness`(제 수명)는
+      // events.jsonl 에 아무 줄도 남기지 않는다 — 그 해 실측 189건·11건이 통째로
+      // 안 보였다. 시설 투자만 `facility_gain` 으로 남는다.
+      const tgt=(r.args||{}).target;
+      const logged = ok && (TOOLED[r.tool] ||
+        (r.tool==="invest" && (tgt==null || tgt==="facility")));
+      if(logged){ if(mine[pi]){ last=mine[pi].seq; pi++; } eps=0; continue; }
+      const act = !ok ? "fail"
+                : r.tool==="invest" ? (tgt==="wellness" ? "invest_wellness" : "invest_national")
+                : r.tool;
+      b.flows.push({kind:"act", act, tool:r.tool, ok, err:r.error||"",
+        from:e.agent, seq:last+(++eps)/100});
+    }
+  });
   // **실제 스텝 순서로 세운다** (요청 1). `seq` 는 투자와 메시지가 한 카운터를 쓰므로
   // 섞어 정렬하면 그 해에 실제로 일어난 차례가 된다. 파일 순서 프록시를 대신한다.
   // 옛 런에는 `seq` 가 없다 — 그때는 넣은 순서를 그대로 둔다.
@@ -404,15 +463,49 @@ function build(files){
   if(ithr){ for(let t=1;t<=turns && !winner;t++){ const n=byTurn[t].nations;
     for(const nat in (n.progress||{})){ if((n.land&&n.land[nat])==="interceptor" && n.progress[nat]>=ithr){
       completeTurn=t; winner=nat; break; } } } }
-  return {turns, byTurn, threshold, learnBase, testaments, completeTurn, winner};
+  // **한 번 정한 자리는 죽을 때까지 지킨다** (8/28 · Eddie). 전에는 번호순으로 세웠다 —
+  // Ranoa5 가 죽고 Ranoa8 이 이으면 8 이 가장 큰 번호라 **맨 끝자리로 밀려나고**, 그 여파로
+  // 남은 둘도 한 칸씩 움직였다. 사람이 하나 죽을 때마다 나라 전체가 자리를 바꾸는 셈이라
+  // 같은 사람을 해 넘어가며 눈으로 따라갈 수가 없었다.
+  //
+  // `birth.replaces` 가 「누구 자리를 잇는가」 를 정확히 말해 준다 — 그대로 물려받는다.
+  const seat={};                       // 행위자 → 자리 번호 (0·1·2)
+  {
+    const held={};                     // 나라 → 자리별 현재 주인
+    // `state.jsonl` 은 한 해에 스냅숏을 여러 줄 쓴다 — 중복을 걷지 않으면 같은 사람이
+    // 자리를 셋 다 먹는다
+    [...new Set(state.filter(s=>s.turn===1).map(s=>s.agent))]
+      .sort((p,q)=>(+p.match(/\d+/))-(+q.match(/\d+/)))
+      .forEach(a=>{ const n=natOf(a), arr=(held[n]=held[n]||[]);
+        if(arr.length<3){ seat[a]=arr.length; arr.push(a); } });
+    // 파일 순서가 곧 시간 순서다 — 태어난 차례대로 자리를 물려받는다
+    events.filter(e=>e.type==="birth").forEach(e=>{
+      const n=natOf(e.id), arr=(held[n]=held[n]||[]);
+      let s=(e.replaces!=null && seat[e.replaces]!=null) ? seat[e.replaces]
+          : (arr.length<3 ? arr.length : 0);
+      seat[e.id]=s; arr[s]=e.id;
+    });
+  }
+  return {turns, byTurn, threshold, learnBase, testaments, completeTurn, winner, seat};
 }
 
-// 한 나라의 그 해 에이전트(번호순, 최대 3)
+// 한 나라의 그 해 에이전트 — **자리 번호가 곧 인덱스**다 (번호순이 아니다).
+// 빈 칸이 생길 수 있으므로 부르는 쪽에서 건너뛴다.
 function agentsOf(frame,nat){
-  return Object.values(frame.agents)
-    .filter(a=>String(a.agent).replace(/\d+$/,"")===nat)
-    .sort((p,q)=>(+p.agent.match(/\d+/))-(+q.agent.match(/\d+/)))
-    .slice(0,3);
+  const out=[];
+  for(const a of Object.values(frame.agents)){
+    if(natOf(a.agent)!==nat) continue;
+    const s=D.seat[a.agent];
+    if(s==null||s>2) continue;
+    // **죽은 해에는 한 자리를 둘이 잡는다.** `frame.agents` 가 그 해의 스냅숏을 전부
+    // 합치기 때문이다 — 연중 행에는 죽을 사람이, 해 끝 행에는 후계자가 들어 있다.
+    // 그 해에 움직인 쪽(죽는 사람)을 세운다. 후계자는 그 해에 행동하지 않는다 —
+    // 계승은 해 끝의 고리로 보이고, 후계자는 다음 해에 같은 자리에 선다.
+    if(out[s]){ if(frame.births.has(a.agent)) continue;
+                if(!frame.births.has(out[s].agent)) continue; }
+    out[s]=a;
+  }
+  return out;
 }
 
 function render(){
@@ -499,7 +592,9 @@ function render(){
       globe.appendChild(m);
     }
     const ags=el.querySelector(".agents");
-    for(const a of agentsOf(frame,nat)){
+    const seated=agentsOf(frame,nat);
+    for(let seatNo=0; seatNo<3; seatNo++){
+      const a=seated[seatNo]; if(!a) continue;      // 빈 자리는 건너뛴다
       const isNew=frame.births.has(a.agent);
       const native=a.native_lang||lang;
       const learned=(a.known_langs||[]).filter(l=>l!==native);   // 배운 외국어만
@@ -520,7 +615,7 @@ function render(){
       // **그 해에 던진 표** (8/27). 採決이 주기로 돌아오므로 「누가 무엇에 던졌나」 가
       // 계속 갱신되는 정보다 — 260827-001 의 결말도 28해 요격1:벙커2 에서 갈렸다.
       const ch=frame.ballots[a.agent];
-      const voteHtml=ch?`<div class="bal ${ch}">${
+      const voteHtml=ch?`<div class="bal ${ch} pending" id="balof-${a.agent}">${
         ch==="interceptor"?"🛰 요격기":ch==="bunker"?"🕳 벙커":"– 기권"}에 투표</div>`:"";
       ag.innerHTML=`
         <div class="tok${sel}" id="tok-${a.agent}" style="--k:${HEX[lang]}">${a.agent.match(/\d+/)[0]}</div>
@@ -530,6 +625,7 @@ function render(){
         ${learnHtml}`;
       // 토큰 클릭 → 사이드 상세 + 집중
       ag.querySelector(".tok").onclick=e=>{ e.stopPropagation(); openSide(a.agent); };
+      ag.dataset.seat=seatNo;              // 배치는 자리 번호가 정한다 (아래 부채꼴)
       ags.appendChild(ag);
     }
     // 부채꼴 — 나라→지구 벡터 방향으로 3토큰을 아크에 펼친다 (#6)
@@ -557,7 +653,9 @@ function render(){
       const out=[slots[0],slots[2]].sort((a,b)=> (a.oy-b.oy) || (a.ox-b.ox));
       const ordered=[out[0], slots[1], out[1]];   // #1(위/왼) · #2(가운데) · #3
       const minOy=Math.min(...ordered.map(s=>s.oy)), maxOy=Math.max(...ordered.map(s=>s.oy));
-      [...ags.children].forEach((ag,i)=>{ const s=ordered[i];
+      // **자리 번호로 꽂는다** — 자식 순서로 꽂으면 누가 죽어 빈 칸이 생겼을 때
+      // 남은 사람들이 앞으로 당겨져, 지키라고 한 자리가 다시 움직인다.
+      [...ags.children].forEach(ag=>{ const s=ordered[+ag.dataset.seat];
         ag.style.left="50%"; ag.style.top=(s.oy-minOy+8)+"px";
         ag.style.transform=`translateX(calc(-50% + ${s.ox}px))`; });
       ags.style.height=(maxOy-minOy+8+108)+"px"; }
@@ -650,7 +748,27 @@ function meteor(){
 const SVG="http://www.w3.org/2000/svg";
 let flowPhase=0, flowRaf=null, flowLast=0, flowCount=1;
 const SPREAD_G=0.82;                 // 흐름이 펼쳐지는 구간 (뒤는 여운)
-const routeCol={ai:"#a371f7", original:"#3fb950", domestic:"#7f8db0"};
+// **색이 행위의 계열을 말한다** (8/28 · Eddie). 전에는 타국투자가 분홍(#f778ba) 이라
+// AI 대화의 보라(#a371f7) 와 색상환에서 이웃이었다 — 계열이 다른 두 행위가 서로 닮아
+// 보이고, 정작 같은 투자인 자국투자(시안) 와는 남처럼 보였다.
+//
+//   투자·건설 = 한랭 계열 (자국 시안 → 타국 파랑)   진척을 **쌓는** 행위
+//   파괴      = 적색 · 점선 · 반대로 휨              진척을 **깎는** 행위
+//   대화      = 보라 · 초록 · 회색                   말이 **어떻게** 건너갔는가
+//   계승      = 금빛 고리                            자리를 물려받는다
+//
+// 대화 셋만은 한 계열로 묶지 않는다. 「AI 번역이냐 원어냐」 가 이 작품이 보려는 축이라
+// 한 계열로 뭉개면 관측하려던 것이 화면에서 사라진다.
+const COL={
+  invest:"#7fe0ff", investF:"#4c9aff", destroy:"#ff5c5c",
+  ai:"#a371f7", original:"#3fb950", domestic:"#8b97b5", succeed:"#e8c98a",
+  // 화살표가 없는 행위들 — 표식의 색. 투자 둘은 한랭 계열을 그대로 쓴다
+  learn:"#ffd24a", observe:"#7fd8c0", vote:"#9fc6ff",
+  memory_write:"#c0a6ff", fail:"#8b949e",
+  invest_national:"#8fd8ff", invest_wellness:"#a8e6cf",
+};
+const ACTMARK={learn:"📖", observe:"🔭", vote:"🗳", memory_write:"📝", fail:"✕",
+  invest_national:"🏦", invest_wellness:"🌿"};
 function qbez(a,c,b,t){ const u=1-t;
   return {x:u*u*a.x+2*u*t*c.x+t*t*b.x, y:u*u*a.y+2*u*t*c.y+t*t*b.y}; }
 function ctrl(a,b,bow){ const mx=(a.x+b.x)/2,my=(a.y+b.y)/2,dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy)||1;
@@ -659,6 +777,59 @@ function ptOf(id){ const el=document.getElementById(id); if(!el) return null;
   const r=el.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2}; }
 function svgEl(tag,attrs){ const e=document.createElementNS(SVG,tag);
   for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
+
+// **머리를 키운다** (8/28 · Eddie). 전에는 `ah=16` 고정이라, 굵기 11px 짜리 투자선
+// 끝에 붙어도 선폭보다 조금 큰 정도였다 — 멀리서 보면 화살표가 아니라 그냥 선이었다.
+// 굵기에 비례해 키우고, 뒤에 홈을 파 화살촉 모양을 분명히 한다.
+function arrowHead(svg,tip,ang,size,col,op){
+  const S=0.46;                                   // 벌어지는 각
+  const p=(a,d)=>({x:tip.x-size*d*Math.cos(a), y:tip.y-size*d*Math.sin(a)});
+  const b1=p(ang-S,1), b2=p(ang+S,1), nk=p(ang,0.56);
+  const d=`M${tip.x} ${tip.y} L${b1.x} ${b1.y} L${nk.x} ${nk.y} L${b2.x} ${b2.y} Z`;
+  // 지구 위에서도 보이도록 어두운 테두리를 먼저
+  svg.appendChild(svgEl("path",{d, fill:"#04070e", stroke:"#04070e", "stroke-width":3.4,
+    "stroke-linejoin":"round", opacity:op*0.6}));
+  svg.appendChild(svgEl("path",{d, fill:col, "stroke-linejoin":"round", opacity:op}));
+}
+
+// 화살표가 없는 행위 — 그 사람 곁에 작은 표식을 남긴다.
+// **차례를 쓰고도 화면에 아무 자국이 없던 것들**이 여기로 들어온다 (8/28 · Eddie):
+// 메모 쓰기 · 나라 곳간 투자 · 수명 투자 · 그리고 실패한 시도.
+function actBadge(svg,e,td,rec,dim,tokPt){
+  const p=tokPt(e.from); if(!p) return;
+  const g=ACTMARK[e.act]; if(!g) return;
+  const col=COL[e.act]||"#9fb0c9";
+  const bad=e.act==="fail";
+  const op=(dim?0.10:(bad?0.5:1))*rec*Math.min(1,td*2.4);
+  const R=bad?12:15, ox=p.x+31, oy=p.y-30;
+  svg.appendChild(svgEl("circle",{cx:ox, cy:oy, r:R, fill:"#0a1020",
+    stroke:col, "stroke-width":bad?1.6:2.2, opacity:op*0.95}));
+  const t=svgEl("text",{x:ox, y:oy+0.5, "text-anchor":"middle",
+    "dominant-baseline":"central", "font-size":bad?14:16, fill:col, opacity:op});
+  t.textContent=g; svg.appendChild(t);
+}
+
+// 계승 — 자리는 그대로다. 그래서 어디로 가는 선이 아니라 **제자리에서 도는 고리**다.
+function succLoop(svg,e,td,rec,dim,tokPt){
+  const p=tokPt(e.to)||tokPt(e.from); if(!p) return;
+  const col=COL.succeed, op=(dim?0.10:0.95)*rec;
+  const R=46, a0=Math.PI*0.80, a1=-Math.PI*0.28;      // 왼쪽 위에서 오른쪽 위로 한 바퀴
+  const at=a0+(a1-a0)*td;
+  const pt=a=>({x:p.x+R*Math.cos(a), y:p.y-R*Math.sin(a)});
+  const N=Math.max(2,Math.round(Math.abs(at-a0)/0.06));
+  let d=`M${pt(a0).x} ${pt(a0).y}`;
+  for(let k=1;k<=N;k++){ const q=pt(a0+(at-a0)*k/N); d+=` L${q.x} ${q.y}`; }
+  svg.appendChild(svgEl("path",{d, fill:"none", stroke:"#04070e", "stroke-width":6.6,
+    "stroke-linecap":"round", "stroke-opacity":op*0.55}));
+  svg.appendChild(svgEl("path",{d, fill:"none", stroke:col, "stroke-width":3.4,
+    "stroke-linecap":"round", "stroke-opacity":op, "stroke-dasharray":"7 5"}));
+  if(td>0.06){ const tip=pt(at), prev=pt(at-(at-a0)*0.02);
+    arrowHead(svg, tip, Math.atan2(tip.y-prev.y, tip.x-prev.x), 19, col, op); }
+  const lab=svgEl("text",{x:p.x, y:p.y-R-14, "text-anchor":"middle", "font-size":13,
+    "font-weight":"700", fill:col, opacity:op});
+  lab.textContent=`☠ ${e.from} (${e.age}살) → ${e.to}`;
+  svg.appendChild(lab);
+}
 
 // **연속한 같은 행위만 합친다** (8/27 · Eddie). 「투자·투자·투자」 는 한 화살표가
 // 맞지만 「투자·대화·투자」 는 두 번이다 — 그 사이에 다른 일이 있었으므로.
@@ -681,7 +852,12 @@ function edgesOf(frame){
              :`${f.kind[0]}|${f.from}|${f.toNat}`;
     let e=openBy[f.from];
     if(!e || e.key!==key){          // 하던 것과 다른 행위 → 새 화살표를 연다
+      // **표의 내용을 여기서 흘리고 있었다** (8/28 · Eddie). 「투표 숫자가 안 바뀐다」 —
+      // `flows` 에는 `choice` 가 있는데 이 화살표 객체로 옮겨 담지 않아서, 집계하는 쪽의
+      // `e.choice` 가 언제나 `undefined` 였다. 그래서 `choice in tal[n]` 이 늘 거짓이 되고
+      // 「투표 진행중」 의 세 숫자가 0 에서 꼼짝하지 않았다. 표는 제대로 던져지고 있었다.
       e={key, kind:f.kind, act:f.act, from:f.from, to:f.to, toNat:f.toNat, foreign:f.foreign,
+         choice:f.choice, tool:f.tool, ok:f.ok, age:f.age,
          count:0, amount:0, gain:0, ai:false, orig:false,
          // **첫 등장으로 자리를 잡는다.** 마지막으로 덮어쓰면 초반에 한 일이 후반으로
          // 밀린다 — `seq` 로 정렬해 놓고도 순서가 어긋나던 이유다.
@@ -741,18 +917,26 @@ function drawFlows(){
     for(const e of list){ if(flowPhase > e._s) cur=e; else break; }
     const who=cur ? cur.from : null;
     // **집계는 지금까지 들어온 표만 센다** — 「투표 진행중」 이 말 그대로가 된다
-    const tal={};
+    const tal={}, cast=new Set();
     for(const e of list){
       if(flowPhase <= e._s) break;
       if(e.kind==="act" && e.act==="vote"){
         const n=natOf(e.from); (tal[n]=tal[n]||{interceptor:0,bunker:0,abstain:0});
         if(e.choice in tal[n]) tal[n][e.choice]++;
+        cast.add(canon(e.from));
       }
     }
     for(const nat in POS) for(const ch of ["interceptor","bunker","abstain"]){
       const b=document.getElementById(`bal-${nat}-${ch}`);
-      if(b) b.textContent=(tal[nat]&&tal[nat][ch])||0;
+      if(!b) continue;
+      const v=String((tal[nat]&&tal[nat][ch])||0);
+      // 숫자가 실제로 올라간 칸만 튕긴다 — 매 프레임 튕기면 계속 떨린다
+      if(b.textContent!==v){ b.textContent=v; b.classList.add("bump");
+        setTimeout(()=>b.classList.remove("bump"),180); }
     }
+    // 사람 밑의 표 뱃지도 같은 시점에 켠다
+    document.querySelectorAll(".bal").forEach(el=>
+      el.classList.toggle("pending", !cast.has(el.id.slice(6))));
     // **해 끝 사건은 해 끝에** (8/27 · Eddie). 국토 결정·유언은 정산에서 일어나므로
     // 그 해의 행위가 다 흐른 뒤에 나타나야 한다 — 처음부터 떠 있으면 결말을 미리 안다.
     $("#stage").classList.toggle("yearend", flowPhase>=SPREAD);
@@ -761,25 +945,40 @@ function drawFlows(){
                    || document.getElementById("tok-"+who);
       if(el) el.classList.add("acting"); }
   }
+  // **같은 짝끼리만 부채로 벌린다** (8/28 · Eddie). 「화살표가 이상하게 꾸불텅거린다」 의
+  // 절반은 여기였다 — 전에는 `bow += ((i%3)-1)*15` 로 **그 해 전체 순번**을 3 으로 나눈
+  // 나머지만큼 휘었다. 겹치지도 않는 화살표가 이웃한 순번을 받았다는 이유만으로 제각기
+  // 다른 곡률을 얻어, 나란히 가야 할 선들이 저마다 다르게 휘고 짝이 겹칠 때는 오히려
+  // 포개졌다. 겹치는 짝만, 가운데를 기준으로 대칭으로 벌린다.
+  {
+    const pk=e=> e.kind==="msg" ? `m|${canon(e.from)}|${canon(e.to)}`
+                                : `${e.kind[0]}|${canon(e.from)}|${e.toNat}`;
+    const cnt={}, seen={};
+    list.forEach(e=>{ const k=pk(e); cnt[k]=(cnt[k]||0)+1; });
+    list.forEach(e=>{ const k=pk(e), n=cnt[k], j=(seen[k]=(seen[k]??-1)+1);
+      e._fan = n>1 ? (j-(n-1)/2)*16 : 0; });
+  }
   list.forEach((e,i)=>{
     const local=(flowPhase - e._s)/GROW;
     if(local<=0) return;
-    if(e.kind==="act") return;          // 화살표 없는 행위 — 칸만 차지한다
     const rec=recOp(e._rank);          // FIFO 최근도
     if(rec<=0.02) return;              // 오래된 건 사라짐
     const td=Math.min(1,local), growing=td<1, dim=focusAgent && !inFocus(e);
+    // 화살표가 없는 행위 — 칸을 차지하되, 이제 작은 표식은 남긴다
+    if(e.kind==="act"){ actBadge(svg,e,td,rec,dim,tokPt); return; }
+    if(e.kind==="succeed"){ succLoop(svg,e,td,rec,dim,tokPt); return; }
     // **파괴는 투자와 다른 그림이어야 한다** (8/27). 전에는 `facility_gain` 을 전부
     // 투자로 그렸는데, `destroy` 는 진척을 **깎는** 행위다 — 같은 화살표로 그리면
     // 보드가 거짓을 말한다. 붉게, 반대로 휘고, 점선으로 가른다.
     let src,dst,col,bow,dash="", invest=e.kind==="invest", wreck=e.kind==="destroy";
     if(invest||wreck){ src=tokPt(e.from); dst=ptOf("bar-"+e.toNat);
-      col=wreck?"#ff6b6b":(e.foreign?"#f778ba":"#7fe0ff");
-      bow=(e.foreign?46:22)*(wreck?-1:1); if(wreck)dash="3 6"; }
+      col=wreck?COL.destroy:(e.foreign?COL.investF:COL.invest);
+      bow=(e.foreign?46:22)*(wreck?-1:1); if(wreck)dash="4 7"; }
     else{ src=tokPt(e.from); dst=tokPt(e.to);
-      col=e.ai?routeCol.ai:e.orig?routeCol.original:routeCol.domestic;
-      bow=(natOf(e.from)===natOf(e.to))?18:42; if(e.orig&&!e.ai)dash="5 5"; }
+      col=e.ai?COL.ai:e.orig?COL.original:COL.domestic;
+      bow=(natOf(e.from)===natOf(e.to))?18:42; if(e.orig&&!e.ai)dash="6 5"; }
     if(!src||!dst) return;
-    bow += ((i%3)-1)*15;
+    bow += e._fan;
     const d0={x:dst.x-src.x,y:dst.y-src.y}, L0=Math.hypot(d0.x,d0.y)||1;
     const a={x:src.x+d0.x/L0*TOKR, y:src.y+d0.y/L0*TOKR};
     const backR=(invest||wreck)?14:TOKR;
@@ -790,8 +989,17 @@ function drawFlows(){
     const op=(dim?0.08:0.85)*rec;
     const w=(invest||wreck) ? 5.5+Math.min(6,e.amount/45) : 4.2+Math.min(4,(e.count-1)*0.9);
     // 아크: 그 자리에 자라 쌓이며 멈춘다 (사라졌다 다시 안 나옴)
-    let dstr=`M${a.x} ${a.y}`;
-    for(let k=1;k<=14;k++){ const p=qbez(a,c,bEnd,td*k/14); dstr+=` L${p.x} ${p.y}`; }
+    //
+    // **곡선을 곡선으로 그린다** (8/28 · Eddie). 「화살표가 이상하게 꾸불텅거린다」 의
+    // 나머지 절반 — 곡선을 직선 14 조각으로 근사하고 있었다. 길이 600px 짜리 선이면
+    // 한 조각이 43px 라 꺾인 자리가 그대로 보이고, `stroke-linecap:round` 가 그 마디마다
+    // 둥근 이음매를 얹어 선이 울퉁불퉁 흔들리는 것처럼 보였다.
+    //
+    // 2차 베지에의 0..t 구간은 **그 자체로 2차 베지에**다 (de Casteljau). 제어점만 다시
+    // 잡으면 근사 없이 `Q` 한 번에 그려진다 — 조각도 마디도 없다.
+    const c1={x:a.x+(c.x-a.x)*td, y:a.y+(c.y-a.y)*td};
+    const tip=qbez(a,c,bEnd,td);
+    const dstr=`M${a.x} ${a.y} Q${c1.x} ${c1.y} ${tip.x} ${tip.y}`;
     // 어두운 테두리 — 지구 위에서도 선이 보이게
     svg.appendChild(svgEl("path",{d:dstr, fill:"none", stroke:"#04070e", "stroke-width":w+3.4,
       "stroke-linecap":"round", "stroke-opacity":(dim?0.05:0.55)*rec, ...(dash?{"stroke-dasharray":dash}:{}) }));
@@ -801,10 +1009,9 @@ function drawFlows(){
     if(growing && !dim){ const hd=qbez(a,c,bEnd,td);
       const dot=svgEl("circle",{cx:hd.x, cy:hd.y, r:invest?6.5:5.5, fill:col, opacity:0.95*rec});
       dot.style.filter=`drop-shadow(0 0 6px ${col})`; svg.appendChild(dot); }
-    if(td>=0.98 && !dim){ const ang=Math.atan2(tg.y,tg.x), ah=16;
-      svg.appendChild(svgEl("path",{fill:col, opacity:0.85*rec,
-        d:`M${bEnd.x} ${bEnd.y} L${bEnd.x-ah*Math.cos(ang-0.42)} ${bEnd.y-ah*Math.sin(ang-0.42)} `+
-          `L${bEnd.x-ah*Math.cos(ang+0.42)} ${bEnd.y-ah*Math.sin(ang+0.42)} Z`})); }
+    // 머리는 굵기에 비례해 키운다 — 16px 고정이던 시절엔 굵은 투자선에 파묻혔다
+    if(td>=0.98 && !dim)
+      arrowHead(svg, bEnd, Math.atan2(tg.y,tg.x), Math.max(22, w*3.2), col, 0.9*rec);
   });
 }
 function animate(ts){ if(!flowLast)flowLast=ts; const dt=ts-flowLast; flowLast=ts;
@@ -968,7 +1175,9 @@ function bind(){
   $("#stage").onclick=e=>{ if(e.target.id==="stage") closeSide(); };   // 빈 곳 클릭 → 집중해제
   $("#mclose").onclick=closeModal;
   $("#modal").onclick=e=>{ if(e.target.id==="modal") closeModal(); };
-  addEventListener("resize",()=>{ if(D) render(); });
+  // 정지 중에는 애니 루프가 `drawFlows` 를 부르지 않는다 — 다시 그려 주지 않으면
+  // 창을 줄이는 순간 화살표와 표 뱃지가 통째로 사라진 채로 남는다
+  addEventListener("resize",()=>{ if(D){ render(); drawFlows(); } });
   addEventListener("keydown",e=>{ if(e.key==="Escape"){closeModal();closeSide();}
     if($("#modal").hidden===false) return;
     if(e.key===" "){e.preventDefault();play();}
