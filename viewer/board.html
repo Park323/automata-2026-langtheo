@@ -1060,7 +1060,7 @@ function drawFlows(){
     const c=ctrl(a,bEnd,bow);
     const op=(dim?0.08:0.85)*rec;
     const domestic=!invest&&!wreck&&e.kind==="msg"&&natOf(e.from)===natOf(e.to);
-    const w=(invest||wreck) ? 5.5+Math.min(6,e.amount/45)
+    const w=(invest||wreck) ? 5.5+Math.min(6,(e.count-1)*1.2)   // 액수 아닌 횟수로
           : (domestic?2.6:4.2)+Math.min(4,(e.count-1)*0.9);   // 자국 대화는 한 단계 얇게
     // 아크: 그 자리에 자라 쌓이며 멈춘다 (사라졌다 다시 안 나옴)
     //
@@ -1155,9 +1155,12 @@ function showEdge(e){
     }
   }else if(e.kind==="invest"||e.kind==="destroy"){
     title=`${year}년 · ${e.from} → ${e.toNat} ${e.kind==="destroy"?"파괴":(e.foreign?"타국 시설 투자":"자국 시설 투자")}`;
-    h+=`<div class="pmsg"><div class="phead">${e.count}회 · 낸 양 ${Math.round(e.amount)} · 진척 ${e.gain>=0?"+":""}${Math.round(e.gain)}</div>`;
+    // **낸 양은 안 적는다** (8/28 · Eddie). 세계가 에이전트에게도 숨기는 값이고,
+    // 보는 사람에게 의미 있는 것은 몇 번 냈고 얼마나 나아갔는가뿐이다.
+    h+=`<div class="phead">${e.count}회 · 진척 ${e.gain>=0?"+":""}${Math.round(e.gain)}</div>`;
+    h+=`<div class="pmsg">`;
     for(const f of e.items)
-      h+=`<div class="ptext">· ${Math.round(f.amount)} → ${f.gain>=0?"+":""}${f.gain}${f.gain<0?" (역화)":""}</div>`;
+      h+=`<div class="ptext">· ${f.gain>=0?"+":""}${f.gain}${f.gain<0?" (역화)":""}</div>`;
     h+=`</div>`;
   }else{
     const NAME={learn:"학습", observe:"관측", vote:"투표", memory_write:"메모", fail:"실패한 시도",
