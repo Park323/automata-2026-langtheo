@@ -470,6 +470,10 @@ function build(files){
   const threshold={ interceptor: gi?+gi[1]:null, bunker: gb?+gb[1]:null };
   const glb=cfg.match(/learn_base:\s*([\d.]+)/);
   const learnBase=glb?+glb[1]:200;
+  // **세계의 길이는 설정이 안다** (8/28 · Eddie). 데이터 길이(D.turns)로 세면 진행 중인
+  // 런에서 카운트다운이 짧아진다 — 29해까지 기록된 런을 열면 1해에 「운석까지 28해」.
+  const gtt=cfg.match(/total_turns:\s*(\d+)/);
+  const totalTurns=gtt?+gtt[1]:null;
   // 사망 이벤트를 who 로 찾아 유언 조회
   const testaments={};
   events.forEach(e=>{ if(e.type==="death" && (e.testament||"").trim()) testaments[e.who]=e.testament; });
@@ -502,7 +506,7 @@ function build(files){
       seat[e.id]=s; arr[s]=e.id;
     });
   }
-  return {turns, byTurn, threshold, learnBase, testaments, completeTurn, winner, seat};
+  return {turns, total: totalTurns||turns, byTurn, threshold, learnBase, testaments, completeTurn, winner, seat};
 }
 
 // 한 나라의 그 해 에이전트 — **자리 번호가 곧 인덱스**다 (번호순이 아니다).
@@ -774,7 +778,7 @@ function fireBeam(){
 // 운석 — 해가 갈수록 굴러 내려오고, 10해 페이즈마다 이펙트가 세지고, 배경이 물든다
 function meteor(){
   if(!D) return;
-  const prog=Math.min(1, turn/D.turns);          // 0 → 1 (충돌)
+  const prog=Math.min(1, turn/D.total);          // 0 → 1 (충돌) — 세계 길이 기준
   const phase=Math.min(3, Math.ceil(turn/10));    // 1·2·3 (10해 단위)
   const m=$("#meteor"), sp=$("#space");
   const size=52+prog*150;                          // 멀리 작게 → 가까이 크게
@@ -796,7 +800,7 @@ function meteor(){
     `radial-gradient(1500px 1000px at 50% 132%, rgba(${Math.round(100*prog)},10,8,${bot}) 0%, transparent 60%),`+
     `#000`;
   // 카운트다운
-  $("#ttl").textContent=Math.max(0, D.turns-turn);
+  $("#ttl").textContent=Math.max(0, D.total-turn);   // 세계 길이 기준 — 시뮬 진실과 같은 자
 }
 
 // ── 개인 행동선 ─────────────────────────────────────────────────────
