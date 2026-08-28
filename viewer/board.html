@@ -199,15 +199,17 @@
   .pmsg .phead{font-size:12px;color:var(--dim);margin-bottom:6px}
   .pmsg .ptext{font-size:14px;line-height:1.55;white-space:pre-wrap}
   .pmsg .ptr{font-size:13px;color:#ff9e3d;margin-top:6px;line-height:1.5;white-space:pre-wrap}
-  #legend{position:fixed;left:16px;bottom:22px;z-index:20;display:flex;flex-direction:column;gap:6px;
-    background:#0f1524cc;border:1px solid var(--line);border-radius:12px;padding:10px 12px;backdrop-filter:blur(6px)}
-  #legend span{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#c3ccda;white-space:nowrap}
+  /* 좌측 상단 빈 자리에 **가로로 넓게** (8/28 · Eddie) — 세로 기둥은 시선이 오르내려야
+     읽혔다. HUD(연도·카운트다운) 바로 아래 한 줄로 눕힌다. */
+  #legend{position:fixed;left:16px;top:56px;z-index:20;display:flex;flex-wrap:wrap;
+    align-items:center;column-gap:16px;row-gap:6px;max-width:min(72vw,860px);
+    background:#0f1524cc;border:1px solid var(--line);border-radius:12px;padding:8px 14px;backdrop-filter:blur(6px)}
+  #legend span{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#c3ccda;white-space:nowrap}
   #legend i{width:22px;height:3px;border-radius:2px;flex:none}
-  /* 점선 색을 초록으로 **고정**하고 있었다 — 그래서 「파괴」 범례가 붉은 점선이 아니라
-     초록 점선으로 나왔다. 색은 각 줄이 정한다. */
+  /* 점선 색을 초록으로 **고정**하고 있었다 — 색은 각 줄이 정한다. */
   #legend i.dash{background:none!important;border-top:3px dashed;height:0}
-  #legend b{font-size:10px;color:#7e8ba3;letter-spacing:.08em;margin-top:4px}
-  #legend b:first-child{margin-top:0}
+  #legend b{font-size:10px;color:#7e8ba3;letter-spacing:.08em;margin:0 2px 0 6px}
+  #legend b:first-child{margin-left:0}
   #legend .marks{gap:5px;font-size:11px;color:#9fb0c9}
   #legend .marks em{font-style:normal;font-size:13px;margin-left:5px}
   #legend .marks em:first-child{margin-left:0}
@@ -745,7 +747,9 @@ let endState="";
 function checkEnding(){
   if(!D) return;
   const winNow=D.winner && turn>=D.completeTurn;      // 요격기 완성됨
-  const impactNow=!D.winner && turn>=D.turns;         // 30해까지 아무도 못 막음
+  // **세계 길이 기준** (8/28 · Eddie). `D.turns`(데이터 길이)로 쟀더니 29해까지만
+  // 기록된 런에서 29해 끝에 멸망이 터졌다. 운석은 30해 끝에 온다 — 카운트다운과 같은 자.
+  const impactNow=!D.winner && turn>=D.total;         // 30해까지 아무도 못 막음
   const ready=(winNow||impactNow) && flowPhase>=1;    // 그 해 행동이 다 끝난 뒤에만
   $("#meteor").style.opacity = (winNow && flowPhase>=1) ? "0" : "1";
   const now = !ready ? "" : (winNow?"win":"impact");
