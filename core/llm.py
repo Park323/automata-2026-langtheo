@@ -58,6 +58,13 @@ class RateLimitGuard:
                     f"  마지막 복원점부터 `--resume` 으로 이어할 수 있습니다.")
 
 
+class OutOfCredit(Exception):
+    """잔액 소진. **`LLMCallError` 가 아니다** — 그 계열이면 「이 에이전트만 이 해를
+    포기」 로 삼켜져서 런이 빈 세계로 계속 흘러간다. 위로 터뜨려 런을 세운다.
+    (`RateLimitStorm` 이 같은 이유로 별도 계열인 것과 같다.)
+    """
+
+
 class RateLimitStorm(RuntimeError):
     """**429 가 그치지 않는다 — 런을 세운다.** `LLMCallError` 와 **일부러 무관하다.**
 
@@ -239,6 +246,19 @@ class OpenRouterClient:
                 resp = self._call_with_deadline(req)
             except urllib.error.HTTPError as e:
                 self._record(body, attempt + 1, t0, error=f"HTTP {e.code}", log_tag=log_tag)
+                # **402 는 즉시 세운다** (8/28 · Eddie). 크레딧이 떨어지자 네 런이
+                # **멈추지 않고 30해까지 흘러갔다** — 402 는 429 도 망 오류도 아니라
+                # 차단기에 안 걸리고, 에이전트마다 「그 해 포기」 로 조용히 처리됐다.
+                # 결과는 6해 이후 아무도 행동하지 않는 세계 넷이고, 그것이 정상 완주로
+                # 기록됐다 (콜 681~730 · 402 238~257건).
+                #
+                # 재시도해도 소용없다 — 돈이 생기기 전에는 계속 402 다. 그러니 물러날
+                # 것이 아니라 **바로 서야** 한다. 복원점이 있으니 충전 후 이어붙인다.
+                if e.code == 402:
+                    raise OutOfCredit(
+                        f"402 — 크레딧이 떨어졌습니다 ({self.model}).\n"
+                        f"  충전 후 마지막 복원점부터 `--from-turn` 으로 이어할 수 있습니다."
+                    ) from e
                 if e.code == 429:                          # 레이트 리밋: 길게 물러난다
                     if last:
                         # **재시도를 다 쓴 429 만 센다.** 중간에 회수된 것은 시간만
