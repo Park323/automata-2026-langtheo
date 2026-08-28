@@ -201,8 +201,9 @@
   .pmsg .ptr{font-size:13px;color:#ff9e3d;margin-top:6px;line-height:1.5;white-space:pre-wrap}
   /* 좌측 상단 빈 자리에 **가로로 넓게** (8/28 · Eddie) — 세로 기둥은 시선이 오르내려야
      읽혔다. HUD(연도·카운트다운) 바로 아래 한 줄로 눕힌다. */
+  /* 폭을 좁혀 자연히 두 줄로 — 한 줄은 너무 길었다 (8/28) */
   #legend{position:fixed;left:16px;top:56px;z-index:20;display:flex;flex-wrap:wrap;
-    align-items:center;column-gap:16px;row-gap:6px;max-width:min(72vw,860px);
+    align-items:center;column-gap:14px;row-gap:7px;max-width:min(46vw,520px);
     background:#0f1524cc;border:1px solid var(--line);border-radius:12px;padding:8px 14px;backdrop-filter:blur(6px)}
   #legend span{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#c3ccda;white-space:nowrap}
   #legend i{width:22px;height:3px;border-radius:2px;flex:none}
