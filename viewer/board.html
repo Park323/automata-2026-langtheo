@@ -970,8 +970,13 @@ function drawFlows(){
     // **파괴는 투자와 다른 그림이어야 한다** (8/27). 전에는 `facility_gain` 을 전부
     // 투자로 그렸는데, `destroy` 는 진척을 **깎는** 행위다 — 같은 화살표로 그리면
     // 보드가 거짓을 말한다. 붉게, 반대로 휘고, 점선으로 가른다.
-    let src,dst,col,bow,dash="", invest=e.kind==="invest", wreck=e.kind==="destroy";
-    if(invest||wreck){ src=tokPt(e.from); dst=ptOf("bar-"+e.toNat);
+    let src,dst,col,bow,dash="", invest=e.kind==="invest", wreck=e.kind==="destroy", onRing=false;
+    if(invest||wreck){ src=tokPt(e.from);
+      // **진척 대신 실제 시설로** — 막대는 숫자일 뿐, 화살표가 향할 곳은 지구 위
+      // 그 나라가 짓고 있는 시설(원형 링)이다. 採決 전이라 링이 아직 없는 첫 해만
+      // 막대로 물러선다.
+      const ring=ptOf("cmark-"+e.toNat); onRing=!!ring;
+      dst=ring||ptOf("bar-"+e.toNat);
       col=wreck?COL.destroy:(e.foreign?COL.investF:COL.invest);
       bow=(e.foreign?46:22)*(wreck?-1:1); if(wreck)dash="4 7"; }
     else{ src=tokPt(e.from); dst=tokPt(e.to);
@@ -981,7 +986,9 @@ function drawFlows(){
     bow += e._fan;
     const d0={x:dst.x-src.x,y:dst.y-src.y}, L0=Math.hypot(d0.x,d0.y)||1;
     const a={x:src.x+d0.x/L0*TOKR, y:src.y+d0.y/L0*TOKR};
-    const backR=(invest||wreck)?14:TOKR;
+    // 링 반지름(36px)만큼 물러선다 — 막대는 얇아 그대로 14px 이면 됐지만,
+    // 링은 커서 그만큼 안 물러서면 화살촉이 아이콘 안으로 파고든다
+    const backR=(invest||wreck)?(onRing?34:14):TOKR;
     const cRaw=ctrl(a,dst,bow);
     const tg={x:dst.x-cRaw.x,y:dst.y-cRaw.y}, tl=Math.hypot(tg.x,tg.y)||1;
     const bEnd={x:dst.x-tg.x/tl*backR, y:dst.y-tg.y/tl*backR};
@@ -1010,8 +1017,28 @@ function drawFlows(){
       const dot=svgEl("circle",{cx:hd.x, cy:hd.y, r:invest?6.5:5.5, fill:col, opacity:0.95*rec});
       dot.style.filter=`drop-shadow(0 0 6px ${col})`; svg.appendChild(dot); }
     // 머리는 굵기에 비례해 키운다 — 16px 고정이던 시절엔 굵은 투자선에 파묻혔다
-    if(td>=0.98 && !dim)
+    if(td>=0.98 && !dim){
       arrowHead(svg, bEnd, Math.atan2(tg.y,tg.x), Math.max(22, w*3.2), col, 0.9*rec);
+      // 화살표와 같은 색으로 「진척 +N」 — 도착점(링)도 시작점(토큰 머리)도 붐빈다.
+      // **선 자체를 자리로 쓴다** — 중간 지점에, 선과 겹치지 않게 수직으로 살짝
+      // 띄운다. 겹치는 화살표끼리는 이미 `_fan` 으로 곡률이 벌어져 있으므로 각자
+      // 다른 곡선의 중간이면 자연히 서로 떨어진다. 같은 사람이 최근 여럿 쌓았을
+      // 때만(_rank) 곡선을 따라 한 번 더 벌린다.
+      if(invest||wreck){
+        const mt=Math.max(0.2,Math.min(0.8, 0.5+(e._rank-1)*0.16));
+        const mp=qbez(a,c,bEnd,mt), mp2=qbez(a,c,bEnd,Math.min(0.97,mt+0.05));
+        const tx=mp2.x-mp.x, ty=mp2.y-mp.y, tl=Math.hypot(tx,ty)||1;
+        const side=(bow>=0?1:-1)*20;                 // 곡선이 휜 쪽 반대로 띄운다
+        const lx=mp.x-ty/tl*side, ly=mp.y+tx/tl*side;
+        const lbl=`${e.gain>=0?"+":""}${Math.round(e.gain)}`, txt=`진척 ${lbl}`;
+        const tw=txt.length*7.6+16;
+        svg.appendChild(svgEl("rect",{x:lx-tw/2, y:ly-13, width:tw, height:22, rx:11,
+          fill:"#04070ee6", stroke:col, "stroke-width":1.6, opacity:0.97*rec}));
+        const t=svgEl("text",{x:lx, y:ly+2, "text-anchor":"middle","font-size":13.5,
+          "font-weight":800, fill:col, opacity:rec});
+        t.textContent=txt; svg.appendChild(t);
+      }
+    }
   });
 }
 function animate(ts){ if(!flowLast)flowLast=ts; const dt=ts-flowLast; flowLast=ts;
