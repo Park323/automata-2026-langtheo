@@ -1340,7 +1340,9 @@ function bind(){
   bind();
   const q=new URLSearchParams(location.search).get("run");
   if(q && await loadRun(q)) return;
-  if(await loadRun("260826-002-ai010")) return;
+  // 동봉 견본 (8/29): 98% 근접 실패(009) → 28해 배신 드라마(001) 순으로 시도
+  if(await loadRun("260827-009-ai006")) return;
+  if(await loadRun("260827-001-risk-noai")) return;
   $("#drop").style.display="flex";
 })();
 </script>

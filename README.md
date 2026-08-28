@@ -384,6 +384,15 @@ runs/                 원자료 jsonl (git 제외)
 RESULTS.md            결과 기록
 ```
 
+**실행 환경**: Python 3.12+ (표준 라이브러리만으로 시뮬·뷰어 동작,
+`requirements.txt` 는 테스트·분석 도구용). LLM 호출에만 OpenRouter 키가 필요하다 —
+**테스트·뷰어·동봉 견본 재생은 키 없이 돈다.**
+
+**동봉 견본 2판** (raw_calls 제외, 각 ~5MB):
+`runs/260827-009-ai006` — 임계의 98%까지 간 최고 기록 (0.06, Ranoa 숙주),
+`runs/260827-001-risk-noai` — 28해 배신으로 무너진 세계 (§10 사건 기록의 그 판).
+뷰어를 열면 이 견본이 기본으로 재생된다.
+
 ```bash
 cp .env.example .env.local                    # OpenRouter 키
 python3 -m pytest -q                          # 451 테스트

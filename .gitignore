@@ -25,7 +25,16 @@ memo/
 scratch/
 *.scratch
 logs/
-runs/
+# 산출물은 제외하되 **견본 두 판은 동봉한다** (8/29 · 심사 대비) — 리포만 받아도
+# 뷰어가 돌아야 한다. raw_calls(수십 MB)와 복원점은 뺀다: 뷰어가 안 읽는다.
+runs/*
+!runs/pilot/
+!runs/260827-009-ai006/
+runs/260827-009-ai006/raw_calls.jsonl
+runs/260827-009-ai006/checkpoints/
+!runs/260827-001-risk-noai/
+runs/260827-001-risk-noai/raw_calls.jsonl
+runs/260827-001-risk-noai/checkpoints/
 
 # 8/21 에 1.1MB 짜리 Archive.zip 이 실수로 커밋에 실려 스택 전체를 타고 왔다 (2f49bfd).
 *.zip
