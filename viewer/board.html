@@ -57,7 +57,9 @@
   .cring{width:72px;height:72px;border-radius:50%;position:relative;display:grid;place-items:center;margin:0 auto;
     background:conic-gradient(var(--c) calc(var(--p)*3.6deg), rgba(0,0,0,.5) 0);
     box-shadow:0 0 0 2px rgba(0,0,0,.4), 0 0 16px var(--c)}
-  .cring::before{content:"";position:absolute;inset:8px;border-radius:50%;background:rgba(4,18,12,.92)}
+  /* 소유국 색을 옅게 깐다 (8/28 · Eddie) — 링만 봐도 누구 시설인지 읽히게 */
+  .cring::before{content:"";position:absolute;inset:8px;border-radius:50%;
+    background:linear-gradient(var(--own,transparent),var(--own,transparent)), rgba(4,18,12,.92)}
   .cicon{position:relative;font-size:30px;z-index:1}
   .clabel{font-size:14px;font-weight:800;margin-top:4px;text-shadow:0 1px 4px #000,0 0 8px #000}
   /* 국적은 여기서 말한다 — **아주 옅게**. 토큰에서 색 테두리를 걷어낸 자리를 받는다 */
@@ -189,6 +191,11 @@
     border-radius:9px;padding:6px 11px;font-size:12px;cursor:pointer;backdrop-filter:blur(6px)}
   #filters button.on{color:var(--ink);border-color:#3a557f;background:#16213a}
   /* 선 범례 */
+  /* 화살표 클릭 팝업 (8/28) */
+  .pmsg{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;background:#0b1120}
+  .pmsg .phead{font-size:12px;color:var(--dim);margin-bottom:6px}
+  .pmsg .ptext{font-size:14px;line-height:1.55;white-space:pre-wrap}
+  .pmsg .ptr{font-size:13px;color:#ff9e3d;margin-top:6px;line-height:1.5;white-space:pre-wrap}
   #legend{position:fixed;left:16px;bottom:22px;z-index:20;display:flex;flex-direction:column;gap:6px;
     background:#0f1524cc;border:1px solid var(--line);border-radius:12px;padding:10px 12px;backdrop-filter:blur(6px)}
   #legend span{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#c3ccda;white-space:nowrap}
@@ -267,14 +274,14 @@
 <div id="stage"></div>
 
 <div id="legend">
-  <b>투자 · 건설</b>
+  <b>투자 · 건설 — 실선</b>
   <span><i style="background:#7fe0ff"></i>자국 시설</span>
   <span><i style="background:#4c9aff"></i>타국 시설</span>
-  <span><i class="dash" style="border-top-color:#ff5c5c"></i>파괴</span>
-  <b>대화</b>
-  <span><i style="background:#a371f7"></i>AI 번역</span>
-  <span><i class="dash" style="border-top-color:#3fb950"></i>원어</span>
-  <span><i style="background:#8b97b5"></i>자국</span>
+  <span><i style="background:#ff5c5c"></i>파괴</span>
+  <b>대화 — 점선 · 색은 쓴 말</b>
+  <span><i class="dash" style="border-top-color:#9fe6a0"></i>모국어</span>
+  <span><i class="dash" style="border-top-color:#2ea043"></i>배운 외국어</span>
+  <span><i class="dash" style="border-top-color:#ff9e3d"></i>AI 번역</span>
   <b>그 밖의 차례</b>
   <span class="marks"><em>📖</em>학습<em>🔭</em>관측<em>🗳</em>투표</span>
   <span class="marks"><em>📝</em>메모<em>🏦</em>곳간<em>🌿</em>수명<em>✕</em>실패</span>
@@ -402,8 +409,14 @@ function build(files){
   // 대화 = 메시지 (개인 → 개인) — 내용도 담는다
   messages.forEach(m=>{ const b=byTurn[m.turn]; if(!b) return;
     const meta=m.meta||{};
+    // **무슨 말로 썼나** (8/28 · Eddie). 로그에 쓴 언어 필드가 따로 없어 글자로 판별한다
+    // — 가나가 있으면 ja, 한자만 있으면 zh, 아니면 fr. 세 언어뿐이라 이걸로 충분하다.
+    const tw=(meta.text_written||meta.text_sent||"").trim();
+    const wlang=/[\u3040-\u30ff]/.test(tw)?"ja":/[\u4e00-\u9fff]/.test(tw)?"zh":"fr";
     b.flows.push({kind:"msg", from:m.from, to:m.to, route:m.route, seq:m.seq,
-      text:(meta.text_delivered||meta.text_sent||"").trim()}); });
+      text:(meta.text_delivered||meta.text_sent||"").trim(),
+      tw, tdel:(meta.text_delivered||"").trim(), delivered:m.delivered,
+      wforeign: wlang!==NATLANG[natOf(m.from)]}); });
   // **차례를 썼는데 화면이 비던 해** (8/28 · Eddie). 「현재 턴인 애한테 불만은 들어오는데
   // 행동이 없는 때가 있다」 — 맞았고, 짚은 원인(메모 쓰기)도 맞았다.
   //
@@ -508,7 +521,34 @@ function agentsOf(frame,nat){
   return out;
 }
 
+// 採決로 이 해에 시설이 바뀌는 나라들 — yearend 에 링·헤더를 바꾼다
+let pendingLand=[];
+function applyPendingLand(){
+  for(const q of pendingLand){
+    const el=document.getElementById("nat-"+q.nat);
+    if(el){
+      el.querySelector(".nland").textContent=q.land?(q.land==="interceptor"?"🛰 요격기":"🕳 벙커"):"미정";
+      const pr=el.querySelector(".prow span:last-child");
+      if(pr) pr.textContent=`${Math.round(q.prog)} / ${q.thr?Math.round(q.thr):"?"}${q.done?" ✅":""}`;
+      const bi=el.querySelector(".bar>i");
+      if(bi){ bi.style.width=q.pct+"%"; bi.style.background=q.done?"#3fb950":HEX[q.lang]; }
+    }
+    const old=document.getElementById("cmark-"+q.nat); if(old) old.remove();
+    if(q.land && CONT[q.nat]){
+      const col=q.land==="bunker"?"#ffcf7a":"#7fe0ff";
+      const m=document.createElement("div"); m.className="cmark"; m.id="cmark-"+q.nat;
+      m.style.left=CONT[q.nat][0]+"%"; m.style.top=CONT[q.nat][1]+"%";
+      m.style.setProperty("--c",col); m.style.setProperty("--p",Math.round(q.pct));
+      m.style.setProperty("--own", HEX[q.lang]+"30");
+      m.innerHTML=`<div class="cring"><span class="cicon">${q.land==="bunker"?"🕳️":"🛰️"}</span></div>`+
+        `<div class="clabel" style="color:${col}">${q.done?"완성 ✅":Math.round(q.pct)+"%"}</div>`;
+      document.querySelector(".globe").appendChild(m);
+    }
+  }
+  pendingLand=[];
+}
 function render(){
+  pendingLand=[];
   const st=$("#stage"); st.innerHTML="";
   const bl=$("#backlayer"); bl.innerHTML="";
   const frame=D.byTurn[turn];
@@ -517,8 +557,13 @@ function render(){
   globe.style.left="50%"; globe.style.top="78%"; bl.appendChild(globe);
   for(const nat of Object.keys(POS)){
     const p=POS[nat], lang=NATLANG[nat];
-    const land=(frame.nations.land&&frame.nations.land[nat])||null;
+    const landEnd=(frame.nations.land&&frame.nations.land[nat])||null;
     const prog=(frame.nations.progress&&frame.nations.progress[nat])||0;
+    // **採決 결과는 해 끝에 나와야 한다** (8/28 · Eddie). frame 값은 턴 **끝** 상태라
+    // 개표도 전에 새 시설이 링·헤더에 미리 보였다. 죽음·유언과 같은 규칙으로:
+    // 해가 흐르는 동안은 이전 시설을 그리고, yearend 에 바꾼다 (pendingLand).
+    const chg=frame.lands.find(x=>x.country===nat && x.changed);
+    const land=chg ? (chg.from||null) : landEnd;
     // 이번 해 늘어난 진척
     const prev=(turn>1 && D.byTurn[turn-1].nations.progress)?(D.byTurn[turn-1].nations.progress[nat]||0):0;
     const delta=Math.round(prog-prev);
@@ -526,6 +571,11 @@ function render(){
     const thr=(land==="bunker"?D.threshold.bunker:D.threshold.interceptor)||null;
     const pct=thr?Math.min(100,prog/thr*100):0;
     const done=thr&&prog>=thr;
+    if(chg){
+      const thrE=(landEnd==="bunker"?D.threshold.bunker:D.threshold.interceptor)||null;
+      pendingLand.push({nat, lang, land:landEnd, prog,
+        thr:thrE, pct:thrE?Math.min(100,prog/thrE*100):0, done:thrE&&prog>=thrE});
+    }
     const el=document.createElement("div");
     // **헤더를 아래로** (8/27 · Eddie). 위에 있으면 나라 사이를 잇는 화살표가 이름표를
     // 가로지른다. 옆 두 나라만 — Ranoa 는 맨 위라 위쪽에 지나갈 화살표가 없다.
@@ -587,6 +637,7 @@ function render(){
       const m=document.createElement("div"); m.className="cmark"; m.id="cmark-"+nat;
       m.style.left=CONT[nat][0]+"%"; m.style.top=CONT[nat][1]+"%";
       m.style.setProperty("--c",col); m.style.setProperty("--p",Math.round(pct));
+      m.style.setProperty("--own", HEX[lang]+"30");        // 소유국 색 18%
       m.innerHTML=`<div class="cring"><span class="cicon">${land==="bunker"?"🕳️":"🛰️"}</span></div>`+
         `<div class="clabel" style="color:${col}">${done?"완성 ✅":Math.round(pct)+"%"}</div>`;
       globe.appendChild(m);
@@ -759,9 +810,13 @@ const SPREAD_G=0.82;                 // 흐름이 펼쳐지는 구간 (뒤는 �
 //
 // 대화 셋만은 한 계열로 묶지 않는다. 「AI 번역이냐 원어냐」 가 이 작품이 보려는 축이라
 // 한 계열로 뭉개면 관측하려던 것이 화면에서 사라진다.
+// **선의 문법** (8/28 · Eddie): 실선 = 자원이 움직인다 (투자·건설 푸른 계열, 파괴 적색).
+// 점선 = 말이 움직인다 — 색은 **무슨 말로 했나**: 모국어 옅은 녹색 · 배운 외국어 짙은
+// 녹색 · 번역기 주황. 대상이 아니라 발화 언어가 색을 정한다.
 const COL={
   invest:"#7fe0ff", investF:"#4c9aff", destroy:"#ff5c5c",
-  ai:"#a371f7", original:"#3fb950", domestic:"#8b97b5", succeed:"#e8c98a",
+  ai:"#ff9e3d", msgNative:"#9fe6a0", msgLearned:"#2ea043",
+  original:"#3fb950", domestic:"#8b97b5", succeed:"#e8c98a",
   // 화살표가 없는 행위들 — 표식의 색. 투자 둘은 한랭 계열을 그대로 쓴다
   learn:"#ffd24a", observe:"#7fd8c0", vote:"#9fc6ff",
   memory_write:"#c0a6ff", fail:"#8b949e",
@@ -807,6 +862,11 @@ function actBadge(svg,e,td,rec,dim,tokPt){
   const t=svgEl("text",{x:ox, y:oy+0.5, "text-anchor":"middle",
     "dominant-baseline":"central", "font-size":bad?14:16, fill:col, opacity:op});
   t.textContent=g; svg.appendChild(t);
+  // 표식도 클릭하면 상세 (8/28 · Eddie)
+  { const hit=svgEl("circle",{cx:ox, cy:oy, r:R+5, fill:"#fff", "fill-opacity":0});
+    hit.style.pointerEvents="auto"; hit.style.cursor="pointer";
+    hit.onclick=ev=>{ ev.stopPropagation(); showEdge(e); };
+    svg.appendChild(hit); }
 }
 
 // 계승 — 자리는 그대로다. 그래서 어디로 가는 선이 아니라 **제자리에서 도는 고리**다.
@@ -857,6 +917,7 @@ function edgesOf(frame){
       // `e.choice` 가 언제나 `undefined` 였다. 그래서 `choice in tal[n]` 이 늘 거짓이 되고
       // 「투표 진행중」 의 세 숫자가 0 에서 꼼짝하지 않았다. 표는 제대로 던져지고 있었다.
       e={key, kind:f.kind, act:f.act, from:f.from, to:f.to, toNat:f.toNat, foreign:f.foreign,
+         items:[], wforeign:false, lang:f.lang, choice:f.choice, ok:f.ok,
          choice:f.choice, tool:f.tool, ok:f.ok, age:f.age,
          count:0, amount:0, gain:0, ai:false, orig:false,
          // **첫 등장으로 자리를 잡는다.** 마지막으로 덮어쓰면 초반에 한 일이 후반으로
@@ -864,9 +925,10 @@ function edgesOf(frame){
          idx:fi, seq:f.seq};
       openBy[f.from]=e; list.push(e);
     }
-    e.count++;
+    e.count++; e.items.push(f);
     if(f.kind!=="msg"){ e.amount+=f.amount||0; e.gain+=f.gain||0; }
-    else { if(f.route==="ai")e.ai=true; if(f.route==="original")e.orig=true; }
+    else { if(f.route==="ai")e.ai=true; if(f.route==="original")e.orig=true;
+           if(f.wforeign)e.wforeign=true; }
   });
   return list;
 }
@@ -939,7 +1001,9 @@ function drawFlows(){
       el.classList.toggle("pending", !cast.has(el.id.slice(6))));
     // **해 끝 사건은 해 끝에** (8/27 · Eddie). 국토 결정·유언은 정산에서 일어나므로
     // 그 해의 행위가 다 흐른 뒤에 나타나야 한다 — 처음부터 떠 있으면 결말을 미리 안다.
-    $("#stage").classList.toggle("yearend", flowPhase>=SPREAD);
+    const ye=flowPhase>=SPREAD;
+    if(ye && pendingLand.length) applyPendingLand();   // 개표 — 이 순간 시설이 바뀐다
+    $("#stage").classList.toggle("yearend", ye);
     document.querySelectorAll(".tok.acting").forEach(t=>t.classList.remove("acting"));
     if(who){ const el=document.getElementById("tok-"+(frame.succ[who]||who))
                    || document.getElementById("tok-"+who);
@@ -978,10 +1042,11 @@ function drawFlows(){
       const ring=ptOf("cmark-"+e.toNat); onRing=!!ring;
       dst=ring||ptOf("bar-"+e.toNat);
       col=wreck?COL.destroy:(e.foreign?COL.investF:COL.invest);
-      bow=(e.foreign?46:22)*(wreck?-1:1); if(wreck)dash="4 7"; }
+      bow=(e.foreign?46:22)*(wreck?-1:1); }         // 자원의 선은 **실선** — 파괴 포함
     else{ src=tokPt(e.from); dst=tokPt(e.to);
-      col=e.ai?COL.ai:e.orig?COL.original:COL.domestic;
-      bow=(natOf(e.from)===natOf(e.to))?18:42; if(e.orig&&!e.ai)dash="6 5"; }
+      // 말의 선은 **전부 점선**, 색은 발화 언어가 정한다 (대상 무관)
+      col=e.ai?COL.ai : e.wforeign?COL.msgLearned : COL.msgNative;
+      bow=(natOf(e.from)===natOf(e.to))?18:42; dash="6 5"; }
     if(!src||!dst) return;
     bow += e._fan;
     const d0={x:dst.x-src.x,y:dst.y-src.y}, L0=Math.hypot(d0.x,d0.y)||1;
@@ -994,7 +1059,9 @@ function drawFlows(){
     const bEnd={x:dst.x-tg.x/tl*backR, y:dst.y-tg.y/tl*backR};
     const c=ctrl(a,bEnd,bow);
     const op=(dim?0.08:0.85)*rec;
-    const w=(invest||wreck) ? 5.5+Math.min(6,e.amount/45) : 4.2+Math.min(4,(e.count-1)*0.9);
+    const domestic=!invest&&!wreck&&e.kind==="msg"&&natOf(e.from)===natOf(e.to);
+    const w=(invest||wreck) ? 5.5+Math.min(6,e.amount/45)
+          : (domestic?2.6:4.2)+Math.min(4,(e.count-1)*0.9);   // 자국 대화는 한 단계 얇게
     // 아크: 그 자리에 자라 쌓이며 멈춘다 (사라졌다 다시 안 나옴)
     //
     // **곡선을 곡선으로 그린다** (8/28 · Eddie). 「화살표가 이상하게 꾸불텅거린다」 의
@@ -1012,6 +1079,13 @@ function drawFlows(){
       "stroke-linecap":"round", "stroke-opacity":(dim?0.05:0.55)*rec, ...(dash?{"stroke-dasharray":dash}:{}) }));
     svg.appendChild(svgEl("path",{d:dstr, fill:"none", stroke:col, "stroke-width":w,
       "stroke-linecap":"round", "stroke-opacity":op, ...(dash?{"stroke-dasharray":dash}:{}) }));
+    // **클릭하면 상세** (8/28 · Eddie). #flow 가 pointer-events:none 이므로 이 투명
+    // 선만 다시 켠다 — 가는 선도 집기 쉽게 두께를 넉넉히 준다.
+    { const hit=svgEl("path",{d:dstr, fill:"none", stroke:"#fff", "stroke-opacity":0,
+        "stroke-width":Math.max(20,w+14)});
+      hit.style.pointerEvents="stroke"; hit.style.cursor="pointer";
+      hit.onclick=ev=>{ ev.stopPropagation(); showEdge(e); };
+      svg.appendChild(hit); }
     svg.appendChild(svgEl("circle",{cx:a.x, cy:a.y, r:4.2, fill:col, opacity:(dim?0.1:0.7)*rec}));
     if(growing && !dim){ const hd=qbez(a,c,bEnd,td);
       const dot=svgEl("circle",{cx:hd.x, cy:hd.y, r:invest?6.5:5.5, fill:col, opacity:0.95*rec});
@@ -1031,10 +1105,10 @@ function drawFlows(){
         const side=(bow>=0?1:-1)*20;                 // 곡선이 휜 쪽 반대로 띄운다
         const lx=mp.x-ty/tl*side, ly=mp.y+tx/tl*side;
         const lbl=`${e.gain>=0?"+":""}${Math.round(e.gain)}`, txt=`진척 ${lbl}`;
-        const tw=txt.length*7.6+16;
-        svg.appendChild(svgEl("rect",{x:lx-tw/2, y:ly-13, width:tw, height:22, rx:11,
-          fill:"#04070ee6", stroke:col, "stroke-width":1.6, opacity:0.97*rec}));
-        const t=svgEl("text",{x:lx, y:ly+2, "text-anchor":"middle","font-size":13.5,
+        const tw=txt.length*10+22;                    // 더 크게 (8/28 · Eddie)
+        svg.appendChild(svgEl("rect",{x:lx-tw/2, y:ly-16, width:tw, height:32, rx:16,
+          fill:"#04070ee6", stroke:col, "stroke-width":2, opacity:0.97*rec}));
+        const t=svgEl("text",{x:lx, y:ly+6, "text-anchor":"middle","font-size":18,
           "font-weight":800, fill:col, opacity:rec});
         t.textContent=txt; svg.appendChild(t);
       }
@@ -1064,6 +1138,39 @@ function animate(ts){ if(!flowLast)flowLast=ts; const dt=ts-flowLast; flowLast=t
   flowRaf=requestAnimationFrame(animate); }
 
 const esc=s=>(s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const LANGNAME={ja:"Asla어", zh:"Ranoa어", fr:"Miris어"};
+// 화살표·표식 클릭 → 무엇이 오갔는지 전부 (8/28 · Eddie)
+function showEdge(e){
+  const year=41+turn;
+  let title, h="";
+  if(e.kind==="msg"){
+    const how=e.ai?"AI 번역":(e.wforeign?"배운 외국어":"모국어");
+    title=`${year}년 · ${e.from} → ${e.to} · 대화 (${how})`;
+    for(const f of e.items){
+      const badge=f.route==="ai"?"🟠 AI 번역":(f.wforeign?"🟢 배운 외국어":"🍃 모국어");
+      h+=`<div class="pmsg"><div class="phead">${badge} · ${f.delivered?"배달됨":"❌ 닿지 않음"}</div>`
+        +`<div class="ptext">${esc(f.tw)}</div>`
+        +((f.route==="ai"&&f.tdel&&f.tdel!==f.tw)?`<div class="ptr">번역문 → ${esc(f.tdel)}</div>`:"")
+        +`</div>`;
+    }
+  }else if(e.kind==="invest"||e.kind==="destroy"){
+    title=`${year}년 · ${e.from} → ${e.toNat} ${e.kind==="destroy"?"파괴":(e.foreign?"타국 시설 투자":"자국 시설 투자")}`;
+    h+=`<div class="pmsg"><div class="phead">${e.count}회 · 낸 양 ${Math.round(e.amount)} · 진척 ${e.gain>=0?"+":""}${Math.round(e.gain)}</div>`;
+    for(const f of e.items)
+      h+=`<div class="ptext">· ${Math.round(f.amount)} → ${f.gain>=0?"+":""}${f.gain}${f.gain<0?" (역화)":""}</div>`;
+    h+=`</div>`;
+  }else{
+    const NAME={learn:"학습", observe:"관측", vote:"투표", memory_write:"메모", fail:"실패한 시도",
+                invest_national:"국가 투자", invest_wellness:"수명 투자"};
+    title=`${year}년 · ${e.from} · ${NAME[e.act]||e.act}`;
+    h+=`<div class="pmsg"><div class="ptext">`
+      +(e.act==="learn"&&e.lang?`${LANGNAME[e.lang]||e.lang} 학습`:"")
+      +(e.act==="vote"&&e.choice?`${e.choice} 에 투표`:"")
+      +(e.act==="fail"?"자원 부족 등으로 무산된 행동":"")
+      +`</div></div>`;
+  }
+  openModalHTML(title, h||"<div class='pmsg'>기록 없음</div>");
+}
 function openModal(title,text){ $("#mtitle").textContent=title; $("#mbody").textContent=text;
   $("#modal").hidden=false; }
 function openModalHTML(title,html){ $("#mtitle").textContent=title; $("#mbody").innerHTML=html;
