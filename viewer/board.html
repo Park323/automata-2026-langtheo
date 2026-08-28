@@ -8,13 +8,44 @@
   :root{ --ja:#e8a33d; --zh:#e05561; --fr:#5b9df9;
     --ink:#e6edf3; --dim:#8b95a3; --line:#26324c; --panel:#0f1524; }
   *{box-sizing:border-box}
+  /* 우주 배경 — 운석이 다가올수록 불길하게 물든다 */
+  #space{position:fixed;inset:0;z-index:0;background:#000;transition:background 1.2s ease}
+  /* 운석 — 암석이 굴러 내려온다 */
+  /* 엔딩 연출 — 폭발 섬광 · 요격 빔 · 배너 */
+  #flash{position:fixed;inset:0;z-index:14;pointer-events:none;opacity:0;
+    background:radial-gradient(circle at 50% 58%, rgba(255,245,210,1) 0%, rgba(255,150,50,.85) 18%, rgba(255,60,20,0) 52%)}
+  #flash.boom{animation:boom 1.6s ease-out forwards}
+  #flash.blue{background:radial-gradient(circle at 50% 58%, rgba(220,245,255,1) 0%, rgba(120,210,255,.85) 18%, rgba(60,140,255,0) 52%)}
+  @keyframes boom{0%{opacity:0;transform:scale(.15)}12%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.7)}}
+  #beam{position:fixed;z-index:13;pointer-events:none;opacity:0;transform-origin:center bottom;
+    background:linear-gradient(0deg, rgba(150,230,255,0), rgba(150,230,255,.9) 40%, #fff);
+    box-shadow:0 0 26px 10px rgba(120,210,255,.85);border-radius:8px}
+  #beam.fire{animation:beamfire .9s ease-out forwards}
+  @keyframes beamfire{0%{opacity:0;transform:scaleY(0)}25%{opacity:1;transform:scaleY(1)}80%{opacity:1}100%{opacity:0}}
+  #endbanner{position:fixed;left:50%;top:36%;transform:translate(-50%,-50%);z-index:16;pointer-events:none;
+    font-size:46px;font-weight:900;opacity:0;text-shadow:0 4px 22px #000,0 0 30px currentColor;text-align:center;white-space:nowrap}
+  #endbanner.show{animation:endshow 2.4s ease-out forwards}
+  @keyframes endshow{0%{opacity:0;transform:translate(-50%,-50%) scale(.55)}22%{opacity:1;transform:translate(-50%,-50%) scale(1.05)}35%{transform:translate(-50%,-50%) scale(1)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+  /* 지구는 별도 뒷층 (운석이 지구 앞·패널 뒤에 오게) */
+  #backlayer{position:fixed;inset:0;z-index:1;pointer-events:none;
+    transform-origin:left center;transition:transform .3s ease}
+  #meteor{position:fixed;z-index:2;pointer-events:none;   /* 지구 앞 · 패널/화살표 뒤 */
+    transition:left .6s ease, top .6s ease, width .6s ease, height .6s ease}
+  #rock{width:100%;height:100%;position:relative;z-index:1;animation:roll 9s linear infinite}
+  #rock img{width:100%;height:100%;display:block;object-fit:contain;filter:drop-shadow(0 0 10px rgba(255,150,50,.6))}
+  @keyframes roll{to{transform:rotate(360deg)}}
+  /* 꼬리 — 진행 반대쪽(위-오른쪽)으로 뻗는 불꽃 띠 */
+  #trail{position:absolute;left:50%;top:50%;width:260%;height:30%;z-index:0;
+    transform-origin:left center;transform:translateY(-50%) rotate(-64deg);
+    background:linear-gradient(90deg, rgba(255,225,130,.9) 0%, rgba(255,150,40,.5) 45%, rgba(255,120,30,0) 100%);
+    filter:blur(6px);border-radius:50%}
   html,body{margin:0;height:100%;background:#000;color:var(--ink);
     font-family:"Segoe UI",system-ui,sans-serif;overflow:hidden}
 
   /* 흐름 오버레이 */
   #flow{position:fixed;inset:0;z-index:5;pointer-events:none}
   /* 나라 패널 */
-  #stage{position:fixed;inset:0;z-index:2;transform-origin:left center;
+  #stage{position:fixed;inset:0;z-index:3;transform-origin:left center;
     transition:transform .3s ease;will-change:transform}
   /* 가운데 지구 — 크게, 위쪽 곡면만 보이고 나라들이 그 위에 앉는다 (아래는 화면 밖) */
   .globe{position:absolute;transform:translate(-50%,-50%);border-radius:50%;
@@ -31,7 +62,8 @@
   .clabel{font-size:14px;font-weight:800;margin-top:4px;text-shadow:0 1px 4px #000,0 0 8px #000}
   /* 국적은 여기서 말한다 — **아주 옅게**. 토큰에서 색 테두리를 걷어낸 자리를 받는다 */
   .nation{position:absolute;transform:translate(-50%,-50%);width:400px;
-    background:linear-gradient(var(--tint), var(--tint)), var(--panel);
+    background:linear-gradient(var(--tint), var(--tint)), rgba(15,21,36,.8);
+    backdrop-filter:blur(3px);
     border:1px solid var(--k, var(--line));border-radius:16px;padding:16px 18px 18px}
   .nhead{display:flex;align-items:center;gap:9px;margin-bottom:10px}
   /* 이름표가 아래로 — 위를 비워 나라 사이 화살표가 지나가게 한다 */
@@ -185,6 +217,9 @@
   #hud{position:fixed;top:14px;left:16px;z-index:20;font-size:13px;color:var(--dim);
     display:flex;gap:14px;align-items:center}
   #hud b{color:var(--ink)}
+  #hud .chip{background:#1a0e0e;border:1px solid #5a2b2b;border-radius:9px;padding:3px 10px}
+  #hud .chip.warn{color:#ff9a6a}
+  #hud .chip.warn b{color:#ffcaa0;font-size:15px}
   #hud .lg{display:inline-flex;align-items:center;gap:5px}
   #hud .lg i{width:10px;height:10px;border-radius:50%;box-shadow:0 0 6px currentColor}
   #drop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
@@ -201,11 +236,21 @@
   <button id="f-msg" class="on">💬 대화</button>
 </div>
 
+<div id="space"></div>
+<div id="backlayer"></div>
+<div id="meteor"><div id="trail"></div><div id="rock">
+  <img src="meteo.png" alt="">
+</div></div>
+<div id="beam"></div>
+<div id="flash"></div>
+<div id="endbanner"></div>
+
 <div id="hud">
   <b id="runname">—</b>
   <span class="lg"><i style="background:#e8a33d"></i>Asla어</span>
   <span class="lg"><i style="background:#e05561"></i>Ranoa어</span>
   <span class="lg"><i style="background:#5b9df9"></i>Miris어</span>
+  <span class="chip warn">운석까지 <b id="ttl">?</b>해</span>
 </div>
 <div id="stage"></div>
 
@@ -353,7 +398,13 @@ function build(files){
   // 사망 이벤트를 who 로 찾아 유언 조회
   const testaments={};
   events.forEach(e=>{ if(e.type==="death" && (e.testament||"").trim()) testaments[e.who]=e.testament; });
-  return {turns, byTurn, threshold, learnBase, testaments};
+  // 요격기 완성 시점·승자 (임계 도달한 첫 해). 없으면 멸망
+  let completeTurn=null, winner=null;
+  const ithr=threshold.interceptor;
+  if(ithr){ for(let t=1;t<=turns && !winner;t++){ const n=byTurn[t].nations;
+    for(const nat in (n.progress||{})){ if((n.land&&n.land[nat])==="interceptor" && n.progress[nat]>=ithr){
+      completeTurn=t; winner=nat; break; } } } }
+  return {turns, byTurn, threshold, learnBase, testaments, completeTurn, winner};
 }
 
 // 한 나라의 그 해 에이전트(번호순, 최대 3)
@@ -366,10 +417,11 @@ function agentsOf(frame,nat){
 
 function render(){
   const st=$("#stage"); st.innerHTML="";
+  const bl=$("#backlayer"); bl.innerHTML="";
   const frame=D.byTurn[turn];
-  // 가운데 지구 (패널보다 먼저 = 뒤에 깔린다)
+  // 가운데 지구 — 뒷층(z1)에 둔다 (운석이 지구 앞·패널 뒤)
   const globe=document.createElement("div"); globe.id="globe"; globe.className="globe";
-  globe.style.left="50%"; globe.style.top="78%"; st.appendChild(globe);
+  globe.style.left="50%"; globe.style.top="78%"; bl.appendChild(globe);
   for(const nat of Object.keys(POS)){
     const p=POS[nat], lang=NATLANG[nat];
     const land=(frame.nations.land&&frame.nations.land[nat])||null;
@@ -439,7 +491,7 @@ function render(){
     // 대륙 위 시설 마커 (땅 정해지면)
     if(land && CONT[nat]){
       const col=land==="bunker"?"#ffcf7a":"#7fe0ff";
-      const m=document.createElement("div"); m.className="cmark";
+      const m=document.createElement("div"); m.className="cmark"; m.id="cmark-"+nat;
       m.style.left=CONT[nat][0]+"%"; m.style.top=CONT[nat][1]+"%";
       m.style.setProperty("--c",col); m.style.setProperty("--p",Math.round(pct));
       m.innerHTML=`<div class="cring"><span class="cicon">${land==="bunker"?"🕳️":"🛰️"}</span></div>`+
@@ -527,6 +579,71 @@ function render(){
   $("#yr").textContent=turn;
   $("#scrub").value=turn;
   if(focusAgent && !$("#side").hidden) renderSide();   // 해 넘어가면 상세도 갱신
+  meteor();
+  checkEnding();
+}
+
+// 엔딩 — 요격 성공(파란 빔) or 멸망(운석 폭발)
+let endState="";
+function checkEnding(){
+  if(!D) return;
+  const winNow=D.winner && turn>=D.completeTurn;      // 요격기 완성됨
+  const impactNow=!D.winner && turn>=D.turns;         // 30해까지 아무도 못 막음
+  const ready=(winNow||impactNow) && flowPhase>=1;    // 그 해 행동이 다 끝난 뒤에만
+  $("#meteor").style.opacity = (winNow && flowPhase>=1) ? "0" : "1";
+  const now = !ready ? "" : (winNow?"win":"impact");
+  if(now===endState) return;
+  endState=now;
+  ["#flash","#beam","#endbanner"].forEach(s=>{ $(s).className=""; $(s).style.opacity=""; });
+  if(now==="win") fireBeam();
+  else if(now==="impact") fireImpact();
+}
+function fireImpact(){
+  void $("#flash").offsetWidth;
+  $("#flash").className="boom";
+  const b=$("#endbanner"); b.textContent="☄  지구 멸망"; b.style.color="#ff6a4a";
+  void b.offsetWidth; b.className="show";
+}
+function fireBeam(){
+  const mk=$("#cmark-"+D.winner), m=$("#meteor");
+  if(mk&&m){ const r=mk.getBoundingClientRect(), mr=m.getBoundingClientRect();
+    const x0=r.left+r.width/2, y0=r.top+r.height/2, x1=mr.left+mr.width/2, y1=mr.top+mr.height/2;
+    const len=Math.hypot(x1-x0,y1-y0), ang=Math.atan2(y1-y0,x1-x0)*180/Math.PI;
+    const bm=$("#beam"); bm.style.width="10px"; bm.style.height=len+"px";
+    bm.style.left=x0+"px"; bm.style.top=y0+"px";
+    bm.style.transformOrigin="center top"; bm.style.transform=`translateX(-50%) rotate(${ang-90}deg)`;
+    void bm.offsetWidth; bm.className="fire"; }
+  void $("#flash").offsetWidth; $("#flash").className="boom blue";
+  const b=$("#endbanner"); b.textContent="🛰  요격 성공 · "+D.winner; b.style.color="#7fe0ff";
+  void b.offsetWidth; b.className="show";
+}
+
+// 운석 — 해가 갈수록 굴러 내려오고, 10해 페이즈마다 이펙트가 세지고, 배경이 물든다
+function meteor(){
+  if(!D) return;
+  const prog=Math.min(1, turn/D.turns);          // 0 → 1 (충돌)
+  const phase=Math.min(3, Math.ceil(turn/10));    // 1·2·3 (10해 단위)
+  const m=$("#meteor"), sp=$("#space");
+  const size=52+prog*150;                          // 멀리 작게 → 가까이 크게
+  m.style.width=size+"px"; m.style.height=size+"px";
+  m.style.left=(72-prog*23)+"%";                   // 우상단에서 가운데로
+  m.style.top=(2+prog*40)+"%";
+  // 불꽃(글로우) 페이즈마다 세게
+  const glow=10+phase*12, red=255, grn=Math.max(40,150-phase*40);
+  $("#rock").querySelector("img").style.filter=
+    `drop-shadow(0 0 ${glow}px rgba(${red},${grn},40,${.55+phase*.12}))`;
+  $("#rock").style.animationDuration=(11-phase*2)+"s";   // 가까울수록 빨리 구른다
+  $("#trail").style.opacity=(.25+phase*.22).toFixed(2);
+  $("#trail").style.height=(26+phase*10)+"%";
+  // 배경 — 아래에서 붉은 기운이 차오른다
+  const top=(prog*0.9).toFixed(2), bot=(prog*0.55).toFixed(2);
+  const R=Math.round(165*prog), G=Math.round(28*prog);
+  sp.style.background=
+    `radial-gradient(1900px 1300px at ${56-prog*6}% -6%, rgba(${R},${G},12,${top}) 0%, transparent 52%),`+
+    `radial-gradient(1500px 1000px at 50% 132%, rgba(${Math.round(100*prog)},10,8,${bot}) 0%, transparent 60%),`+
+    `#000`;
+  // 카운트다운
+  $("#ttl").textContent=Math.max(0, D.turns-turn);
 }
 
 // ── 개인 행동선 ─────────────────────────────────────────────────────
@@ -709,6 +826,7 @@ function animate(ts){ if(!flowLast)flowLast=ts; const dt=ts-flowLast; flowLast=t
     else{ turn++; render(); flowPhase=0; }     // 다음 해로 넘어가며 이어 흐른다
   }
   drawFlows();
+  checkEnding();        // 그 해 행동 끝(flowPhase>=1)나면 엔딩 발동
   flowRaf=requestAnimationFrame(animate); }
 
 const esc=s=>(s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
@@ -719,7 +837,10 @@ function openModalHTML(title,html){ $("#mtitle").textContent=title; $("#mbody").
 function closeModal(){ $("#modal").hidden=true; }
 
 // 사람 클릭 → 사이드 패널에 그 해 그 사람이 한 것 전부 + 그 사람 선만 집중
-function shiftBoard(){ $("#stage").style.transform = $("#side").hidden ? "" : "scale(.7)"; }
+function shiftBoard(){ const t = $("#side").hidden ? "" : "scale(.7)";
+  $("#stage").style.transform=t; $("#backlayer").style.transform=t;   // 지구도 같이 축소
+  // 정지 중엔 애니 루프가 drawFlows 를 안 하므로, 스케일 전환 동안 화살표를 다시 그린다
+  let n=0; const iv=setInterval(()=>{ drawFlows(); if(++n>24) clearInterval(iv); },16); }
 function markSelected(){ document.querySelectorAll(".tok.sel").forEach(t=>t.classList.remove("sel"));
   if(focusAgent){ const t=document.getElementById("tok-"+focusAgent); if(t) t.classList.add("sel"); } }
 function openSide(agent){ focusAgent=agent;
@@ -730,8 +851,9 @@ function closeSide(){ focusAgent=null; $("#side").hidden=true; shiftBoard(); mar
 function renderSide(){
   if(!focusAgent){ return; }
   const frame=D.byTurn[turn], canon=id=>frame.succ[id]||id, agent=focusAgent, st=frame.agents[agent]||{};
-  const sent=frame.flows.filter(f=>canon(f.from)===agent);
-  const recv=frame.flows.filter(f=>f.kind==="msg" && canon(f.to)===agent);
+  const agentC=canon(agent);   // 그 해에 죽은 사람 이름으로 눌러도 후계자와 같은 자리로 묶는다
+  const sent=frame.flows.filter(f=>canon(f.from)===agentC);
+  const recv=frame.flows.filter(f=>f.kind==="msg" && canon(f.to)===agentC);
   const inv=sent.filter(f=>f.kind==="invest"), talk=sent.filter(f=>f.kind==="msg");
   const totalInv=inv.reduce((s,f)=>s+(f.amount||0),0), totalGain=inv.reduce((s,f)=>s+(f.gain||0),0);
   let h="";
