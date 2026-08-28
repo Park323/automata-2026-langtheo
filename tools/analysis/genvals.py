@@ -33,7 +33,7 @@ def main() -> None:
     # **모델 이름을 손으로 적지 않는다** (8/25). 여기 `qwen3.6-35b-a3b` 이 박혀 있었고
     # 실제 런은 deepseek-v4-flash 였다 — 「숫자를 두 군데 적으면 하나가 낡는다」.
     print(f"번역 모델   {c.llm.translate_model.split('/')[-1]:<32}"
-          " 3언어 분산 최소 (파일럿 ②) — **고정**")
+          " 파일럿 확정은 mistral-small — fp8 1곳뿐이라 8/27 qwen3.6 교체 (RESULTS 인프라 절)")
     print(f"에이전트    {c.llm.agent_model.split('/')[-1]:<32} "
           f"사고 {c.llm.reasoning} · 도구 reasoning {c.llm.tool_reasoning}")
     print(f"{'':<12}{'':<32} max_tokens {c.llm.max_tokens} · "
@@ -42,7 +42,10 @@ def main() -> None:
     print(f"노브        ai 발신 AP {list(c.knob.comm_intl_ai_ap)}   ← 유일한 실험 변수")
     print(f"행동력      한 해 {c.turn.action_points} · speak {c.ap.speak} · unit {c.ap.unit} · "
           f"vote {c.ap.vote}")
-    print(f"            observe_risk {c.ap.observe_risk} · propose_vote {c.ap.propose_vote}")
+    # propose_vote 는 지웠다 (8/26) — 採決을 시계가 연다
+    print(f"            observe_risk {c.ap.observe_risk} · memory_write {c.ap.memory_write}")
+    print(f"採決        {c.world.ballot_from}해부터 {c.world.ballot_every}해마다 전 국가 동시 · "
+          f"전환 시 자국 몫만 승계 (kept_on_switch)")
     print(f"용량        한 사람 한 해 {asserts.capacity_per_year(c):.0f} "
           f"(= {c.turn.action_points:g}/{c.ap.unit:g}회 × unit {c.costs.unit:.0f})")
     print(f"학습        learn_base {c.costs.learn_base:.0f} (고정) · "
@@ -59,7 +62,7 @@ def main() -> None:
     print(f"            창 A {a:,.0f} · B {b:,.0f} · E {e:,.0f} < 임계 < C×0.6 {cc * 0.6:,.0f}")
     print(f"처리량      throughput_spread {list(c.facility.throughput_spread)} · "
           f"facility.eff {c.facility.eff}")
-    print(f"국가효율    build_spread {list(c.facility.build_spread)} (요격기 전용 · 순열 배정)")
+    print(f"국가효율    build_spread {list(c.facility.build_spread)} (요격기 전용 · 8/27부터 고정 배정 — 씨앗은 배치를 안 바꾼다)")
     print(f"성장        growth_coef {c.growth.growth_coef} / scale {c.growth.growth_scale:.0f} · "
           f"wellness.gain {c.wellness.gain}")
     print(f"문맥        context_limit {c.llm.context_limit} · warn_ratio {c.llm.warn_ratio} · "
