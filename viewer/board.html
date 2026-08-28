@@ -73,6 +73,9 @@
   .nation.headfoot .nhead{order:9;margin:10px 0 0}
   .ndot{width:13px;height:13px;border-radius:50%;box-shadow:0 0 10px currentColor}
   .nname{font-weight:700;font-size:17px}
+  /* 생산 배수 — 관전자 전용 상수. 세계 안 누구도 모르는 값이라 title 로 그 사실을 밝힌다 */
+  .nmult{font-size:12px;font-weight:800;color:var(--dim);border:1px solid var(--line);
+    border-radius:6px;padding:1px 6px;letter-spacing:.02em;cursor:help}
   .nland{margin-left:auto;font-size:11px;color:var(--dim);border:1px solid var(--line);
     border-radius:999px;padding:2px 9px}
   /* 진척 바 */
@@ -589,6 +592,7 @@ function render(){
       <div class="nhead">
         <span class="ndot" style="color:${HEX[lang]}"></span>
         <span class="nname">${nat}</span>
+        <span class="nmult" title="요격기 생산 배수 — 관전자에게만 보인다. 세계 안에서는 아무도(자국민도) 이 값을 모른다">×${(frame.nations.build_mult&&frame.nations.build_mult[nat])??"?"}</span>
         <span class="nland">${land?(land==="interceptor"?"🛰 요격기":"🕳 벙커"):"미정"}</span>
       </div>
       <div class="prow"><span>진척${delta>0?` <span class="dlt">▲${delta}</span>`:""}</span><span>${Math.round(prog)} / ${thr?Math.round(thr):"?"}${done?" ✅":""}</span></div>
