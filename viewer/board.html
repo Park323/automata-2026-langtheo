@@ -59,7 +59,7 @@
     box-shadow:0 0 0 2px rgba(0,0,0,.4), 0 0 16px var(--c)}
   /* 소유국 색을 옅게 깐다 (8/28 · Eddie) — 링만 봐도 누구 시설인지 읽히게 */
   .cring::before{content:"";position:absolute;inset:8px;border-radius:50%;
-    background:linear-gradient(var(--own,transparent),var(--own,transparent)), rgba(4,18,12,.92)}
+    background:linear-gradient(var(--own,transparent),var(--own,transparent)), rgba(10,26,20,.88)}
   .cicon{position:relative;font-size:30px;z-index:1}
   .clabel{font-size:14px;font-weight:800;margin-top:4px;text-shadow:0 1px 4px #000,0 0 8px #000}
   /* 국적은 여기서 말한다 — **아주 옅게**. 토큰에서 색 테두리를 걷어낸 자리를 받는다 */
@@ -542,7 +542,7 @@ function applyPendingLand(){
       const m=document.createElement("div"); m.className="cmark"; m.id="cmark-"+q.nat;
       m.style.left=CONT[q.nat][0]+"%"; m.style.top=CONT[q.nat][1]+"%";
       m.style.setProperty("--c",col); m.style.setProperty("--p",Math.round(q.pct));
-      m.style.setProperty("--own", HEX[q.lang]+"30");
+      m.style.setProperty("--own", HEX[q.lang]+"54");
       m.innerHTML=`<div class="cring"><span class="cicon">${q.land==="bunker"?"🕳️":"🛰️"}</span></div>`+
         `<div class="clabel" style="color:${col}">${q.done?"완성 ✅":Math.round(q.pct)+"%"}</div>`;
       document.querySelector(".globe").appendChild(m);
@@ -586,8 +586,8 @@ function render(){
     el.id="nat-"+nat; el.style.left=(p.x*100)+"%"; el.style.top=(p.y*100)+"%";
     // **국적을 여기서 말한다** (8/27). 토큰의 색 테두리를 걷어낸 자리를 패널이 받는다 —
     // 아주 옅은 바탕과 옅은 테두리로. 진하면 그 자체가 또 시선을 끌어 행위자를 가린다.
-    el.style.setProperty("--tint", HEX[lang]+"14");     // 8%
-    el.style.setProperty("--k", HEX[lang]+"3d");        // 24%
+    el.style.setProperty("--tint", HEX[lang]+"29");     // 16% — 한 단계 밝게 (8/28)
+    el.style.setProperty("--k", HEX[lang]+"61");        // 38%
     el.innerHTML=`
       <div class="nhead">
         <span class="ndot" style="color:${HEX[lang]}"></span>
@@ -641,7 +641,7 @@ function render(){
       const m=document.createElement("div"); m.className="cmark"; m.id="cmark-"+nat;
       m.style.left=CONT[nat][0]+"%"; m.style.top=CONT[nat][1]+"%";
       m.style.setProperty("--c",col); m.style.setProperty("--p",Math.round(pct));
-      m.style.setProperty("--own", HEX[lang]+"30");        // 소유국 색 18%
+      m.style.setProperty("--own", HEX[lang]+"54");        // 소유국 색 33%
       m.innerHTML=`<div class="cring"><span class="cicon">${land==="bunker"?"🕳️":"🛰️"}</span></div>`+
         `<div class="clabel" style="color:${col}">${done?"완성 ✅":Math.round(pct)+"%"}</div>`;
       globe.appendChild(m);
