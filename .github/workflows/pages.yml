@@ -30,9 +30,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # 루트에서 그냥 viewer/ 를 올리면 index.html(옛 표 형식 뷰어)이 먼저
+      # 뜬다 — 지금 쓰는 것은 board.html 이므로 그걸 index.html 로 세운다
+      - name: board.html 을 사이트 루트로
+        run: |
+          mkdir _site
+          cp viewer/board.html _site/index.html
+          cp viewer/meteo.png viewer/planet.png _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: viewer
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
