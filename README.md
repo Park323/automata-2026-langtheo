@@ -451,10 +451,12 @@ RESULTS.md            결과 기록
 `requirements.txt` 는 테스트·분석 도구용). LLM 호출에만 OpenRouter 키가 필요하다 —
 **테스트·뷰어·동봉 견본 재생은 키 없이 돈다.**
 
-**동봉 견본 2판** (raw_calls 제외, 각 ~5MB):
-`runs/260827-009-ai006` — 임계의 98%까지 간 최고 기록 (0.06, Ranoa 숙주),
-`runs/260827-001-risk-noai` — 28해 배신으로 무너진 세계 (§10 사건 기록의 그 판).
-뷰어를 열면 이 견본이 기본으로 재생된다.
+**본실험 30판의 핵심 로그를 전부 동봉했다** (events·messages·state·metrics·
+config_snapshot·summary — raw_calls 와 checkpoints 만 제외, 총 ~150MB).
+RESULTS·README 의 모든 표는 동봉 자료만으로 재현된다. 뷰어는
+`runs/260827-009-ai006`(임계의 98%까지 간 최고 기록)을 기본으로 재생하고,
+주소의 run 파라미터로 아무 판이나 열 수 있다. 면담 기록(`interviews.jsonl`)은
+`260827-009-ai006`·`260827-001-risk-noai` 두 판에 있다.
 
 ```bash
 cp .env.example .env.local                    # OpenRouter 키
