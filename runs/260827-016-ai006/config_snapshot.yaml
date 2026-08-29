@@ -1,0 +1,109 @@
+config:
+  knob:
+    comm_intl_ai_ap:
+    - 0.06
+    - 0.08
+    - 0.1
+    - 0.12
+  costs:
+    learn_base: 80
+    learn_speedup: 0.5
+    unit: 20
+  thresholds:
+    interceptor: 10899
+    bunker: 4100
+  turn:
+    action_points: 1.0
+  ap:
+    speak: 0.04
+    speak_intl: 0.06
+    unit: 0.1
+    vote: 0.04
+    observe_risk: 0.3
+    memory_write: 0.04
+    give: 0.1
+  growth:
+    growth_coef: 0.2
+    growth_scale: 6120
+  survival:
+    k: 8
+    lambda_base: 4.78
+  risk:
+    sigma_ratio: 0.25
+  wellness:
+    gain: 0.0049
+  facility:
+    throughput_spread:
+    - 0.4
+    - 0.7
+    - 1.0
+    - 1.3
+    - 1.6
+    build_spread:
+    - 1.0
+    - 1.3
+    - 0.7
+    eff: 1.0
+    transition_requires_vote: true
+    transition_forfeits_progress: true
+  world:
+    countries:
+    - id: Asla
+      lang: ja
+    - id: Ranoa
+      lang: zh
+    - id: Miris
+      lang: fr
+    agents_per_country: 3
+    ballot_every: 3
+    ballot_from: 1
+    total_turns: 30
+    epoch_turns: 10
+    success_prob: 0.45
+    backfire_prob: 0.15
+    backfire_hit: 0.3
+    init_age_max: 3
+  length:
+    message_max_chars:
+      ja: 130
+      zh: 90
+      fr: 400
+    understood_max_chars: 200
+    translate_instruction_max_chars: 100
+    on_overflow: truncate
+  llm:
+    context_limit: 8192
+    warn_ratio: 0.7
+    repeat_guard: 3
+    agent_model: deepseek/deepseek-v4-flash
+    translate_model: qwen/qwen3.6-35b-a3b
+    temperature: 0.7
+    max_tokens: 4096
+    reasoning:
+      effort: low
+    tool_reasoning: false
+    tool_choice: auto
+    provider:
+      order:
+      - StreamLake
+      - DeepInfra
+      - Parasail
+      allow_fallbacks: false
+    translate_provider:
+      order:
+      - DeepInfra
+      - Venice
+      - AkashML
+      - Parasail
+      - AtlasCloud
+      - Io Net
+      allow_fallbacks: false
+    translate_reasoning:
+      enabled: false
+    rate_limit_abort: 30
+  run:
+    seed: 1
+code_commit: 68b5a688830f87c4075909bc794cda4201c4d466
+run_id: 260827-016-ai006
+knob_ai: 0.06
+seed: 4

@@ -1,0 +1,21 @@
+{
+  "final": {
+    "outcome": "intercept_failed",
+    "interceptor_best": 6223.0,
+    "survivors": []
+  },
+  "deaths": 41,
+  "elapsed_s": 13779.6,
+  "raw_calls": {
+    "raw": 2250,
+    "errors": 0,
+    "retries": 0
+  },
+  "providers": {
+    "agent/StreamLake": 1265,
+    "translate/DeepInfra": 136,
+    "agent/Parasail": 14,
+    "agent/DeepInfra": 31,
+    "translate/Venice": 74
+  }
+}
