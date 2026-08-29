@@ -35,15 +35,24 @@
 
 ## 見る（ビューア）
 
-リポジトリのルートで
+サーバー不要。デプロイ済みビューア（GitHub Pages）を開き、📁 ボタンで
+このリポジトリの `runs/<run-id>` フォルダを選ぶ:
+
+    https://park323.github.io/automata-2026-langtheo/
+
+runs/ 自体は Pages に載せていない（1.6GB あり容量制限を超えるため）—
+クローンしたローカルのフォルダをその場で選ぶだけでよい。
+
+ローカルで開いてもよい。リポジトリのルートで
 
     python -m http.server 8000 -d viewer
 
-を立てて http://localhost:8000/board.html を開き、📁 ボタンで
-「runs/<run-id>」フォルダを選ぶ（file:// で直接開いても同じボタンで動く）。
+を立てて http://localhost:8000/board.html を開き、同じ📁 ボタンで選ぶ
+（file:// で直接開いても同じボタンで動く）。
 
 URL に直接 `?run=../runs/<run-id>` を付けても開く
-（例 http://localhost:8000/board.html?run=../runs/<run-id>）。
+（例 http://localhost:8000/board.html?run=../runs/<run-id>。ローカルの
+`http.server` 限定 — Pages 版は runs/ を持たないので効かない）。
 """
 from scripts.smoke_3turns import main
 
