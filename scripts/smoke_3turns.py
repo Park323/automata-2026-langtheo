@@ -5,7 +5,7 @@
 
     python -m scripts.smoke_3turns --check          # 모델 검증만 (GET 1회, 사실상 무료)
     python -m scripts.smoke_3turns                  # 3턴 실제 실행
-    python -m scripts.smoke_3turns --turns 3 --knob 48 --agent-model <id>
+    python -m scripts.smoke_3turns --turns 3 --knob 0.12 --agent-model <id>
 
 측정: 에이전트 호출 수 · 번역 호출 수 · 소요 시간 · 토큰 · (가격 알면) 추정 비용.
 그리고 에이전트가 실제로 무엇을 했는지 — 말을 걸었나, 누구에게, reasoning 은 무엇인가.
