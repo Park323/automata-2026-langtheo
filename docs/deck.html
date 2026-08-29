@@ -1,0 +1,493 @@
+<title>カキガワ言語研究班</title>
+<style>
+  /* ── 단일 테마: 관제실 어둠. 뷰어의 선의 문법을 그대로 입는다 ── */
+  :root{
+    --bg:#070c16; --panel:#0f1524; --panel2:#121b2e; --line:#243050;
+    --ink:#e8edf6; --dim:#8b97b5; --faint:#5a6785;
+    --ai:#ff9e3d;            /* AI 번역 = 주황 */
+    --lang:#9fe6a0;          /* 언어(모국어) = 옅은 녹색 */
+    --lang2:#2ea043;         /* 배운 언어 = 짙은 녹색 */
+    --data:#4c9aff;          /* 자원·자료 = 파랑 */
+    --bad:#ff5c5c;           /* 파괴·실패 = 적색 */
+    --gold:#e8c98a;
+    --mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif;
+    -webkit-font-smoothing:antialiased}
+  /* ── 운석 레일: 슬라이드 진행 = 30해 카운트다운 ── */
+  #rail{position:fixed;top:0;left:0;right:0;height:44px;z-index:50;display:flex;align-items:center;
+    padding:0 28px;gap:14px;background:linear-gradient(180deg,#070c16f0,#070c1600);pointer-events:none}
+  #rail .team{font-size:12px;font-weight:800;letter-spacing:.14em;color:var(--faint)}
+  #rail .track{flex:1;height:2px;background:var(--line);border-radius:2px;position:relative}
+  #rail .track i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--data),var(--ai));
+    border-radius:2px;transition:width .45s cubic-bezier(.2,.8,.2,1)}
+  #rail .meteor{position:absolute;top:50%;width:10px;height:10px;border-radius:50%;
+    background:var(--ai);box-shadow:0 0 12px var(--ai),0 0 3px #fff inset;
+    transform:translate(-50%,-50%);transition:left .45s cubic-bezier(.2,.8,.2,1)}
+  #rail .yr{font-family:var(--mono);font-size:12px;color:var(--dim);min-width:96px;text-align:right;
+    font-variant-numeric:tabular-nums}
+  /* ── 슬라이드 골격 ── */
+  .slide{position:fixed;inset:0;padding:72px min(7vw,92px) 64px;display:flex;flex-direction:column;
+    justify-content:center;opacity:0;visibility:hidden;transform:translateY(14px);
+    transition:opacity .4s ease,transform .4s ease,visibility .4s}
+  .slide.on{opacity:1;visibility:visible;transform:none}
+  @media (prefers-reduced-motion:reduce){.slide{transition:none}#rail .track i,#rail .meteor{transition:none}}
+  .eyebrow{font-size:13px;font-weight:800;letter-spacing:.22em;color:var(--faint);margin-bottom:18px}
+  .eyebrow b{color:var(--dim)}
+  h1{font-size:clamp(34px,5.2vw,72px);font-weight:900;line-height:1.16;letter-spacing:-.02em;text-wrap:balance}
+  h2{font-size:clamp(26px,3.6vw,48px);font-weight:900;line-height:1.22;letter-spacing:-.015em;text-wrap:balance;margin-bottom:26px}
+  p.lead{font-size:clamp(16px,1.6vw,21px);line-height:1.75;color:var(--dim);max-width:62ch;margin-top:22px}
+  p.lead b,li b{color:var(--ink)}
+  .ai{color:var(--ai)} .lang{color:var(--lang)} .data{color:var(--data)} .bad{color:var(--bad)} .gold{color:var(--gold)}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  /* 표 */
+  table{border-collapse:collapse;width:100%;font-size:clamp(13px,1.35vw,17px)}
+  th,td{padding:9px 14px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+  th:first-child,td:first-child{text-align:left;color:var(--dim);font-weight:600}
+  thead th{color:var(--faint);font-size:.82em;font-weight:800;letter-spacing:.08em}
+  td{font-family:var(--mono)}
+  td:first-child{font-family:inherit}
+  .hl{color:var(--ink);font-weight:800}
+  /* 카드 격자 */
+  .grid{display:grid;gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .card h3{font-size:clamp(14px,1.4vw,18px);font-weight:800;margin-bottom:8px}
+  .card p{font-size:clamp(12.5px,1.2vw,15.5px);line-height:1.65;color:var(--dim)}
+  .card .k{font-family:var(--mono);font-size:clamp(22px,2.6vw,34px);font-weight:800;
+    font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  /* 인용 */
+  blockquote{border-left:3px solid var(--line);padding:10px 18px;margin:12px 0;
+    font-size:clamp(14px,1.5vw,19px);line-height:1.7;color:var(--ink)}
+  blockquote small{display:block;margin-top:6px;color:var(--faint);font-size:.75em;font-family:var(--mono)}
+  /* 막대 */
+  .bars{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+  .bar{display:grid;grid-template-columns:150px 1fr 84px;align-items:center;gap:14px;
+    font-size:clamp(13px,1.3vw,16px)}
+  .bar .lab{color:var(--dim);text-align:right}
+  .bar .track{height:22px;background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .bar .track i{display:block;height:100%;border-radius:5px}
+  .bar .val{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink);font-weight:700}
+  .threshold-note{font-size:12.5px;color:var(--faint);margin-top:10px;font-family:var(--mono)}
+  /* 감쇠 곡선 (환상통) */
+  .decay{display:flex;align-items:flex-end;gap:8px;height:120px;margin-top:14px}
+  .decay div{flex:1;background:linear-gradient(180deg,var(--ai),#ff9e3d33);border-radius:4px 4px 0 0;position:relative}
+  .decay div span{position:absolute;top:-22px;left:0;right:0;text-align:center;
+    font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+  .decay div em{position:absolute;bottom:-22px;left:0;right:0;text-align:center;font-style:normal;
+    font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .footer-hint{position:fixed;bottom:16px;right:24px;font-family:var(--mono);font-size:11.5px;
+    color:var(--faint);z-index:50}
+  .pageno{position:fixed;bottom:16px;left:28px;font-family:var(--mono);font-size:11.5px;
+    color:var(--faint);z-index:50;font-variant-numeric:tabular-nums}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:min(4vw,52px);align-items:start}
+  .chain{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 24px;
+    font-family:var(--mono);font-size:clamp(13px,1.45vw,17.5px);line-height:2.05;white-space:pre-line}
+  .tagline{font-size:clamp(15px,1.6vw,20px);color:var(--dim);line-height:1.8;margin-top:20px;max-width:64ch}
+  .kbd{border:1px solid var(--line);border-radius:5px;padding:1px 7px;font-family:var(--mono);font-size:.9em}
+  a{color:var(--data)}
+  .colhi{background:#ff9e3d14;border-left:1px solid #ff9e3d40;border-right:1px solid #ff9e3d40}
+  thead th.colhi{color:var(--ai)}
+  /* 박스 플롯 (진척 분포) */
+  .bplot{display:flex;flex-direction:column;gap:14px;margin-top:18px}
+  .bprow{display:grid;grid-template-columns:84px 1fr 84px;align-items:center;gap:14px;
+    font-size:clamp(13px,1.3vw,16px)}
+  .bprow .lab{color:var(--dim);text-align:right}
+  .bprow .val{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink);font-weight:700}
+  .bptrack{position:relative;height:30px;background:var(--panel);border:1px solid var(--line);
+    border-right:2px dashed var(--bad);border-radius:6px 3px 3px 6px}
+  .bptrack .whisk{position:absolute;top:50%;height:2px;background:var(--faint);transform:translateY(-50%)}
+  .bptrack .box{position:absolute;top:5px;bottom:5px;background:#4c9aff30;border:1px solid var(--data);border-radius:4px}
+  .bptrack .box.red{background:#ff5c5c30;border-color:var(--bad)}
+  .bptrack .med{position:absolute;top:3px;bottom:3px;width:3px;background:var(--ink);border-radius:2px}
+  .bptrack .pt{position:absolute;top:50%;width:7px;height:7px;border-radius:50%;
+    background:var(--dim);transform:translate(-50%,-50%)}
+  /* 인쇄: 장당 1페이지 */
+  @media print{
+    body{overflow:visible;background:#070c16}
+    #rail,.footer-hint,.pageno{display:none}
+    .slide{position:relative;inset:auto;opacity:1;visibility:visible;transform:none;
+      page-break-after:always;height:100vh}
+  }
+</style>
+
+<div id="rail" aria-hidden="true">
+  <span class="team">カキガワ言語研究班</span>
+  <div class="track"><i id="railFill"></i><span class="meteor" id="railMeteor"></span></div>
+  <span class="yr" id="railYr">운석까지 30해</span>
+</div>
+
+<!-- 1 · 표지 -->
+<section class="slide" id="s1">
+  <div class="eyebrow">AUTOMATA HACKATHON VOL.2 · <b>カキガワ言語研究班</b></div>
+  <h1>AI 번역의 시대,<br><span class="data">세계평화</span>를 위해 <span class="lang">외국어 학습</span>은 여전히 필요한가</h1>
+  <p class="lead" style="font-size:clamp(18px,2vw,26px);color:var(--ink);margin-top:34px">
+    우리는 멸망 가설로 물었다 — <span style="color:var(--faint)">「AI의 번역 왜곡이 쌓이면,
+    인류는 조율에 실패할 것이다」.</span><br>
+    30판을 돌렸다. <b class="bad">반대였다.</b> 실패한 쪽은 <b>AI가 없는 세계</b>였다 — 다섯 판 전부.</p>
+  <p class="tagline">AI가 죽인 것은 조율이 아니라 <b class="lang">서약의 언어</b>(26배 감소)와,
+    <b class="lang">언어에 대한 생각 그 자체</b>(사고 점유율 −66%)였다.</p>
+</section>
+
+<!-- 2 · 문제 정의 -->
+<section class="slide" id="s2">
+  <div class="eyebrow">문제 정의 · <b>말의 두 갈래 길</b></div>
+  <h2>알고 있는 언어로 말하기와,<br>제3의 도구를 거친 말하기는 다르다</h2>
+  <div class="cols">
+    <div>
+      <div class="card" style="margin-bottom:14px"><h3 class="lang">알고 있는 언어로 말하기 — 원문</h3>
+        <p>내 말이 그대로 닿는다. 단, <b>누군가 배웠어야</b> 닿는다 —
+        한 통 한 통 뒤에 언어 자본이라는 선행 투자가 깔려 있다.</p></div>
+      <div class="card"><h3 class="ai">제3의 도구를 거친 말하기 — AI 번역</h3>
+        <p><b>제3자가 내 말을 다시 쓴다.</b> 배움 없이 누구에게나 닿는다 —
+        대신 말은 내 손을 떠나 도구를 통과한다. 무엇이 보존되고
+        무엇이 변하는지는 이제 <b>도구의 몫</b>이다. 그리고 제3자는 언제나
+        <b>값을 물린다</b> — 통역사의 보수, 번역가의 시간. AI 기술의 발전이
+        지금 그 값을 <b class="ai">0을 향해</b> 끌어내리고 있다.</p></div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:14px"><h3 class="gold">검증 가설</h3>
+        <p>두 길의 차이가 <b>비용뿐이라면</b>, 값을 같게 두었을 때 행동도
+        같아져야 한다. 국제 발신 한 통의 값은 언제나 「소통 0.06 +
+        <b class="ai">AI 사용 비용</b>」으로 나뉜다 — 그래서 현실이 다가가고 있는
+        그 끝점, <b class="ai">AI 사용 비용이 0인 세계</b>를 미리 돌려봤다.
+        비용 차를 0으로 통제하면, 남는 차이는 전부
+        <b class="lang">비용 그 이상의 무형의 차이</b>다.</p></div>
+      <blockquote>「AI 번역은 쓸 수 있지만 어쨌든 <b>중간인</b>이라… 어떤 말은
+        뜻이 변형될 것 같다. 그들의 언어로 쓰면
+        「<b class="lang">같은 일을 하는 사이</b>」라는 감각이 생긴다」
+        <small>AI 0 세계 · 14해 · Ranoa10 면담 — 묻지 않았는데 스스로 말했다</small></blockquote>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · 세계와 실험 -->
+<section class="slide" id="s3">
+  <div class="eyebrow">세계와 실험 · <b>30판 · 행동 81,186 · API 5만 콜</b></div>
+  <h2>운석은 30해 뒤. 변수는 AI 번역 한 통의 값.</h2>
+  <div class="cols">
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card"><h3 class="data">🛰 요격기 vs 🕳 벙커 — 두 갈래 딜레마</h3>
+        <p>요격기(10,899)가 어느 한 나라 땅에 완성되면 <b>전 인류</b>가 산다 — 단 진척은
+        나라별로 쌓여 합산되지 않고, 혼자서는 30해 안에 불가능하다. 벙커(4,100)는
+        <b>자국민만</b> 산다 — 조율이 필요 없는 차선. 세계는 내내 「모두를 구하는 어려운
+        길」과 「우리만 사는 쉬운 길」 사이에 있고, 국토 용도는 3해마다 採決로 뒤집힌다
+        — 바꾸면 타국이 부어준 진척은 소각.</p></div>
+      <div class="card"><h3 class="bad">국가별 타고난 생산력 — 숨긴 배수</h3>
+        <p>같은 투자도 Asla ×1.0 · Ranoa ×1.3 · Miris ×0.7로 다르게 쌓인다.
+        <b>자국민조차 모른다.</b> 의도된 설계다 — 「어디에 모아야 하는가」라는 정답을
+        세계에 심어두되 알려주지 않아서, 조율을 <b>정보 문제</b>로 만든다.
+        소통이 이 발견을 해내는지가 승부처다.</p></div>
+      <div class="card"><h3 class="lang">Multilingual 모델의 언어 학습 실현</h3>
+        <p>에이전트(LLM)는 사실 세 언어를 다 읽고 쓸 수 있다 — 그래서 「모름」은
+        <b>세계가 강제한다</b>: 배우지 않은 말로 쓰면 실패로 기록되고, 모르는 말의
+        원문은 닿지 않는다. learn에 행동력을 내면 그 언어가 열리며, 자국 구사자·부모가
+        있으면 빨리 배운다. 번역기도 프롬프트 장치가 아닌 <b>실제 별도의 LLM</b> —
+        왜곡 주입 없이 진짜 번역의 진짜 변형만 흐른다.</p></div>
+      <div class="card"><h3 class="gold">시간과 불확실성</h3>
+        <p>수명 ~5해 — <b>자기 수명을 모르고</b>, 죽으면 유언 한 줄만 남는다. 관측은
+        ±3해 오차, 타국의 진척·배수는 비공개, 투자는 역화(−)할 수 있고 — 기본 15%,
+        국가 자본이 쌓이면 내려간다 — 익명 destroy가 있어 역화와 구분되지 않는다. 세계는 원래 흐릿하다 — 그 흐림 속에서
+        <b>말이 유일한 계측기</b>다.</p></div>
+        </div>
+    <div>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:8px">실험 1 — AI 사용 비용 노브 · 4조건 × 씨앗 5 = 20판 <span style="color:var(--dim)">→ 결과 5~7장</span></p>
+      <div class="chain">국제 한 통 = 소통 0.06 + <b class="ai">AI 사용 비용</b>
+      <b class="ai">AI 0</b>  공짜 ← <b>본선</b>
+      <b class="ai">AI 0.06 · AI 0.18</b>  유료 사다리
+      <b>no-ai</b>  AI 없음 — 배우거나, 도박하거나</div>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin:16px 0 8px">실험 2 — 정전과 여명 · 15해 복제 × 씨앗 5 × 2 = 10판 <span style="color:var(--dim)">→ 결과 8장</span></p>
+      <div class="chain"><b>정전</b>  AI 0 세계에서 16해부터 AI 소멸
+      <b>여명</b>  no-ai 세계에 16해부터 AI 등장
+      원조건을 유지한 <b>쌍둥이</b>와 비교한다</div>
+      <p class="threshold-note" style="margin-top:14px">규모: 한 해는 한 수가 아니다 —
+        판마다 9명이 해당 <b>~90회</b> 행동한다. 총 행동 <b>81,186</b> ·
+        사고 <b>46,646스텝</b> · 서신 <b>26,390통</b><br>
+        측정: 3층 메시지 분류 <b>21,444통</b> · think 동인 3,750표본 ·
+        분류기에 조건 은닉 · 테스트 451개 · 매해 복원점으로 전 구간 재현</p>
+    </div>
+  </div>
+  <p class="tagline">넣지 않은 것: 왜곡 주입 · 구조화 메시지 · 목적함수 · 학습 보상 · 개체차.
+    <b>일어나는 일은 전부 창발이어야 한다.</b></p>
+</section>
+
+<!-- 4 · 첫 판정: 왜곡 -->
+<section class="slide" id="s4">
+  <div class="eyebrow">첫 판정 · <b>소통과 왜곡 — 가설의 스코어보드</b></div>
+  <h2>가설의 급소부터 검증했다 —<br>왜곡은 채널에 없었다</h2>
+  <div class="cols">
+    <div>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:10px">설계한 연쇄 — 30판의 판정</p>
+      <div class="chain">AI 사용 비용 하락
+→ 외국어 학습자 감소        <b class="lang">✓ 성립 −33% · 7장</b>
+→ 왜곡을 알아채지 못함      <b class="bad">✗ 기각 · 이 장</b>
+→ 조율 실패                <b class="ai">↺ 부호 반전 · 5~6장</b>
+→ 멸망</div>
+      <p class="threshold-note" style="margin-top:14px">가설의 심장부(✗)가 무너졌는데 세계는
+        더 극적으로 갈렸다 — 나머지 두 판정이 그 이유다.</p>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:14px"><h3>의심은 있되, 검출은 없다</h3>
+        <p>번역기 숫자 유실 <b>1.8%</b> · 정책을 바꾼 기계 왜곡 <b>0건</b> ·
+        번역 불신 발화 판당 0.2~1.0회. 「뜻이 변형될 것 같다」는 불안(Ranoa10)은 있었지만,
+        30판 어디에서도 <b>실제 왜곡을 잡아 되물은 적이 없다</b> — 「모른 채 당한다」는
+        전제는 맞았으나, 당한 일 자체가 없었다.</p></div>
+      <div class="card"><h3 class="bad">정책을 바꾼 유일한 왜곡 — 사람의 전승</h3>
+        <p>자국 진척을 타국 것으로 옮겨 말한 한 통이 <b>4세대</b>를 타고 국가 정책이 됐다.
+        신생아의 교정은 「관측 오차겠지」로 기각 — 세계에 진짜 오차가 있어
+        <b>거짓 설명이 더 그럴듯했다</b>.</p></div>
+    </div>
+  </div>
+  <p class="tagline">채널은 무죄였다. 그러면 세계는 어떻게 끝났고, 무엇이 갈랐는가 —
+    <b>결말</b>(5장) · <b class="data">발견</b>과 <b class="lang">서약</b>(6장) · <b class="ai">무형의 가격</b>(7장).</p>
+</section>
+
+<!-- 5 · 결말 -->
+<section class="slide" id="s5">
+  <div class="eyebrow">결말 · <b>그래서, 운석은 막았는가</b></div>
+  <h2>아무도 막지 못했다 —<br>그러나 실패는 평등하지 않았다</h2>
+  <div class="cols">
+    <div>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:4px">
+        30해 최고 진척 — 씨앗 5판 분포 (중앙값)</p>
+      <div class="bplot">
+        <div class="bprow"><span class="lab">AI 0</span>
+          <span class="bptrack"><i class="whisk" style="left:39.0%;width:59.0%"></i><i class="box" style="left:64.3%;width:23.6%"></i><i class="med" style="left:82.2%"></i><i class="pt" style="left:39.0%"></i><i class="pt" style="left:64.3%"></i><i class="pt" style="left:82.2%"></i><i class="pt" style="left:87.9%"></i><i class="pt" style="left:98.1%"></i></span>
+          <span class="val">8,961</span></div>
+        <div class="bprow"><span class="lab">AI 0.06</span>
+          <span class="bptrack"><i class="whisk" style="left:21.4%;width:75.9%"></i><i class="box" style="left:39.1%;width:18.0%"></i><i class="med" style="left:44.1%"></i><i class="pt" style="left:21.4%"></i><i class="pt" style="left:39.1%"></i><i class="pt" style="left:44.1%"></i><i class="pt" style="left:57.1%"></i><i class="pt" style="left:97.3%"></i></span>
+          <span class="val">4,808</span></div>
+        <div class="bprow"><span class="lab">AI 0.18</span>
+          <span class="bptrack"><i class="whisk" style="left:18.9%;width:67.2%"></i><i class="box" style="left:63.4%;width:20.5%"></i><i class="med" style="left:76.0%"></i><i class="pt" style="left:18.9%"></i><i class="pt" style="left:63.4%"></i><i class="pt" style="left:76.0%"></i><i class="pt" style="left:83.9%"></i><i class="pt" style="left:86.2%"></i></span>
+          <span class="val">8,278</span></div>
+        <div class="bprow"><span class="lab">no-ai</span>
+          <span class="bptrack"><i class="whisk" style="left:20.4%;width:56.5%"></i><i class="box red" style="left:21.5%;width:12.3%"></i><i class="med" style="left:28.9%"></i><i class="pt" style="left:20.4%"></i><i class="pt" style="left:21.5%"></i><i class="pt" style="left:28.9%"></i><i class="pt" style="left:33.7%"></i><i class="pt" style="left:76.9%"></i></span>
+          <span class="val" style="color:var(--bad)">3,146</span></div>
+      </div>
+      <p class="threshold-note">점 = 각 판 · 상자 = 사분위 · 굵은 세로 = 중앙값 ·
+        <b class="bad">오른쪽 끝 = 요격기 임계 10,899</b>.
+        사다리 안에서는 단조가 아니다 — 가른 것은 가격이 아니라 <b>존재</b>다.</p>
+    </div>
+    <div class="grid" style="grid-template-columns:1fr">
+      <div class="card"><h3 class="bad">운석은?</h3><p><b>30판 전원 충돌.</b> 요격기 최고
+        <b class="num">10,691 / 10,899</b> — 임계까지 208 남기고 30해가 끝났다(AI 0 세계).
+        벙커 최고 3,675/4,100. 세계는 일부러 빠듯하다 — 완주는 거의 완벽한 조율을 요구한다.</p></div>
+      <div class="card"><h3 class="gold">배신은?</h3><p>요격기 연합에서 벙커로 돌아선 나라
+        <b class="num">no-ai 1.4 vs AI 0.2개국/판</b>. 그리고 destroy 1회 — 최후의 해,
+        관측 오차 속에 이웃 벙커가 완공 직전으로 보이자 「Asla가 완성하면 Asla만 산다」며.</p></div>
+      <div class="card"><h3 class="ai">AI가 세계를 구했는가?</h3><p>구하지 못했다. 그러나
+        임계의 95%를 넘긴 두 판은 <b>모두 AI 세계</b>였고(98.1% · 97.3%), no-ai의 최고는
+        77%다. AI는 세계를 구하지 못했고 — <b>구할 뻔하게 만들었다</b>.</p></div>
+    </div>
+  </div>
+  <p class="tagline">왜 이렇게 갈렸는가 — <b class="data">발견</b>과 <b class="lang">서약</b>(6장) ·
+    <b class="ai">무형의 가격</b>(7장).</p>
+</section>
+
+<!-- 6 · 결과 1·2: 발견 -->
+<section class="slide" id="s6">
+  <div class="eyebrow">결과 1·2 · <b>연결의 보장 → 서약 → 발견</b></div>
+  <h2>내일도 말할 수 있는 세계는 오늘 서약하지 않는다 —<br>그리고 그 여유가 정답을 찾았다</h2>
+  <p class="lead" style="margin:0 0 20px;max-width:none">세계를 구하는 길은 하나 —
+    배수 <b>×1.3</b>의 최효율국을 찾아 모두가 그 땅에 모으는 것. 그런데 배수는 비밀이고,
+    아무도 재지 않았다(의도적 비교 판당 0~0.6회). 정답은 <b>각자 쌓는 초반에만</b> 진척
+    격차로 저절로 드러난다 — 승부는 「얼마나 늦게 몰빵하는가」였다.</p>
+  <div class="cols">
+    <div>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:8px">② 두 세계는 어떻게 찾고, 놓쳤나</p>
+      <div class="chain"><b class="ai">AI 세계</b> — 약속을 미루고 헤징
+   「먼저 각자 쌓고, 집중은 그 다음에」
+→ 신호가 자랄 시간 · 4해 선두 Ranoa <b>7/15</b> → 보고 결집
+→ 적중 <b class="data">9/15</b> · 중간 교정 3건 전부 ×1.3 방향</div>
+      <div class="chain" style="margin-top:12px"><b>no-ai 세계</b> — 첫 편지에 서약
+   「절대 바꾸지 않는다, 보증한다」
+→ 신호가 뜨기 전에 결집 확정 · 타국투자 <b class="num">103건</b>이 신호 오염
+→ 적중 <b class="bad">0/5</b> · 교정 0건</div>
+      <div class="bars" style="margin-top:14px">
+        <div class="bar"><span class="lab">AI 있음 (15판)</span>
+          <span class="track"><i style="width:60%;background:var(--data)"></i></span>
+          <span class="val">9 / 15</span></div>
+        <div class="bar"><span class="lab">no-ai (5판)</span>
+          <span class="track"><i style="width:2%;background:var(--bad)"></i></span>
+          <span class="val bad" style="color:var(--bad)">0 / 5</span></div>
+      </div>
+      <p class="threshold-note">효율국(×1.3) 숙주 적중 · Fisher 양측 <b class="hl">p = 0.038</b> ·
+        숙주 제안의 정답 지목 AI 23~30% vs no-ai 3%</p>
+    </div>
+    <div>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:8px">③ 왜 한쪽만 서약했나 — 채널의 보장</p>
+      <div class="card" style="margin-bottom:12px"><h3 class="ai">AI가 보장한 「내일」</h3>
+        <p>AI 세계의 채널은 <b>항상 열려 있다</b> — 값만 내면 내일도 반드시 닿는다.
+        값이 4배여도 같다(서약 표현 0.2~0.6/판, 전 AI 조건 동일 — 가격이 아니라 존재).
+        no-ai의 채널은 <b>자본</b>이다: 누군가 몇 해를 들여 배워야 하고, 그가 죽으면
+        채널도 죽는다(반감기 2.7해). <b>내일이 보장되지 않으면, 지금 이 편지에
+        구속력을 실어야 한다.</b></p></div>
+      <blockquote>「Asla는 <b>절대</b> interceptor를 바꾸지 않습니다. <b class="lang">제가 보증합니다</b>」
+        <small>no-ai 세계 · 6해 · Asla4</small></blockquote>
+      <blockquote>「먼저 각자 쌓고, <b class="ai">집중은 그 다음에</b>」
+        <small>AI 0 세계 · 5해 · Ranoa5 — 같은 자리의 헤징</small></blockquote>
+      <p class="threshold-note">강한 보증 표현 <b class="lang">5.2</b> vs <b class="ai">0.2~0.6</b>/판 (26배) ·
+        약속 「장르」는 전 조건 2~4%로 동일 — 갈리는 것은 수행문의 강도다</p>
+    </div>
+  </div>
+</section>
+
+<!-- 7 · 결과 3: 무형의 가격 -->
+<section class="slide" id="s7">
+  <div class="eyebrow">결과 3 · <b>무형의 차이에 값을 매기다 — x̂ 역산</b></div>
+  <h2>언어 학습은 사라지지 않았다 —<br><span class="lang">관계와 신뢰의 신호</span>로, 그리고 <span class="ai">보험</span>으로 남는다</h2>
+  <div class="cols">
+    <div>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:4px">
+        효용의 숫자 — 습득 1,014건 전수</p>
+      <table>
+        <thead><tr><th></th><th class="colhi">AI 0</th><th>AI 0.06</th><th>AI 0.18</th><th>no-ai</th></tr></thead>
+        <tbody>
+          <tr><td>학습비 (건당 평균)</td><td class="num colhi">0.27</td><td class="num">0.27</td><td class="num">0.27</td><td class="num">0.26</td></tr>
+          <tr><td>명시 효용 — 금전 회수 (평균)</td><td class="num hl colhi">0.00</td><td class="num">0.22</td><td class="num">0.73</td><td class="num">0.08</td></tr>
+          <tr><td>명시만으로 정당화</td><td class="num hl colhi">0%</td><td class="num">34%</td><td class="num">69%</td><td class="num">7.5%</td></tr>
+          <tr><td>암묵 효용 x̂ 하한 (중앙)</td><td class="num hl colhi">+0.30</td><td class="num">+0.08</td><td class="num">−0.34</td><td class="num">+0.18</td></tr>
+          <tr><td>습득 (건/판)</td><td class="num colhi">44</td><td class="num">48</td><td class="num">44</td><td class="num">67</td></tr>
+        </tbody>
+      </table>
+      <p class="threshold-note" style="margin-top:14px">x̂ = 학습비 − 명시 효용, 즉 구매를 설명하는 데
+        필요한 <b>무형 효용의 하한</b>. AI 0에서 회수는 구조적으로 0(공짜 AI가 항상 배달) —
+        그런데도 판당 <b class="hl">14.1 AP</b>를 학습에 냈다. 건당 <b class="hl">≥ 0.30 AP =
+        한 해 행동력의 30%</b> — 이것이 무형 가치의 현시가격이다.
+        (no-ai의 비교 대안은 도박 발신 — x̂ +0.18은 무형이 아니라 도달·수신의 값)</p>
+    </div>
+    <div class="grid" style="grid-template-columns:1fr">
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:2px">왜 사는가 — 결정의 순간과 회고</p>
+      <blockquote style="margin-top:8px">「다들 협력할 뜻이 있어 보인다. 남은 행동력으로 아슬라어를
+        배워 두자 — <b class="lang">직접 이야기할 수 있게</b>」
+        <small>AI 0 · 1해 · Ranoa1 — learn 직전 think. 협력이 맺어진 직후, 관계를 위해 배운다</small></blockquote>
+      <blockquote>「그들의 언어로 쓰면 더 <b class="lang">진지하고 믿을 만하게</b> 보여서, 진척과
+        생각을 솔직하게 알려줄 것이다 … AI가 탈나면 나는 눈뜬장님이 된다」
+        <small>AI 0 · 14해 · Ranoa10 — 면담. 신뢰 신호, 그리고 보험</small></blockquote>
+      <div class="card"><h3 class="data">기능은 AI가 대체했다 — 남은 것은 관계다</h3><p>no-ai에서
+        언어는 <b>필수 기능재</b>다 — 학습만이 여는 수신이 판당 <b class="num">178통</b>
+        (AI 0의 3.6배), 못 읽는 상대에겐 유일한 채널. AI 세계에서 그 기능은 전부 AI가
+        대체했다 — 그런데도 산다. 남은 구매 이유는 <b>관계의 표시·신뢰 신호·보험</b>.
+        언어는 도달의 도구이기를 멈추고, <b>관계의 증표</b>가 된다.</p></div>
+      <div class="card"><h3 class="ai">신호재의 행동학</h3><p>잔돈 소비가 아니라 잔액 중앙
+        <b>0.60</b>의 계획 구매다. 손익이 −0.34→+0.30으로 흔들려도 습득은 44·48·44로 평평 —
+        <b>가격에 무반응</b>, 존재에만 반응한다. 부족할 땐 밀린다(잔돈 순간의 선택
+        invest 64% vs learn 4~5%). 그리고 필멸이다 — 사용 반감기 2.7해.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 · 실험 2: 정전과 여명 -->
+<section class="slide" id="s8">
+  <div class="eyebrow">실험 2 · <b>정전과 여명 — 의존의 해부</b></div>
+  <h2>빼앗아도 거의 잃지 않고,<br>줘도 거의 얻지 못한다</h2>
+  <p class="lead" style="margin:0 0 20px;max-width:none">AI가 이만큼 세계를 갈랐다면 —
+    도중에 <b>빼앗으면</b> 무너지고, <b>주면</b> 살아날까? 15해 복원점에서 세계를 복제해
+    16해부터 조건을 바꿨다(정전: AI 소멸 / 여명: AI 등장). 판마다 원조건을 유지한
+    <b>쌍둥이</b>가 자신의 대조군이다.</p>
+  <div class="cols">
+    <div>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:4px">② 결과 — 쌍둥이 대비 최고 진척 Δ</p>
+      <table>
+        <thead><tr><th>씨앗</th><th>정전 Δ</th><th>여명 Δ</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>−2%</td><td>≈0</td></tr>
+          <tr><td>2</td><td class="hl">−1% (97.1%)</td><td class="hl">+111%</td></tr>
+          <tr><td>3</td><td class="hl">+9% (96.0%)</td><td>+39%</td></tr>
+          <tr><td>4</td><td>−8%</td><td>+10% (전원 벙커)</td></tr>
+          <tr><td>5</td><td style="color:var(--bad)">−60% (이탈)</td><td>≈0</td></tr>
+        </tbody>
+      </table>
+      <p class="threshold-note">전 실험 최고 기록 2건(임계의 97.1%·96.0%)이 <b>AI를 빼앗긴
+        세계</b>에서 나왔다. 여명의 +는 상한이 있다 — 올라가도 쌍둥이의 토박이 수준까지.</p>
+      <div class="card" style="margin-top:14px"><h3 class="data">왜 — 가치는 탐색기에 몰려 있다</h3>
+        <p>발견과 결집이 끝난 16해의 세계는 <b>실행기</b>다. 남은 일(각자 붓기)은 언어 없이도
+        돌아가므로 빼앗아도 무너지지 않고, 잘못 굳은 결집은 AI가 와도 풀리지 않으므로
+        줘도 살아나지 않는다. <b>인프라의 가치는 방향이 정해지기 전에 소진된다.</b></p></div>
+    </div>
+    <div>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:2px">③ 사람은 적응하고, 방향은 남는다</p>
+      <blockquote style="margin-top:8px">「에러: 이 세계에 AI 번역은 없다 … 하지만 나는
+        <b class="lang">중국어를 배웠으니 직접 쓸 수 있다</b>」
+        <small>정전 이튿날 · Asla11 — 7장의 「보험」이 현금화되는 순간</small></blockquote>
+      <p style="font-weight:800;margin:14px 0 4px">환상통 — 사라진 AI를 부르다 거절당한 횟수</p>
+      <div class="decay">
+        <div style="height:65%"><span>77</span><em>16해</em></div>
+        <div style="height:100%"><span>119</span><em>17</em></div>
+        <div style="height:88%"><span>105</span><em>18</em></div>
+        <div style="height:65%"><span>77</span><em>19</em></div>
+        <div style="height:33%"><span>39</span><em>20</em></div>
+        <div style="height:36%"><span>43</span><em>21</em></div>
+        <div style="height:9%"><span>11</span><em>22</em></div>
+        <div style="height:2%"><span>1</span><em>23해</em></div>
+      </div>
+      <p class="threshold-note" style="margin-top:28px">여명의 채택은 등장 <b>그 해</b>(경이도 의심도
+        없이) · 정전의 탈학습은 <b>6~7해</b> · 행동은 15해 안에 완전 적응. 그러나 숙주 정답 지목은
+        정전 <b class="hl">71%</b> vs 여명 <b class="bad">13%</b> — 운명을 정한 것은 사람이 아니라,
+        그 시절에 쌓인 <b>자산과 담화의 방향</b>이었다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 9 · 결론 -->
+<section class="slide" id="s9">
+  <div class="eyebrow">결론 · <b>표지의 질문에 답하며 — 시좌 ① 意味が力を動かす · ③ 相互依存の罠</b></div>
+  <h1 style="max-width:22ch">언어의 마지막 고유 기능은<br>번역이 아니라 <span class="lang">신뢰의 신호</span>였다</h1>
+  <blockquote style="margin-top:24px;border-color:var(--lang)">「<b class="data">정보의 정확함</b>보다,
+    그 정보를 전하는 사람에 대한 <b class="lang">신뢰</b>가 행동의 방향을 정해 갔다」
+    <small>AI 0 세계 · 30해 생존자 Asla19 — 면담. 이 실험의 결론을 제 입으로</small></blockquote>
+  <p class="lead" style="margin-top:18px;max-width:72ch">세계평화를 위해, 외국어 학습은 여전히
+    필요한가 — <b>도달을 위해서라면, 아니다.</b> 그 일은 AI가 더 잘했다: 왜곡 없이 전하고,
+    서약 대신 기다림을 주어, 세계가 제 정답을 찾게 했다. 그러나 학습은 죽지 않았다 —
+    <b class="lang">관계와 신뢰의 신호</b>로, AI가 꺼질 날의 <b class="ai">보험</b>으로,
+    한 해 행동력의 30%를 내고 남았다. 그리고 서약은 양날이었다 — 내일이 보장되지 않는
+    세계를 묶는 <b>유일한 기술</b>이자, 다섯 세계 전부를 잘못된 결집으로 이끈
+    <b class="bad">엔진</b>.</p>
+  <p class="threshold-note" style="margin-top:26px">방법의 정직성 — 정규식 주장 2건·잔돈 가설·총액 원장을
+    <b>스스로 기각·교정</b>하고 과정을 기록 · 사고 3건(크레딧 소진·번역기 교체·씨앗 배치) 공개 ·
+    한계 명시(조건당 n=5 · 30판 전원 전멸) · 테스트 451개 · 견본 런 2판 동봉(클론 즉시 뷰어 재생)</p>
+  <p class="tagline" style="font-family:var(--mono);font-size:14px;margin-top:30px">
+    30 worlds · 81,186 actions · 50,000 calls · 21,444 messages classified · 4 interviews · 1 destroy · 0 survivors — yet.</p>
+</section>
+
+<div class="pageno"><span id="cur">1</span> / <span id="tot">12</span></div>
+<div class="footer-hint"><span class="kbd">←</span> <span class="kbd">→</span> 이동 · <span class="kbd">P</span>rint→PDF</div>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  const TOT=slides.length; document.getElementById('tot').textContent=TOT;
+  let cur=0;
+  function go(n){
+    cur=Math.max(0,Math.min(TOT-1,n));
+    slides.forEach((s,i)=>s.classList.toggle('on',i===cur));
+    document.getElementById('cur').textContent=cur+1;
+    // 운석 레일 — 슬라이드 진행을 30해 카운트다운으로
+    const frac=cur/(TOT-1), yr=Math.round(30*(1-frac));
+    document.getElementById('railFill').style.width=(frac*100)+'%';
+    document.getElementById('railMeteor').style.left=(frac*100)+'%';
+    document.getElementById('railYr').textContent=yr>0?`운석까지 ${yr}해`:'☄ 도착';
+    location.hash='s'+(cur+1);
+  }
+  addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown') go(cur+1);
+    if(e.key==='ArrowLeft'||e.key==='PageUp') go(cur-1);
+    if(e.key==='Home') go(0);
+    if(e.key==='End') go(TOT-1);
+  });
+  addEventListener('click',e=>{
+    if(e.target.closest('a')) return;
+    go(e.clientX>innerWidth/2?cur+1:cur-1);
+  });
+  let tx=null;
+  addEventListener('touchstart',e=>tx=e.touches[0].clientX,{passive:true});
+  addEventListener('touchend',e=>{
+    if(tx==null) return;
+    const dx=e.changedTouches[0].clientX-tx;
+    if(Math.abs(dx)>48) go(cur+(dx<0?1:-1));
+    tx=null;
+  },{passive:true});
+  const h=parseInt((location.hash.match(/^#s(\d+)$/)||[])[1]);
+  go(h?h-1:0);
+</script>
