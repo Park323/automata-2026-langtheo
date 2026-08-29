@@ -469,6 +469,7 @@ python3 scripts/smoke_3turns.py --turns 30 --knob 0.06 --seed 1 --run-id r-ai006
 # 교차 실험: 런 디렉터리 복제 후 --from-turn 15 로 조건만 바꿔 재개
 
 # 뷰어
+https://park323.github.io/automata-2026-langtheo/
 python3 -m http.server 8000   # → localhost:8000/viewer/board.html?run=r-ai006
 ```
 
