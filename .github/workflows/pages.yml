@@ -1,0 +1,45 @@
+name: Deploy viewer to GitHub Pages
+
+# runs/ 는 1.6GB 라 그대로 배포하면 Pages 용량 한도(1GB)를 넘는다. 그래서
+# viewer/ 만 골라 올린다 — 📁 버튼(webkitdirectory)이 방문자 로컬 파일을
+# 읽는 브라우저 File API라, 클론해 온 runs/<run-id> 폴더를 그 자리에서
+# 고르면 서버 없이도 그대로 재생된다.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "viewer/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 루트에서 그냥 viewer/ 를 올리면 index.html(옛 표 형식 뷰어)이 먼저
+      # 뜬다 — 지금 쓰는 것은 board.html 이므로 그걸 index.html 로 세운다
+      - name: board.html 을 사이트 루트로
+        run: |
+          mkdir _site
+          cp viewer/board.html _site/index.html
+          cp viewer/meteo.png viewer/planet.png _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
