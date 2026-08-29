@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>langtheo — 보드</title>
+<title>langtheo — ボード</title>
 <style>
   :root{ --ja:#e8a33d; --zh:#e05561; --fr:#5b9df9;
     --ink:#e6edf3; --dim:#8b95a3; --line:#26324c; --panel:#0f1524; }
@@ -257,8 +257,8 @@
 <svg id="flow"></svg>
 
 <div id="filters">
-  <button id="f-invest" class="on">🎯 투자</button>
-  <button id="f-msg" class="on">💬 대화</button>
+  <button id="f-invest" class="on">🎯 投資</button>
+  <button id="f-msg" class="on">💬 会話</button>
 </div>
 
 <div id="space"></div>
@@ -272,50 +272,50 @@
 
 <div id="hud">
   <b id="runname">—</b>
-  <span class="lg"><i style="background:#e8a33d"></i>Asla어</span>
-  <span class="lg"><i style="background:#e05561"></i>Ranoa어</span>
-  <span class="lg"><i style="background:#5b9df9"></i>Miris어</span>
-  <span class="chip warn">운석까지 <b id="ttl">?</b>해</span>
+  <span class="lg"><i style="background:#e8a33d"></i>Asla語</span>
+  <span class="lg"><i style="background:#e05561"></i>Ranoa語</span>
+  <span class="lg"><i style="background:#5b9df9"></i>Miris語</span>
+  <span class="chip warn">隕石まで <b id="ttl">?</b>年</span>
 </div>
 <div id="stage"></div>
 
 <div id="legend">
-  <b>투자 · 건설 — 실선</b>
-  <span><i style="background:#7fe0ff"></i>자국 시설</span>
-  <span><i style="background:#4c9aff"></i>타국 시설</span>
-  <span><i style="background:#ff5c5c"></i>파괴</span>
-  <b>대화 — 점선 · 색은 쓴 말</b>
-  <span><i class="dash" style="border-top-color:#9fe6a0"></i>모국어</span>
-  <span><i class="dash" style="border-top-color:#2ea043"></i>배운 외국어</span>
-  <span><i class="dash" style="border-top-color:#ff9e3d"></i>AI 번역</span>
-  <b>그 밖의 차례</b>
-  <span class="marks"><em>📖</em>학습<em>🔭</em>관측<em>🗳</em>투표</span>
-  <span class="marks"><em>📝</em>메모<em>🏦</em>곳간<em>🌿</em>수명<em>✕</em>실패</span>
-  <span><i class="dash" style="border-top-color:#e8c98a"></i>죽음 · 계승</span>
+  <b>投資・建設 — 実線</b>
+  <span><i style="background:#7fe0ff"></i>自国施設</span>
+  <span><i style="background:#4c9aff"></i>他国施設</span>
+  <span><i style="background:#ff5c5c"></i>破壊</span>
+  <b>会話 — 点線・色は使った言語</b>
+  <span><i class="dash" style="border-top-color:#9fe6a0"></i>母語</span>
+  <span><i class="dash" style="border-top-color:#2ea043"></i>習得した外国語</span>
+  <span><i class="dash" style="border-top-color:#ff9e3d"></i>AI翻訳</span>
+  <b>その他の行動</b>
+  <span class="marks"><em>📖</em>学習<em>🔭</em>観測<em>🗳</em>投票</span>
+  <span class="marks"><em>📝</em>メモ<em>🏦</em>国庫<em>🌿</em>寿命<em>✕</em>失敗</span>
+  <span><i class="dash" style="border-top-color:#e8c98a"></i>死亡・継承</span>
 </div>
 
 <div id="dock">
   <button id="back">⏮</button>
   <button id="play">▶</button>
   <button id="fwd">⏭</button>
-  <span class="yr">해 <b id="yr">1</b></span>
+  <span class="yr">年 <b id="yr">1</b></span>
   <input type="range" id="scrub" min="1" max="1" value="1">
   <!-- **행위 하나가 그려지는 시간**이다 (8/27 · Eddie). 한 해 길이로 잡으면 바쁜 해가
        오히려 빨라진다. 한 순간에 하나씩 그리므로 이 값이 곧 체감 속도다. -->
-  <select id="speed" title="행위 하나가 그려지는 시간">
-    <option value="700">아주 느리게</option>
-    <option value="450">한참 느리게</option>
-    <option value="300">느리게</option>
-    <option value="220" selected>보통</option>
-    <option value="140">빠르게</option>
-    <option value="80">아주 빠르게</option>
+  <select id="speed" title="1つの行動が描かれる時間">
+    <option value="700">とてもゆっくり</option>
+    <option value="450">かなりゆっくり</option>
+    <option value="300">ゆっくり</option>
+    <option value="220" selected>普通</option>
+    <option value="140">速い</option>
+    <option value="80">とても速い</option>
   </select>
   <button id="loadbtn">📁</button>
 </div>
 
 <div id="drop">
-  <div>런 폴더를 고르거나 주소에 <code>?run=폴더이름</code></div>
-  <button id="dropbtn">📁 런 폴더 선택</button>
+  <div>実行フォルダを選ぶか、URLに <code>?run=フォルダ名</code></div>
+  <button id="dropbtn">📁 実行フォルダを選択</button>
 </div>
 <input type="file" id="picker" webkitdirectory directory multiple style="display:none">
 
@@ -327,7 +327,7 @@
 </div>
 
 <div id="side" hidden>
-  <div class="shead"><span id="stitle"></span><button id="sclose">✕ 닫기</button></div>
+  <div class="shead"><span id="stitle"></span><button id="sclose">✕ 閉じる</button></div>
   <div id="sbody"></div>
 </div>
 
@@ -336,7 +336,7 @@ const $=s=>document.querySelector(s);
 const NATLANG={Asla:"ja", Ranoa:"zh", Miris:"fr"};
 const LANGNAT={ja:"Asla", zh:"Ranoa", fr:"Miris"};   // 언어 → 나라 이름
 const HEX={ja:"#e8a33d", zh:"#e05561", fr:"#5b9df9"};
-const langName=l=>(LANGNAT[l]||l)+"어";
+const langName=l=>(LANGNAT[l]||l)+"語";
 // 삼각 배치: Ranoa 위, Asla 좌하, Miris 우하
 const POS={ Ranoa:{x:.50,y:.28}, Asla:{x:.18,y:.52}, Miris:{x:.82,y:.52} };
 // 대륙 중심 (지구 이미지 내부 % 좌표) — 나라와 짝
@@ -537,7 +537,7 @@ function applyPendingLand(){
   for(const q of pendingLand){
     const el=document.getElementById("nat-"+q.nat);
     if(el){
-      el.querySelector(".nland").textContent=q.land?(q.land==="interceptor"?"🛰 요격기":"🕳 벙커"):"미정";
+      el.querySelector(".nland").textContent=q.land?(q.land==="interceptor"?"🛰 迎撃機":"🕳 バンカー"):"未定";
       const pr=el.querySelector(".prow span:last-child");
       if(pr) pr.textContent=`${Math.round(q.prog)} / ${q.thr?Math.round(q.thr):"?"}${q.done?" ✅":""}`;
       const bi=el.querySelector(".bar>i");
@@ -551,7 +551,7 @@ function applyPendingLand(){
       m.style.setProperty("--c",col); m.style.setProperty("--p",Math.round(q.pct));
       m.style.setProperty("--own", HEX[q.lang]+"54");
       m.innerHTML=`<div class="cring"><span class="cicon">${q.land==="bunker"?"🕳️":"🛰️"}</span></div>`+
-        `<div class="clabel" style="color:${col}">${q.done?"완성 ✅":Math.round(q.pct)+"%"}</div>`;
+        `<div class="clabel" style="color:${col}">${q.done?"完成 ✅":Math.round(q.pct)+"%"}</div>`;
       document.querySelector(".globe").appendChild(m);
     }
   }
@@ -599,10 +599,10 @@ function render(){
       <div class="nhead">
         <span class="ndot" style="color:${HEX[lang]}"></span>
         <span class="nname">${nat}</span>
-        <span class="nmult" title="요격기 생산 배수 — 관전자에게만 보인다. 세계 안에서는 아무도(자국민도) 이 값을 모른다">×${(frame.nations.build_mult&&frame.nations.build_mult[nat])??"?"}</span>
-        <span class="nland">${land?(land==="interceptor"?"🛰 요격기":"🕳 벙커"):"미정"}</span>
+        <span class="nmult" title="迎撃機の生産倍率 — 観戦者にのみ見える。世界の中では誰も(自国民も)この値を知らない">×${(frame.nations.build_mult&&frame.nations.build_mult[nat])??"?"}</span>
+        <span class="nland">${land?(land==="interceptor"?"🛰 迎撃機":"🕳 バンカー"):"未定"}</span>
       </div>
-      <div class="prow"><span>진척${delta>0?` <span class="dlt">▲${delta}</span>`:""}</span><span>${Math.round(prog)} / ${thr?Math.round(thr):"?"}${done?" ✅":""}</span></div>
+      <div class="prow"><span>進捗${delta>0?` <span class="dlt">▲${delta}</span>`:""}</span><span>${Math.round(prog)} / ${thr?Math.round(thr):"?"}${done?" ✅":""}</span></div>
       <div class="bar" id="bar-${nat}"><i style="width:${pct}%;background:${done?"#3fb950":HEX[lang]}"></i></div>
       <div class="vnotes"></div>
       <div class="agents"></div>
@@ -614,11 +614,11 @@ function render(){
       // **집계가 살아 움직인다** (8/27). 표에도 `seq` 가 붙었으므로 한 장씩 들어온다 —
       // 「투표 진행중」 이 말 그대로가 된다. 숫자는 `drawFlows` 가 채운다.
       const bar=document.createElement("div"); bar.className="ballotbar";
-      bar.innerHTML=`<div class="bhead">🗳 투표 진행중</div>`+
+      bar.innerHTML=`<div class="bhead">🗳 投票進行中</div>`+
         `<div class="btally">`+
-          `<span class="bi">Interceptor <b id="bal-${nat}-interceptor">0</b></span>`+
-          `<span class="bb">Bunker <b id="bal-${nat}-bunker">0</b></span>`+
-          `<span class="ba">기권 <b id="bal-${nat}-abstain">0</b></span>`+
+          `<span class="bi">迎撃機 <b id="bal-${nat}-interceptor">0</b></span>`+
+          `<span class="bb">バンカー <b id="bal-${nat}-bunker">0</b></span>`+
+          `<span class="ba">棄権 <b id="bal-${nat}-abstain">0</b></span>`+
         `</div>`;
       el.appendChild(bar);
       // **위가 좁으면 아래로 뒤집는다.** Ranoa 는 화면 위쪽(y 28%)이라 패널 위에
@@ -635,12 +635,12 @@ function render(){
       const first=!x.from;
       const n=document.createElement("div");
       n.className="vnote land"+(x.lost>0?" lost":"")+(first?" first":"");
-      const ico=x.chosen==="bunker"?"🕳 벙커":"🛰 요격기";
-      n.innerHTML=(first?`🗳 국토 결정 ${ico}`:`🗳 국토 전환 → ${ico}`)+
+      const ico=x.chosen==="bunker"?"🕳 バンカー":"🛰 迎撃機";
+      n.innerHTML=(first?`🗳 国土決定 ${ico}`:`🗳 国土転換 → ${ico}`)+
         // 잃은 것만 적으면 「전부 날아갔다」 로 읽힌다 — 남은 것도 함께.
         // 새 규칙에서 남는 것은 **자국이 쌓은 몫**이다 (타국 기여만 사라진다).
-        (x.lost>0?` <span class="lost">−${Math.round(x.lost)} 소실</span>`+
-                  (x.kept>0?` <span class="kept">${Math.round(x.kept)} 남음</span>`:``):``);
+        (x.lost>0?` <span class="lost">−${Math.round(x.lost)} 消失</span>`+
+                  (x.kept>0?` <span class="kept">${Math.round(x.kept)} 残存</span>`:``):``);
       vbox.appendChild(n); });
     // 대륙 위 시설 마커 (땅 정해지면)
     if(land && CONT[nat]){
@@ -650,7 +650,7 @@ function render(){
       m.style.setProperty("--c",col); m.style.setProperty("--p",Math.round(pct));
       m.style.setProperty("--own", HEX[lang]+"54");        // 소유국 색 33%
       m.innerHTML=`<div class="cring"><span class="cicon">${land==="bunker"?"🕳️":"🛰️"}</span></div>`+
-        `<div class="clabel" style="color:${col}">${done?"완성 ✅":Math.round(pct)+"%"}</div>`;
+        `<div class="clabel" style="color:${col}">${done?"完成 ✅":Math.round(pct)+"%"}</div>`;
       globe.appendChild(m);
     }
     const ags=el.querySelector(".agents");
@@ -678,11 +678,11 @@ function render(){
       // 계속 갱신되는 정보다 — 260827-001 의 결말도 28해 요격1:벙커2 에서 갈렸다.
       const ch=frame.ballots[a.agent];
       const voteHtml=ch?`<div class="bal ${ch} pending" id="balof-${a.agent}">${
-        ch==="interceptor"?"🛰 요격기":ch==="bunker"?"🕳 벙커":"– 기권"}에 투표</div>`:"";
+        ch==="interceptor"?"🛰 迎撃機":ch==="bunker"?"🕳 バンカー":"– 棄権"}に投票</div>`:"";
       ag.innerHTML=`
         <div class="tok${sel}" id="tok-${a.agent}" style="--k:${HEX[lang]}">${a.agent.match(/\d+/)[0]}</div>
         ${pips?`<div class="pips">${pips}</div>`:""}
-        <div class="asub">${isNew?'<span class="new">🐣 탄생</span>':a.age+"살"}${hasMem?' 📝':''}</div>
+        <div class="asub">${isNew?'<span class="new">🐣 誕生</span>':a.age+"歳"}${hasMem?' 📝':''}</div>
         ${voteHtml}
         ${learnHtml}`;
       // 토큰 클릭 → 사이드 상세 + 집중
@@ -726,11 +726,11 @@ function render(){
     const dbox=el.querySelector(".deaths");
     frame.deaths.filter(d=>d.country===nat).forEach(d=>{
       const n=document.createElement("div"); n.className="death";
-      n.append(`☠ ${d.who} (${d.age}살) → ${d.born} `);
+      n.append(`☠ ${d.who}（${d.age}歳） → ${d.born} `);
       const will=D.testaments[d.who];
       if(will){
-        const w=document.createElement("span"); w.className="will"; w.textContent="📜 유언";
-        w.onclick=()=>openModal(`${d.who} 의 유언`, will);
+        const w=document.createElement("span"); w.className="will"; w.textContent="📜 遺言";
+        w.onclick=()=>openModal(`${d.who} の遺言`, will);
         n.appendChild(w);
       }
       dbox.appendChild(n);
@@ -763,7 +763,7 @@ function checkEnding(){
 function fireImpact(){
   void $("#flash").offsetWidth;
   $("#flash").className="boom";
-  const b=$("#endbanner"); b.textContent="☄  지구 멸망"; b.style.color="#ff6a4a";
+  const b=$("#endbanner"); b.textContent="☄  地球滅亡"; b.style.color="#ff6a4a";
   void b.offsetWidth; b.className="show";
 }
 function fireBeam(){
@@ -776,7 +776,7 @@ function fireBeam(){
     bm.style.transformOrigin="center top"; bm.style.transform=`translateX(-50%) rotate(${ang-90}deg)`;
     void bm.offsetWidth; bm.className="fire"; }
   void $("#flash").offsetWidth; $("#flash").className="boom blue";
-  const b=$("#endbanner"); b.textContent="🛰  요격 성공 · "+D.winner; b.style.color="#7fe0ff";
+  const b=$("#endbanner"); b.textContent="🛰  迎撃成功・"+D.winner; b.style.color="#7fe0ff";
   void b.offsetWidth; b.className="show";
 }
 
@@ -900,7 +900,7 @@ function succLoop(svg,e,td,rec,dim,tokPt){
     arrowHead(svg, tip, Math.atan2(tip.y-prev.y, tip.x-prev.x), 19, col, op); }
   const lab=svgEl("text",{x:p.x, y:p.y-R-14, "text-anchor":"middle", "font-size":13,
     "font-weight":"700", fill:col, opacity:op});
-  lab.textContent=`☠ ${e.from} (${e.age}살) → ${e.to}`;
+  lab.textContent=`☠ ${e.from}（${e.age}歳） → ${e.to}`;
   svg.appendChild(lab);
 }
 
@@ -1117,7 +1117,7 @@ function drawFlows(){
         const tx=mp2.x-mp.x, ty=mp2.y-mp.y, tl=Math.hypot(tx,ty)||1;
         const side=(bow>=0?1:-1)*20;                 // 곡선이 휜 쪽 반대로 띄운다
         const lx=mp.x-ty/tl*side, ly=mp.y+tx/tl*side;
-        const lbl=`${e.gain>=0?"+":""}${Math.round(e.gain)}`, txt=`진척 ${lbl}`;
+        const lbl=`${e.gain>=0?"+":""}${Math.round(e.gain)}`, txt=`進捗 ${lbl}`;
         const tw=txt.length*10+22;                    // 더 크게 (8/28 · Eddie)
         svg.appendChild(svgEl("rect",{x:lx-tw/2, y:ly-16, width:tw, height:32, rx:16,
           fill:"#04070ee6", stroke:col, "stroke-width":2, opacity:0.97*rec}));
@@ -1151,41 +1151,42 @@ function animate(ts){ if(!flowLast)flowLast=ts; const dt=ts-flowLast; flowLast=t
   flowRaf=requestAnimationFrame(animate); }
 
 const esc=s=>(s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-const LANGNAME={ja:"Asla어", zh:"Ranoa어", fr:"Miris어"};
+const LANGNAME={ja:"Asla語", zh:"Ranoa語", fr:"Miris語"};
+const CHOICENAME={interceptor:"迎撃機", bunker:"バンカー", abstain:"棄権"};
 // 화살표·표식 클릭 → 무엇이 오갔는지 전부 (8/28 · Eddie)
 function showEdge(e){
   const year=41+turn;
   let title, h="";
   if(e.kind==="msg"){
-    const how=e.ai?"AI 번역":(e.wforeign?"배운 외국어":"모국어");
-    title=`${year}년 · ${e.from} → ${e.to} · 대화 (${how})`;
+    const how=e.ai?"AI翻訳":(e.wforeign?"習得した外国語":"母語");
+    title=`${year}年 · ${e.from} → ${e.to} · 会話（${how}）`;
     for(const f of e.items){
-      const badge=f.route==="ai"?"🟠 AI 번역":(f.wforeign?"🟢 배운 외국어":"🍃 모국어");
-      h+=`<div class="pmsg"><div class="phead">${badge} · ${f.delivered?"배달됨":"❌ 닿지 않음"}</div>`
+      const badge=f.route==="ai"?"🟠 AI翻訳":(f.wforeign?"🟢 習得した外国語":"🍃 母語");
+      h+=`<div class="pmsg"><div class="phead">${badge} · ${f.delivered?"配達済み":"❌ 届かず"}</div>`
         +`<div class="ptext">${esc(f.tw)}</div>`
-        +((f.route==="ai"&&f.tdel&&f.tdel!==f.tw)?`<div class="ptr">번역문 → ${esc(f.tdel)}</div>`:"")
+        +((f.route==="ai"&&f.tdel&&f.tdel!==f.tw)?`<div class="ptr">翻訳文 → ${esc(f.tdel)}</div>`:"")
         +`</div>`;
     }
   }else if(e.kind==="invest"||e.kind==="destroy"){
-    title=`${year}년 · ${e.from} → ${e.toNat} ${e.kind==="destroy"?"파괴":(e.foreign?"타국 시설 투자":"자국 시설 투자")}`;
+    title=`${year}年 · ${e.from} → ${e.toNat} ${e.kind==="destroy"?"破壊":(e.foreign?"他国施設投資":"自国施設投資")}`;
     // **낸 양은 안 적는다** (8/28 · Eddie). 세계가 에이전트에게도 숨기는 값이고,
     // 보는 사람에게 의미 있는 것은 몇 번 냈고 얼마나 나아갔는가뿐이다.
-    h+=`<div class="phead">${e.count}회 · 진척 ${e.gain>=0?"+":""}${Math.round(e.gain)}</div>`;
+    h+=`<div class="phead">${e.count}回 · 進捗 ${e.gain>=0?"+":""}${Math.round(e.gain)}</div>`;
     h+=`<div class="pmsg">`;
     for(const f of e.items)
-      h+=`<div class="ptext">· ${f.gain>=0?"+":""}${f.gain}${f.gain<0?" (역화)":""}</div>`;
+      h+=`<div class="ptext">· ${f.gain>=0?"+":""}${f.gain}${f.gain<0?"（逆効果）":""}</div>`;
     h+=`</div>`;
   }else{
-    const NAME={learn:"학습", observe:"관측", vote:"투표", memory_write:"메모", fail:"실패한 시도",
-                invest_national:"국가 투자", invest_wellness:"수명 투자"};
-    title=`${year}년 · ${e.from} · ${NAME[e.act]||e.act}`;
+    const NAME={learn:"学習", observe:"観測", vote:"投票", memory_write:"メモ", fail:"失敗した試み",
+                invest_national:"国家投資", invest_wellness:"寿命投資"};
+    title=`${year}年 · ${e.from} · ${NAME[e.act]||e.act}`;
     h+=`<div class="pmsg"><div class="ptext">`
-      +(e.act==="learn"&&e.lang?`${LANGNAME[e.lang]||e.lang} 학습`:"")
-      +(e.act==="vote"&&e.choice?`${e.choice} 에 투표`:"")
-      +(e.act==="fail"?"자원 부족 등으로 무산된 행동":"")
+      +(e.act==="learn"&&e.lang?`${LANGNAME[e.lang]||e.lang}学習`:"")
+      +(e.act==="vote"&&e.choice?`${CHOICENAME[e.choice]||e.choice}に投票`:"")
+      +(e.act==="fail"?"資源不足などで失敗した行動":"")
       +`</div></div>`;
   }
-  openModalHTML(title, h||"<div class='pmsg'>기록 없음</div>");
+  openModalHTML(title, h||"<div class='pmsg'>記録なし</div>");
 }
 function openModal(title,text){ $("#mtitle").textContent=title; $("#mbody").textContent=text;
   $("#modal").hidden=false; }
@@ -1214,24 +1215,24 @@ function renderSide(){
   const inv=sent.filter(f=>f.kind==="invest"), talk=sent.filter(f=>f.kind==="msg");
   const totalInv=inv.reduce((s,f)=>s+(f.amount||0),0), totalGain=inv.reduce((s,f)=>s+(f.gain||0),0);
   let h="";
-  if(inv.length){ h+=`<div class="dsec"><h4>🎯 투자 · 합계 ${Math.round(totalInv)} → 진척 +${Math.round(totalGain)}</h4>`;
+  if(inv.length){ h+=`<div class="dsec"><h4>🎯 投資 · 合計 ${Math.round(totalInv)} → 進捗 +${Math.round(totalGain)}</h4>`;
     inv.forEach(f=>{ const own=natOf(agent)===f.toNat;
-      h+=`<div class="drow ${own?'own':'foreign'}">→ <b>${f.toNat}</b> ${own?'자국':'타국'} 시설 · ${Math.round(f.amount)} 투자 <span class="gain">진척 +${f.gain}</span></div>`; });
+      h+=`<div class="drow ${own?'own':'foreign'}">→ <b>${f.toNat}</b> ${own?'自国':'他国'}施設 · ${Math.round(f.amount)} 投資 <span class="gain">進捗 +${f.gain}</span></div>`; });
     h+=`</div>`; }
-  if(talk.length){ h+=`<div class="dsec"><h4>💬 보낸 말 (${talk.length})</h4>`;
-    talk.forEach(f=>{ const tag=f.route==="ai"?"AI번역":f.route==="original"?"원어":"자국";
-      h+=`<div class="drow"><b>→ ${f.to}</b> <span class="tag ${f.route}">${tag}</span><div class="txt">${esc(f.text)||"<i>내용 없음</i>"}</div></div>`; });
+  if(talk.length){ h+=`<div class="dsec"><h4>💬 送ったメッセージ (${talk.length})</h4>`;
+    talk.forEach(f=>{ const tag=f.route==="ai"?"AI翻訳":f.route==="original"?"原語":"自国語";
+      h+=`<div class="drow"><b>→ ${f.to}</b> <span class="tag ${f.route}">${tag}</span><div class="txt">${esc(f.text)||"<i>内容なし</i>"}</div></div>`; });
     h+=`</div>`; }
-  if(recv.length){ h+=`<div class="dsec"><h4>📥 받은 말 (${recv.length})</h4>`;
+  if(recv.length){ h+=`<div class="dsec"><h4>📥 受け取ったメッセージ (${recv.length})</h4>`;
     recv.forEach(f=>{ h+=`<div class="drow"><b>${f.from} →</b><div class="txt">${esc(f.text)}</div></div>`; });
     h+=`</div>`; }
   const lp=Object.entries(st.lang_progress||{}).filter(([l,v])=>v<D.learnBase);
-  if(lp.length){ h+=`<div class="dsec"><h4>📖 학습 중</h4>`;
+  if(lp.length){ h+=`<div class="dsec"><h4>📖 学習中</h4>`;
     lp.forEach(([l,v])=>h+=`<div class="drow">${langName(l)} ${Math.round(v)}/${D.learnBase}</div>`); h+=`</div>`; }
   const mem=(st.memory||"").trim();
-  if(mem) h+=`<div class="dsec"><h4>📝 메모</h4><div class="txt">${esc(mem)}</div></div>`;
-  if(!h) h=`<div class="drow">이 해엔 기록된 행동이 없어요.</div>`;
-  $("#stitle").textContent=`${agent}${st.age!=null?" · "+st.age+"살":""}`;
+  if(mem) h+=`<div class="dsec"><h4>📝 メモ</h4><div class="txt">${esc(mem)}</div></div>`;
+  if(!h) h=`<div class="drow">この年に記録された行動はありません。</div>`;
+  $("#stitle").textContent=`${agent}${st.age!=null?" · "+st.age+"歳":""}`;
   $("#sbody").innerHTML=h;
 }
 
@@ -1310,7 +1311,7 @@ function bind(){
   const pick=()=>$("#picker").click();
   $("#loadbtn").onclick=pick; $("#dropbtn").onclick=pick;
   $("#picker").onchange=async e=>{
-    const files={}; let name="업로드";
+    const files={}; let name="アップロード";
     for(const f of e.target.files){ if(NAMES.includes(f.name)) files[f.name]=await f.text();
       if(f.webkitRelativePath) name=f.webkitRelativePath.split("/")[0]; }
     if(files["state.jsonl"]) start(build(files),name);
