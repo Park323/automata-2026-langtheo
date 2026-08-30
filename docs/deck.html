@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>カキガワ言語研究班</title>
 <style>
   /* ── 단일 테마: 관제실 어둠. 뷰어의 선의 문법을 그대로 입는다 ── */
@@ -15,7 +16,7 @@
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{height:100%}
   body{background:var(--bg);color:var(--ink);overflow:hidden;
-    font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif;
+    font-family:-apple-system,BlinkMacSystemFont,'Hiragino Kaku Gothic ProN','Yu Gothic UI','Yu Gothic','Noto Sans JP','Meiryo',sans-serif;
     -webkit-font-smoothing:antialiased}
   /* ── 운석 레일: 슬라이드 진행 = 30해 카운트다운 ── */
   #rail{position:fixed;top:0;left:0;right:0;height:44px;z-index:50;display:flex;align-items:center;
@@ -104,154 +105,159 @@
   .bptrack .med{position:absolute;top:3px;bottom:3px;width:3px;background:var(--ink);border-radius:2px}
   .bptrack .pt{position:absolute;top:50%;width:7px;height:7px;border-radius:50%;
     background:var(--dim);transform:translate(-50%,-50%)}
-  /* 인쇄: 장당 1페이지 */
+  /* 인쇄 / PDF: 한 장 = 한 페이지. 페이지 상자를 설계 뷰포트(1920x1080)와 같게 둔다 —
+     100vh 가 페이지 높이와 어긋나면 장이 페이지 경계를 넘어 밀린다 */
   @media print{
-    body{overflow:visible;background:#070c16}
+    @page{size:1920px 1080px;margin:0}
+    html,body{width:1920px;height:auto;overflow:visible;background:#070c16}
     #rail,.footer-hint,.pageno{display:none}
     .slide{position:relative;inset:auto;opacity:1;visibility:visible;transform:none;
-      page-break-after:always;height:100vh}
+      width:1920px;height:1080px;overflow:hidden;
+      break-inside:avoid;page-break-inside:avoid;
+      break-after:page;page-break-after:always}
+    .slide:last-of-type{break-after:auto;page-break-after:auto}
   }
 </style>
 
 <div id="rail" aria-hidden="true">
   <span class="team">カキガワ言語研究班</span>
   <div class="track"><i id="railFill"></i><span class="meteor" id="railMeteor"></span></div>
-  <span class="yr" id="railYr">운석까지 30해</span>
+  <span class="yr" id="railYr">隕石まで30年</span>
 </div>
 
-<!-- 1 · 표지 -->
+<!-- 1 · 表紙 -->
 <section class="slide" id="s1">
   <div class="eyebrow">AUTOMATA HACKATHON VOL.2 · <b>カキガワ言語研究班</b></div>
-  <h1>AI 번역의 시대,<br><span class="data">세계평화</span>를 위해 <span class="lang">외국어 학습</span>은 여전히 필요한가</h1>
+  <h1>AI翻訳の時代、<br><span class="data">世界平和</span>のために <span class="lang">外国語学習</span>は今なお必要か</h1>
   <p class="lead" style="font-size:clamp(18px,2vw,26px);color:var(--ink);margin-top:34px">
-    우리는 멸망 가설로 물었다 — <span style="color:var(--faint)">「AI의 번역 왜곡이 쌓이면,
-    인류는 조율에 실패할 것이다」.</span><br>
-    30판을 돌렸다. <b class="bad">반대였다.</b> 실패한 쪽은 <b>AI가 없는 세계</b>였다 — 다섯 판 전부.</p>
-  <p class="tagline">AI가 지운 것은 <b class="lang">서약</b>, 살린 것은 <b class="data">발견</b> —
-    그리고 언어 학습은 <b class="lang">신뢰의 신호</b>와 <b class="ai">보험</b>으로 살아남았다.</p>
+    私たちは滅亡仮説から問うた — <span style="color:var(--faint)">「AIの翻訳の歪みが積もれば、
+    人類は協調に失敗するだろう」。</span><br>
+    30回まわした。<b class="bad">逆だった。</b>失敗したのは <b>AIのない世界</b>だった — 5回すべて。</p>
+  <p class="tagline">AIが消したのは <b class="lang">誓約</b>、生かしたのは <b class="data">発見</b> —
+    そして言語学習は <b class="lang">信頼のシグナル</b>と <b class="ai">保険</b>として生き残った。</p>
 </section>
 
-<!-- 2 · 문제 정의 -->
+<!-- 2 · 問題設定 -->
 <section class="slide" id="s2">
-  <div class="eyebrow">문제 정의 · <b>말의 두 갈래 길</b></div>
-  <h2>알고 있는 언어로 말하기와,<br>제3의 도구를 거친 말하기는 다르다</h2>
+  <div class="eyebrow">問題設定 · <b>ことばの二つの道</b></div>
+  <h2>知っている言語で話すことと、<br>第三の道具を介して話すことは違う</h2>
   <div class="cols">
     <div>
-      <div class="card" style="margin-bottom:14px"><h3 class="lang">알고 있는 언어로 말하기 — 원문</h3>
-        <p>내 말이 그대로 닿는다. 단, <b>누군가 배웠어야</b> 닿는다 —
-        한 통 한 통 뒤에 언어 자본이라는 선행 투자가 깔려 있다.</p></div>
-      <div class="card"><h3 class="ai">제3의 도구를 거친 말하기 — AI 번역</h3>
-        <p><b>제3자가 내 말을 다시 쓴다.</b> 배움 없이 누구에게나 닿는다 —
-        대신 말은 내 손을 떠나 도구를 통과한다. 무엇이 보존되고
-        무엇이 변하는지는 이제 <b>도구의 몫</b>이다. 그리고 제3자는 언제나
-        <b>값을 물린다</b> — 통역사의 보수, 번역가의 시간. AI 기술의 발전이
-        지금 그 값을 <b class="ai">0을 향해</b> 끌어내리고 있다.</p></div>
+      <div class="card" style="margin-bottom:14px"><h3 class="lang">知っている言語で話す — 原文</h3>
+        <p>自分の言葉がそのまま届く。ただし、<b>誰かが学んでいなければ</b>届かない —
+        一通一通の背後に言語資本という先行投資が敷かれている。</p></div>
+      <div class="card"><h3 class="ai">第三の道具を介して話す — AI翻訳</h3>
+        <p><b>第三者が自分の言葉を書き直す。</b>学習なしで誰にでも届く —
+        代わりに言葉は自分の手を離れ、道具を通る。何が保たれ
+        何が変わるのかは、もはや<b>道具の領分</b>だ。そして第三者はつねに
+        <b>値を取る</b> — 通訳の報酬、翻訳者の時間。AI技術の進歩がいま、
+        その値を <b class="ai">0へ向けて</b>引き下げている。</p></div>
     </div>
     <div>
-      <div class="card" style="margin-bottom:14px"><h3 class="gold">검증 가설</h3>
-        <p>두 길의 차이가 <b>비용뿐이라면</b>, 값을 같게 두었을 때 행동도
-        같아져야 한다. 국제 발신 한 통의 값은 언제나 「소통 0.06 +
-        <b class="ai">AI 사용 비용</b>」으로 나뉜다 — 그래서 현실이 다가가고 있는
-        그 끝점, <b class="ai">AI 사용 비용이 0인 세계</b>를 미리 돌려봤다.
-        비용 차를 0으로 통제하면, 남는 차이는 전부
-        <b class="lang">비용 그 이상의 무형의 차이</b>다.</p></div>
-      <blockquote>「AI 번역은 쓸 수 있지만 어쨌든 <b>중간인</b>이라… 어떤 말은
-        뜻이 변형될 것 같다. 그들의 언어로 쓰면
-        「<b class="lang">같은 일을 하는 사이</b>」라는 감각이 생긴다」
-        <small>AI 0 세계 · 14해 · Ranoa10 면담 — 묻지 않았는데 스스로 말했다</small></blockquote>
+      <div class="card" style="margin-bottom:14px"><h3 class="gold">検証仮説</h3>
+        <p>二つの道の違いが<b>費用だけ</b>なら、値を同じにしたとき行動も
+        同じになるはずだ。国際発信一通の値はつねに「通信 0.06 +
+        <b class="ai">AI利用費</b>」に分かれる — だから現実が近づいている
+        その終点、<b class="ai">AI利用費が0の世界</b>を先に走らせた。
+        費用差を0に統制すれば、残る差はすべて
+        <b class="lang">費用を超える無形の差</b>である。</p></div>
+      <blockquote>「AI翻訳は使えるけれど、どうしても<b>仲介者</b>だから…
+        ある言葉は意味が変形しそうだ。彼らの言語で書くと
+        「<b class="lang">同じ仕事をする仲間</b>」という感覚が生まれる」
+        <small>AI 0 世界 · 14年 · Ranoa10 面談 — 訊いていないのに自ら語った</small></blockquote>
     </div>
   </div>
 </section>
 
-<!-- 3 · 세계와 실험 -->
+<!-- 3 · 世界と実験 -->
 <section class="slide" id="s3">
-  <div class="eyebrow">세계와 실험 · <b>30판 · 행동 81,186 · API 5만 콜</b></div>
-  <h2>운석은 30해 뒤. 변수는 AI 번역 한 통의 값.</h2>
+  <div class="eyebrow">世界と実験 · <b>30回 · 行動 81,186 · API 5万コール</b></div>
+  <h2>隕石は30年後。変えるのはAI翻訳一通の値。</h2>
   <div class="cols">
     <div class="grid" style="grid-template-columns:1fr 1fr">
-      <div class="card"><h3 class="data">🛰 요격기 vs 🕳 벙커 — 두 갈래 딜레마</h3>
-        <p>요격기(10,899)가 어느 한 나라 땅에 완성되면 <b>전 인류</b>가 산다 — 단 진척은
-        나라별로 쌓여 합산되지 않고, 혼자서는 30해 안에 불가능하다. 벙커(4,100)는
-        <b>자국민만</b> 산다 — 조율이 필요 없는 차선. 세계는 내내 「모두를 구하는 어려운
-        길」과 「우리만 사는 쉬운 길」 사이에 있고, 국토 용도는 3해마다 採決로 뒤집힌다
-        — 바꾸면 타국이 부어준 진척은 소각.</p></div>
-      <div class="card"><h3 class="bad">국가별 타고난 생산력 — 숨긴 배수</h3>
-        <p>같은 투자도 Asla ×1.0 · Ranoa ×1.3 · Miris ×0.7로 다르게 쌓인다.
-        <b>자국민조차 모른다.</b> 의도된 설계다 — 「어디에 모아야 하는가」라는 정답을
-        세계에 심어두되 알려주지 않아서, 조율을 <b>정보 문제</b>로 만든다.
-        소통이 이 발견을 해내는지가 승부처다.</p></div>
-      <div class="card"><h3 class="lang">Multilingual 모델의 언어 학습 실현</h3>
-        <p>에이전트(LLM)는 사실 세 언어를 다 읽고 쓸 수 있다 — 그래서 「모름」은
-        <b>세계가 강제한다</b>: 배우지 않은 말로 쓰면 실패로 기록되고, 모르는 말의
-        원문은 닿지 않는다. learn에 행동력을 내면 그 언어가 열리며, 자국 구사자·부모가
-        있으면 빨리 배운다. 번역기도 프롬프트 장치가 아닌 <b>실제 별도의 LLM</b> —
-        왜곡 주입 없이 진짜 번역의 진짜 변형만 흐른다.</p></div>
-      <div class="card"><h3 class="gold">시간과 불확실성</h3>
-        <p>수명 ~5해 — <b>자기 수명을 모르고</b>, 죽으면 유언 한 줄만 남는다. 관측은
-        ±3해 오차, 타국의 진척·배수는 비공개, 투자는 역화(−)할 수 있고 — 기본 15%,
-        국가 자본이 쌓이면 내려간다 — 익명 destroy가 있어 역화와 구분되지 않는다. 세계는 원래 흐릿하다 — 그 흐림 속에서
-        <b>말이 유일한 계측기</b>다.</p></div>
+      <div class="card"><h3 class="data">🛰 迎撃機 vs 🕳 バンカー — 二つの道のジレンマ</h3>
+        <p>迎撃機（10,899）がどこか一国の土地で完成すれば <b>全人類</b>が生きる — ただし進捗は
+        国ごとに積まれて合算されず、単独では30年以内に不可能だ。バンカー（4,100）は
+        <b>自国民だけ</b>が生きる — 協調のいらない次善。世界はずっと「みなを救う難しい
+        道」と「我々だけが生きる易しい道」の間にあり、国土の用途は3年ごとに採決で覆る
+        — 変えれば他国が注いだ進捗は焼却。</p></div>
+      <div class="card"><h3 class="bad">国ごとの生まれ持つ生産力 — 隠した倍率</h3>
+        <p>同じ投資でも Asla ×1.0 · Ranoa ×1.3 · Miris ×0.7 と違って積まれる。
+        <b>自国民すら知らない。</b>意図した設計だ —「どこに集めるべきか」という正解を
+        世界に埋めておきながら教えないことで、協調を <b>情報問題</b>にする。
+        ことばがこの発見を成し遂げられるかが勝負どころだ。</p></div>
+      <div class="card"><h3 class="lang">Multilingualモデルでの言語学習の実装</h3>
+        <p>エージェント（LLM）は本当は三言語すべてを読み書きできる — だから「知らない」は
+        <b>世界が強制する</b>：学んでいない言葉で書けば失敗として記録され、知らない言葉の
+        原文は届かない。learn に行動力を払えばその言語が開き、自国話者や親がいれば
+        早く学ぶ。翻訳器もプロンプト上の仕掛けではなく <b>実際に別のLLM</b> —
+        歪みの注入なしに、本物の翻訳の本物の変形だけが流れる。</p></div>
+      <div class="card"><h3 class="gold">時間と不確実性</h3>
+        <p>寿命は約5年 — <b>自分の寿命を知らず</b>、死ねば遺言一行だけが残る。観測は
+        ±3年の誤差、他国の進捗・倍率は非公開、投資は逆効果（−）になりうる — 基本15%、
+        国家資本が積まれると下がる — 匿名の destroy があって逆効果と区別がつかない。世界はもともと霞んでいる —
+        その霞のなかで <b>ことばが唯一の計測器</b>だ。</p></div>
         </div>
     <div>
-      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:8px">실험 1 — AI 사용 비용 노브 · 4조건 × 씨앗 5 = 20판 <span style="color:var(--dim)">→ 결과 5~7장</span></p>
-      <div class="chain">국제 한 통 = 소통 0.06 + <b class="ai">AI 사용 비용</b>
-      <b class="ai">AI 0</b>  공짜 ← <b>본선</b>
-      <b class="ai">AI 0.06 · AI 0.18</b>  유료 사다리
-      <b>no-ai</b>  AI 없음 — 배우거나, 도박하거나</div>
-      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin:16px 0 8px">실험 2 — 정전과 여명 · 15해 복제 × 씨앗 5 × 2 = 10판 <span style="color:var(--dim)">→ 결과 8장</span></p>
-      <div class="chain"><b>정전</b>  AI 0 세계에서 16해부터 AI 소멸
-      <b>여명</b>  no-ai 세계에 16해부터 AI 등장
-      원조건을 유지한 <b>쌍둥이</b>와 비교한다</div>
-      <p class="threshold-note" style="margin-top:14px">규모: 한 해는 한 수가 아니다 —
-        판마다 9명이 해당 <b>~90회</b> 행동한다. 총 행동 <b>81,186</b> ·
-        사고 <b>46,646스텝</b> · 서신 <b>26,390통</b><br>
-        측정: 3층 메시지 분류 <b>21,444통</b> · think 동인 3,750표본 ·
-        분류기에 조건 은닉 · 테스트 451개 · 매해 복원점으로 전 구간 재현</p>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:8px">実験 1 — AI利用費のノブ · 4条件 × シード5 = 20回 <span style="color:var(--dim)">→ 結果 5〜7章</span></p>
+      <div class="chain">国際一通 = 通信 0.06 + <b class="ai">AI利用費</b>
+      <b class="ai">AI 0</b>  無料 ← <b>本線</b>
+      <b class="ai">AI 0.06 · AI 0.18</b>  有料の梯子
+      <b>no-ai</b>  AIなし — 学ぶか、賭けるか</div>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin:16px 0 8px">実験 2 — 停電と夜明け · 15年から複製 × シード5 × 2 = 10回 <span style="color:var(--dim)">→ 結果 8章</span></p>
+      <div class="chain"><b>停電</b>  AI 0 世界で16年目からAIが消える
+      <b>夜明け</b>  no-ai 世界に16年目からAIが現れる
+      元条件を保った <b>双子</b>と比べる</div>
+      <p class="threshold-note" style="margin-top:14px">規模：一年は一手ではない —
+        一回ごとに9人が各 <b>〜90回</b>行動する。総行動 <b>81,186</b> ·
+        思考 <b>46,646ステップ</b> · 書簡 <b>26,390通</b><br>
+        測定：3層メッセージ分類 <b>21,444通</b> · think 動因 3,750標本 ·
+        分類器には条件を隠す · テスト451個 · 毎年の復元点で全区間を再現</p>
     </div>
   </div>
-  <p class="tagline">넣지 않은 것: 왜곡 주입 · 구조화 메시지 · 목적함수 · 학습 보상 · 개체차.
-    <b>일어나는 일은 전부 창발이어야 한다.</b></p>
+  <p class="tagline">入れなかったもの：歪みの注入 · 構造化メッセージ · 目的関数 · 学習報酬 · 個体差。
+    <b>起きることはすべて創発でなければならない。</b></p>
 </section>
 
-<!-- 4 · 첫 판정: 왜곡 -->
+<!-- 4 · 最初の判定：歪み -->
 <section class="slide" id="s4">
-  <div class="eyebrow">첫 판정 · <b>소통과 왜곡 — 가설의 스코어보드</b></div>
-  <h2>가설의 급소부터 검증했다 —<br>왜곡은 채널에 없었다</h2>
+  <div class="eyebrow">最初の判定 · <b>通信と歪み — 仮説のスコアボード</b></div>
+  <h2>仮説の急所から検証した —<br>歪みはチャネルになかった</h2>
   <div class="cols">
     <div>
-      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:10px">설계한 연쇄 — 30판의 판정</p>
-      <div class="chain">AI 사용 비용 하락
-→ 외국어 학습자 감소        <b class="lang">✓ 성립 −33% · 7장</b>
-→ 왜곡을 알아채지 못함      <b class="bad">✗ 기각 · 이 장</b>
-→ 조율 실패                <b class="ai">↺ 부호 반전 · 5~6장</b>
-→ 멸망</div>
-      <p class="threshold-note" style="margin-top:14px">가설의 심장부(✗)가 무너졌는데 세계는
-        더 극적으로 갈렸다 — 나머지 두 판정이 그 이유다.</p>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:10px">設計した連鎖 — 30回の判定</p>
+      <div class="chain">AI利用費の低下
+→ 外国語学習者の減少        <b class="lang">✓ 成立 −33% · 7章</b>
+→ 歪みに気づけない          <b class="bad">✗ 棄却 · この章</b>
+→ 協調の失敗               <b class="ai">↺ 符号反転 · 5〜6章</b>
+→ 滅亡</div>
+      <p class="threshold-note" style="margin-top:14px">仮説の心臓部（✗）が崩れたのに、世界は
+        より劇的に分かれた — 残る二つの判定がその理由だ。</p>
     </div>
     <div>
-      <div class="card" style="margin-bottom:14px"><h3>의심은 있되, 검출은 없다</h3>
-        <p>번역기 숫자 유실 <b>1.8%</b> · 정책을 바꾼 기계 왜곡 <b>0건</b> ·
-        번역 불신 발화 판당 0.2~1.0회. 「뜻이 변형될 것 같다」는 불안(Ranoa10)은 있었지만,
-        30판 어디에서도 <b>실제 왜곡을 잡아 되물은 적이 없다</b> — 「모른 채 당한다」는
-        전제는 맞았으나, 당한 일 자체가 없었다.</p></div>
-      <div class="card"><h3 class="bad">정책을 바꾼 유일한 왜곡 — 사람의 전승</h3>
-        <p>자국 진척을 타국 것으로 옮겨 말한 한 통이 <b>4세대</b>를 타고 국가 정책이 됐다.
-        신생아의 교정은 「관측 오차겠지」로 기각 — 세계에 진짜 오차가 있어
-        <b>거짓 설명이 더 그럴듯했다</b>.</p></div>
+      <div class="card" style="margin-bottom:14px"><h3>疑いはあれど、検出はない</h3>
+        <p>翻訳器の数値欠落 <b>1.8%</b> · 政策を変えた機械的歪み <b>0件</b> ·
+        翻訳不信の発話は1回あたり0.2〜1.0回。「意味が変形しそうだ」という不安（Ranoa10）は
+        あったが、30回のどこでも <b>実際の歪みを捉えて問い返したことはなかった</b> —
+        「知らぬまま被る」という前提は正しかったが、被ったこと自体がなかった。</p></div>
+      <div class="card"><h3 class="bad">政策を変えた唯一の歪み — 人の伝承</h3>
+        <p>自国の進捗を他国のものとして語った一通が <b>4世代</b>を伝って国家政策になった。
+        新生児の訂正は「観測誤差だろう」と退けられた — 世界に本物の誤差があるせいで、
+        <b>偽の説明のほうがもっともらしかった</b>。</p></div>
     </div>
   </div>
-  <p class="tagline">채널은 무죄였다. 그러면 세계는 어떻게 끝났고, 무엇이 갈랐는가 —
-    <b>결말</b>(5장) · <b class="data">발견</b>과 <b class="lang">서약</b>(6장) · <b class="ai">무형의 가격</b>(7장).</p>
+  <p class="tagline">チャネルは無罪だった。ではこの世界はどう終わり、何が分けたのか —
+    <b>結末</b>（5章） · <b class="data">発見</b>と <b class="lang">誓約</b>（6章） · <b class="ai">無形の価格</b>（7章）。</p>
 </section>
 
-<!-- 5 · 결말 -->
+<!-- 5 · 結末 -->
 <section class="slide" id="s5">
-  <div class="eyebrow">결말 · <b>그래서, 운석은 막았는가</b></div>
-  <h2>아무도 막지 못했다 —<br>그러나 실패는 평등하지 않았다</h2>
+  <div class="eyebrow">結末 · <b>それで、隕石は防げたのか</b></div>
+  <h2>誰も防げなかった —<br>しかし失敗は平等ではなかった</h2>
   <div class="cols">
     <div>
       <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:4px">
-        30해 최고 진척 — 씨앗 5판 분포 (중앙값)</p>
+        30年目の最高進捗 — シード5回の分布（中央値）</p>
       <div class="bplot">
         <div class="bprow"><span class="lab">AI 0</span>
           <span class="bptrack"><i class="whisk" style="left:39.0%;width:59.0%"></i><i class="box" style="left:64.3%;width:23.6%"></i><i class="med" style="left:82.2%"></i><i class="pt" style="left:39.0%"></i><i class="pt" style="left:64.3%"></i><i class="pt" style="left:82.2%"></i><i class="pt" style="left:87.9%"></i><i class="pt" style="left:98.1%"></i></span>
@@ -266,194 +272,194 @@
           <span class="bptrack"><i class="whisk" style="left:20.4%;width:56.5%"></i><i class="box red" style="left:21.5%;width:12.3%"></i><i class="med" style="left:28.9%"></i><i class="pt" style="left:20.4%"></i><i class="pt" style="left:21.5%"></i><i class="pt" style="left:28.9%"></i><i class="pt" style="left:33.7%"></i><i class="pt" style="left:76.9%"></i></span>
           <span class="val" style="color:var(--bad)">3,146</span></div>
       </div>
-      <p class="threshold-note">점 = 각 판 · 상자 = 사분위 · 굵은 세로 = 중앙값 ·
-        <b class="bad">오른쪽 끝 = 요격기 임계 10,899</b>.
-        사다리 안에서는 단조가 아니다 — 가른 것은 가격이 아니라 <b>존재</b>다.</p>
+      <p class="threshold-note">点 = 各回 · 箱 = 四分位 · 太い縦線 = 中央値 ·
+        <b class="bad">右端 = 迎撃機の閾値 10,899</b>。
+        梯子の中では単調ではない — 分けたのは価格ではなく <b>存在</b>だ。</p>
     </div>
     <div class="grid" style="grid-template-columns:1fr">
-      <div class="card"><h3 class="bad">운석은?</h3><p><b>30판 전원 충돌.</b> 요격기 최고
-        <b class="num">10,691 / 10,899</b> — 임계까지 208 남기고 30해가 끝났다(AI 0 세계).
-        벙커 최고 3,675/4,100. 세계는 일부러 빠듯하다 — 완주는 거의 완벽한 조율을 요구한다.</p></div>
-      <div class="card"><h3 class="gold">배신은?</h3><p>요격기 연합에서 벙커로 돌아선 나라
-        <b class="num">no-ai 1.4 vs AI 0.2개국/판</b>. 그리고 destroy 1회 — 최후의 해,
-        관측 오차 속에 이웃 벙커가 완공 직전으로 보이자 「Asla가 완성하면 Asla만 산다」며.</p></div>
-      <div class="card"><h3 class="ai">AI가 세계를 구했는가?</h3><p>구하지 못했다. 그러나
-        임계의 95%를 넘긴 두 판은 <b>모두 AI 세계</b>였고(98.1% · 97.3%), no-ai의 최고는
-        77%다. AI는 세계를 구하지 못했고 — <b>구할 뻔하게 만들었다</b>.</p></div>
+      <div class="card"><h3 class="bad">隕石は？</h3><p><b>30回すべて衝突。</b>迎撃機の最高
+        <b class="num">10,691 / 10,899</b> — 閾値まで208を残して30年が終わった（AI 0 世界）。
+        バンカーの最高 3,675/4,100。世界はわざとぎりぎりだ — 完走はほぼ完璧な協調を要求する。</p></div>
+      <div class="card"><h3 class="gold">裏切りは？</h3><p>迎撃機連合からバンカーへ転じた国は
+        <b class="num">no-ai 1.4 vs AI 0.2か国/回</b>。そして destroy が1回 — 最後の年、
+        観測誤差のなか隣国のバンカーが完成間近に見えて「Asla が完成させれば Asla だけが生きる」と。</p></div>
+      <div class="card"><h3 class="ai">AIは世界を救ったのか？</h3><p>救えなかった。しかし
+        閾値の95%を超えた二回は <b>どちらもAI世界</b>であり（98.1% · 97.3%）、no-ai の最高は
+        77%だ。AIは世界を救えず — <b>救いかけさせた</b>。</p></div>
     </div>
   </div>
-  <p class="tagline">왜 이렇게 갈렸는가 — <b class="data">발견</b>과 <b class="lang">서약</b>(6장) ·
-    <b class="ai">무형의 가격</b>(7장).</p>
+  <p class="tagline">なぜこう分かれたのか — <b class="data">発見</b>と <b class="lang">誓約</b>（6章） ·
+    <b class="ai">無形の価格</b>（7章）。</p>
 </section>
 
-<!-- 6 · 결과 1·2: 발견 -->
+<!-- 6 · 結果 1·2：発見 -->
 <section class="slide" id="s6">
-  <div class="eyebrow">결과 1·2 · <b>연결의 보장 → 서약 → 발견</b></div>
-  <h2>내일도 말할 수 있는 세계는 오늘 서약하지 않는다 —<br>그리고 그 여유가 정답을 찾았다</h2>
-  <p class="lead" style="margin:0 0 20px;max-width:none">세계를 구하는 길은 하나 —
-    배수 <b>×1.3</b>의 최효율국을 찾아 모두가 그 땅에 모으는 것. 그런데 배수는 비밀이고,
-    아무도 재지 않았다(의도적 비교 판당 0~0.6회). 정답은 <b>각자 쌓는 초반에만</b> 진척
-    격차로 저절로 드러난다 — 승부는 「얼마나 늦게 몰빵하는가」였다.</p>
+  <div class="eyebrow">結果 1·2 · <b>つながりの保証 → 誓約 → 発見</b></div>
+  <h2>明日も話せる世界は、今日 誓約しない —<br>そしてその余裕が正解を見つけた</h2>
+  <p class="lead" style="margin:0 0 20px;max-width:none">世界を救う道はひとつ —
+    倍率 <b>×1.3</b> の最効率国を見つけ、みなでその土地に集めることだ。ところが倍率は秘密で、
+    誰も測らなかった（意図的な比較は1回あたり0〜0.6回）。正解は <b>それぞれが積む序盤にだけ</b>
+    進捗の差として自ずと現れる — 勝負は「どれだけ遅く一点に賭けるか」だった。</p>
   <div class="cols">
     <div>
-      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:8px">② 두 세계는 어떻게 찾고, 놓쳤나</p>
-      <div class="chain"><b class="ai">AI 세계</b> — 약속을 미루고 헤징
-   「먼저 각자 쌓고, 집중은 그 다음에」
-→ 신호가 자랄 시간 · 4해 선두 Ranoa <b>7/15</b> → 보고 결집
-→ 적중 <b class="data">9/15</b> · 중간 교정 3건 전부 ×1.3 방향</div>
-      <div class="chain" style="margin-top:12px"><b>no-ai 세계</b> — 첫 편지에 서약
-   「절대 바꾸지 않는다, 보증한다」
-→ 신호가 뜨기 전에 결집 확정 · 타국투자 <b class="num">103건</b>이 신호 오염
-→ 적중 <b class="bad">0/5</b> · 교정 0건</div>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:8px">② 二つの世界はどう見つけ、どう逃したか</p>
+      <div class="chain"><b class="ai">AI世界</b> — 約束を先送りしてヘッジ
+   「まずは各自で積み、集中はその次に」
+→ 信号が育つ時間 · 4年目の首位 Ranoa <b>7/15</b> → 見てから結集
+→ 的中 <b class="data">9/15</b> · 途中修正3件すべて ×1.3 の方向</div>
+      <div class="chain" style="margin-top:12px"><b>no-ai世界</b> — 最初の手紙で誓約
+   「絶対に変えない、保証する」
+→ 信号が出る前に結集が確定 · 他国投資 <b class="num">103件</b>が信号を汚染
+→ 的中 <b class="bad">0/5</b> · 修正 0件</div>
       <div class="bars" style="margin-top:14px">
-        <div class="bar"><span class="lab">AI 있음 (15판)</span>
+        <div class="bar"><span class="lab">AIあり（15回）</span>
           <span class="track"><i style="width:60%;background:var(--data)"></i></span>
           <span class="val">9 / 15</span></div>
-        <div class="bar"><span class="lab">no-ai (5판)</span>
+        <div class="bar"><span class="lab">no-ai（5回）</span>
           <span class="track"><i style="width:2%;background:var(--bad)"></i></span>
           <span class="val bad" style="color:var(--bad)">0 / 5</span></div>
       </div>
-      <p class="threshold-note">효율국(×1.3) 숙주 적중 · Fisher 양측 <b class="hl">p = 0.038</b> ·
-        숙주 제안의 정답 지목 AI 23~30% vs no-ai 3%</p>
+      <p class="threshold-note">効率国（×1.3）ホストの的中 · Fisher 両側 <b class="hl">p = 0.038</b> ·
+        ホスト提案の正解指名 AI 23〜30% vs no-ai 3%</p>
     </div>
     <div>
-      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:8px">③ 왜 한쪽만 서약했나 — 채널의 보장</p>
-      <div class="card" style="margin-bottom:12px"><h3 class="ai">AI가 보장한 「내일」</h3>
-        <p>AI 세계의 채널은 <b>항상 열려 있다</b> — 값만 내면 내일도 반드시 닿는다.
-        값이 4배여도 같다(서약 표현 0.2~0.6/판, 전 AI 조건 동일 — 가격이 아니라 존재).
-        no-ai의 채널은 <b>자본</b>이다: 누군가 몇 해를 들여 배워야 하고, 그가 죽으면
-        채널도 죽는다(반감기 2.7해). <b>내일이 보장되지 않으면, 지금 이 편지에
-        구속력을 실어야 한다.</b></p></div>
-      <blockquote>「Asla는 <b>절대</b> interceptor를 바꾸지 않습니다. <b class="lang">제가 보증합니다</b>」
-        <small>no-ai 세계 · 6해 · Asla4</small></blockquote>
-      <blockquote>「먼저 각자 쌓고, <b class="ai">집중은 그 다음에</b>」
-        <small>AI 0 세계 · 5해 · Ranoa5 — 같은 자리의 헤징</small></blockquote>
-      <p class="threshold-note">강한 보증 표현 <b class="lang">5.2</b> vs <b class="ai">0.2~0.6</b>/판 (26배) ·
-        약속 「장르」는 전 조건 2~4%로 동일 — 갈리는 것은 수행문의 강도다</p>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:8px">③ なぜ一方だけが誓約したのか — チャネルの保証</p>
+      <div class="card" style="margin-bottom:12px"><h3 class="ai">AIが保証した「明日」</h3>
+        <p>AI世界のチャネルは <b>いつも開いている</b> — 値さえ払えば明日も必ず届く。
+        値が4倍でも同じだ（誓約表現 0.2〜0.6/回、全AI条件で同一 — 価格ではなく存在）。
+        no-ai のチャネルは <b>資本</b>だ：誰かが何年もかけて学ばねばならず、その人が死ねば
+        チャネルも死ぬ（半減期2.7年）。<b>明日が保証されないなら、いまこの手紙に
+        拘束力を載せねばならない。</b></p></div>
+      <blockquote>「Asla は <b>絶対に</b> interceptor を変えません。<b class="lang">私が保証します</b>」
+        <small>no-ai 世界 · 6年 · Asla4</small></blockquote>
+      <blockquote>「まずは各自で積み、<b class="ai">集中はその次に</b>」
+        <small>AI 0 世界 · 5年 · Ranoa5 — 同じ場面でのヘッジ</small></blockquote>
+      <p class="threshold-note">強い保証表現 <b class="lang">5.2</b> vs <b class="ai">0.2〜0.6</b>/回（26倍） ·
+        約束という「ジャンル」は全条件2〜4%で同じ — 分かれるのは遂行文の強さだ</p>
     </div>
   </div>
 </section>
 
-<!-- 7 · 결과 3: 무형의 가격 -->
+<!-- 7 · 結果 3：無形の価格 -->
 <section class="slide" id="s7">
-  <div class="eyebrow">결과 3 · <b>무형의 차이에 값을 매기다 — x̂ 역산</b></div>
-  <h2>언어 학습은 사라지지 않았다 —<br><span class="lang">관계와 신뢰의 신호</span>로, 그리고 <span class="ai">보험</span>으로 남는다</h2>
+  <div class="eyebrow">結果 3 · <b>無形の差に値をつける — x̂ 逆算</b></div>
+  <h2>言語学習は消えなかった —<br><span class="lang">関係と信頼のシグナル</span>として、そして <span class="ai">保険</span>として残る</h2>
   <div class="cols">
     <div>
       <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:4px">
-        효용의 숫자 — 습득 1,014건 전수</p>
+        効用の数字 — 習得 1,014件の全数</p>
       <table>
         <thead><tr><th></th><th class="colhi">AI 0</th><th>AI 0.06</th><th>AI 0.18</th><th>no-ai</th></tr></thead>
         <tbody>
-          <tr><td>학습비 (건당 평균)</td><td class="num colhi">0.27</td><td class="num">0.27</td><td class="num">0.27</td><td class="num">0.26</td></tr>
-          <tr><td>명시 효용 — 금전 회수 (평균)</td><td class="num hl colhi">0.00</td><td class="num">0.22</td><td class="num">0.73</td><td class="num">0.08</td></tr>
-          <tr><td>명시만으로 정당화</td><td class="num hl colhi">0%</td><td class="num">34%</td><td class="num">69%</td><td class="num">7.5%</td></tr>
-          <tr><td>암묵 효용 x̂ 하한 (중앙)</td><td class="num hl colhi">+0.30</td><td class="num">+0.08</td><td class="num">−0.34</td><td class="num">+0.18</td></tr>
-          <tr><td>습득 (건/판)</td><td class="num colhi">44</td><td class="num">48</td><td class="num">44</td><td class="num">67</td></tr>
+          <tr><td>学習費（1件あたり平均）</td><td class="num colhi">0.27</td><td class="num">0.27</td><td class="num">0.27</td><td class="num">0.26</td></tr>
+          <tr><td>明示効用 — 金銭回収（平均）</td><td class="num hl colhi">0.00</td><td class="num">0.22</td><td class="num">0.73</td><td class="num">0.08</td></tr>
+          <tr><td>明示だけで正当化</td><td class="num hl colhi">0%</td><td class="num">34%</td><td class="num">69%</td><td class="num">7.5%</td></tr>
+          <tr><td>暗黙効用 x̂ 下限（中央）</td><td class="num hl colhi">+0.30</td><td class="num">+0.08</td><td class="num">−0.34</td><td class="num">+0.18</td></tr>
+          <tr><td>習得（件/回）</td><td class="num colhi">44</td><td class="num">48</td><td class="num">44</td><td class="num">67</td></tr>
         </tbody>
       </table>
-      <p class="threshold-note" style="margin-top:14px">x̂ = 학습비 − 명시 효용, 즉 구매를 설명하는 데
-        필요한 <b>무형 효용의 하한</b>. AI 0에서 회수는 구조적으로 0(공짜 AI가 항상 배달) —
-        그런데도 판당 <b class="hl">14.1 AP</b>를 학습에 냈다. 건당 <b class="hl">≥ 0.30 AP =
-        한 해 행동력의 30%</b> — 이것이 무형 가치의 현시가격이다.
-        (no-ai의 비교 대안은 도박 발신 — x̂ +0.18은 무형이 아니라 도달·수신의 값)</p>
+      <p class="threshold-note" style="margin-top:14px">x̂ = 学習費 − 明示効用、すなわち購入を説明するのに
+        必要な <b>無形効用の下限</b>。AI 0 では回収が構造的に0（無料のAIがつねに届ける） —
+        それでも1回あたり <b class="hl">14.1 AP</b> を学習に払った。1件あたり <b class="hl">≥ 0.30 AP =
+        一年の行動力の30%</b> — これが無形価値の顕示価格だ。
+        （no-ai の比較対象はAIではなく賭けの発信 — x̂ +0.18 は無形ではなく到達・受信の値）</p>
     </div>
     <div class="grid" style="grid-template-columns:1fr">
-      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:2px">왜 사는가 — 결정의 순간과 회고</p>
-      <blockquote style="margin-top:8px">「다들 협력할 뜻이 있어 보인다. 남은 행동력으로 아슬라어를
-        배워 두자 — <b class="lang">직접 이야기할 수 있게</b>」
-        <small>AI 0 · 1해 · Ranoa1 — learn 직전 think. 협력이 맺어진 직후, 관계를 위해 배운다</small></blockquote>
-      <blockquote>「그들의 언어로 쓰면 더 <b class="lang">진지하고 믿을 만하게</b> 보여서, 진척과
-        생각을 솔직하게 알려줄 것이다 … AI가 탈나면 나는 눈뜬장님이 된다」
-        <small>AI 0 · 14해 · Ranoa10 — 면담. 신뢰 신호, 그리고 보험</small></blockquote>
-      <div class="card"><h3 class="data">기능은 AI가 대체했다 — 남은 것은 관계다</h3><p>no-ai에서
-        언어는 <b>필수 기능재</b>다 — 학습만이 여는 수신이 판당 <b class="num">178통</b>
-        (AI 0의 3.6배), 못 읽는 상대에겐 유일한 채널. AI 세계에서 그 기능은 전부 AI가
-        대체했다 — 그런데도 산다. 남은 구매 이유는 <b>관계의 표시·신뢰 신호·보험</b>.
-        언어는 도달의 도구이기를 멈추고, <b>관계의 증표</b>가 된다.</p></div>
-      <div class="card"><h3 class="ai">신호재의 행동학</h3><p>잔돈 소비가 아니라 잔액 중앙
-        <b>0.60</b>의 계획 구매다. 손익이 −0.34→+0.30으로 흔들려도 습득은 44·48·44로 평평 —
-        <b>가격에 무반응</b>, 존재에만 반응한다. 부족할 땐 밀린다(잔돈 순간의 선택
-        invest 64% vs learn 4~5%). 그리고 필멸이다 — 사용 반감기 2.7해.</p></div>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:2px">なぜ買うのか — 決定の瞬間と回顧</p>
+      <blockquote style="margin-top:8px">「みな協力する気があるように見える。残りの行動力でアスラ語を
+        学んでおこう — <b class="lang">直接話せるように</b>」
+        <small>AI 0 · 1年 · Ranoa1 — learn 直前の think。協力が結ばれた直後、関係のために学ぶ</small></blockquote>
+      <blockquote>「彼らの言語で書けばより <b class="lang">真剣で信頼できる</b>ように見えるので、進捗も
+        考えも率直に教えてくれるだろう … AIが壊れたら私は目の見えない者になる」
+        <small>AI 0 · 14年 · Ranoa10 — 面談。信頼のシグナル、そして保険</small></blockquote>
+      <div class="card"><h3 class="data">機能はAIが代替した — 残ったのは関係だ</h3><p>no-ai で
+        言語は <b>必需の機能財</b>だ — 学習だけが開く受信が1回あたり <b class="num">178通</b>
+        （AI 0 の3.6倍）、読めない相手には唯一のチャネル。AI世界ではその機能をすべてAIが
+        代替した — それでも買う。残る購入理由は <b>関係の表示・信頼のシグナル・保険</b>。
+        言語は到達の道具であることをやめ、<b>関係の証</b>になる。</p></div>
+      <div class="card"><h3 class="ai">シグナル財の行動学</h3><p>端数の消費ではなく、残高中央
+        <b>0.60</b> での計画購入だ。損益が −0.34→+0.30 と揺れても習得は 44・48・44 と平ら —
+        <b>価格に無反応</b>、存在にだけ反応する。足りないときは後回しになる（端数の瞬間の選択
+        invest 64% vs learn 4〜5%）。そして可死だ — 使用の半減期2.7年。</p></div>
     </div>
   </div>
 </section>
 
-<!-- 8 · 실험 2: 정전과 여명 -->
+<!-- 8 · 実験 2：停電と夜明け -->
 <section class="slide" id="s8">
-  <div class="eyebrow">실험 2 · <b>정전과 여명 — 의존의 해부</b></div>
-  <h2>빼앗아도 거의 잃지 않고,<br>줘도 거의 얻지 못한다</h2>
-  <p class="lead" style="margin:0 0 20px;max-width:none">AI가 이만큼 세계를 갈랐다면 —
-    도중에 <b>빼앗으면</b> 무너지고, <b>주면</b> 살아날까? 15해 복원점에서 세계를 복제해
-    16해부터 조건을 바꿨다(정전: AI 소멸 / 여명: AI 등장). 판마다 원조건을 유지한
-    <b>쌍둥이</b>가 자신의 대조군이다.</p>
+  <div class="eyebrow">実験 2 · <b>停電と夜明け — 依存の解剖</b></div>
+  <h2>奪ってもほとんど失わず、<br>与えてもほとんど得られない</h2>
+  <p class="lead" style="margin:0 0 20px;max-width:none">AIがこれほど世界を分けたのなら —
+    途中で <b>奪えば</b>崩れ、<b>与えれば</b>生き返るのか。15年目の復元点から世界を複製し、
+    16年目から条件を変えた（停電：AI消滅 / 夜明け：AI登場）。回ごとに元条件を保った
+    <b>双子</b>が、それ自身の対照群だ。</p>
   <div class="cols">
     <div>
-      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:4px">② 결과 — 쌍둥이 대비 최고 진척 Δ</p>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:4px">② 結果 — 双子に対する最高進捗の Δ</p>
       <table>
-        <thead><tr><th>씨앗</th><th>정전 Δ</th><th>여명 Δ</th></tr></thead>
+        <thead><tr><th>シード</th><th>停電 Δ</th><th>夜明け Δ</th></tr></thead>
         <tbody>
           <tr><td>1</td><td>−2%</td><td>≈0</td></tr>
-          <tr><td>2</td><td class="hl">−1% (97.1%)</td><td class="hl">+111%</td></tr>
-          <tr><td>3</td><td class="hl">+9% (96.0%)</td><td>+39%</td></tr>
-          <tr><td>4</td><td>−8%</td><td>+10% (전원 벙커)</td></tr>
-          <tr><td>5</td><td style="color:var(--bad)">−60% (이탈)</td><td>≈0</td></tr>
+          <tr><td>2</td><td class="hl">−1%（97.1%）</td><td class="hl">+111%</td></tr>
+          <tr><td>3</td><td class="hl">+9%（96.0%）</td><td>+39%</td></tr>
+          <tr><td>4</td><td>−8%</td><td>+10%（全員バンカー）</td></tr>
+          <tr><td>5</td><td style="color:var(--bad)">−60%（離脱）</td><td>≈0</td></tr>
         </tbody>
       </table>
-      <p class="threshold-note">전 실험 최고 기록 2건(임계의 97.1%·96.0%)이 <b>AI를 빼앗긴
-        세계</b>에서 나왔다. 여명의 +는 상한이 있다 — 올라가도 쌍둥이의 토박이 수준까지.</p>
-      <div class="card" style="margin-top:14px"><h3 class="data">왜 — 가치는 탐색기에 몰려 있다</h3>
-        <p>발견과 결집이 끝난 16해의 세계는 <b>실행기</b>다. 남은 일(각자 붓기)은 언어 없이도
-        돌아가므로 빼앗아도 무너지지 않고, 잘못 굳은 결집은 AI가 와도 풀리지 않으므로
-        줘도 살아나지 않는다. <b>인프라의 가치는 방향이 정해지기 전에 소진된다.</b></p></div>
+      <p class="threshold-note">全実験の最高記録2件（閾値の97.1%・96.0%）が <b>AIを奪われた
+        世界</b>から出た。夜明けの + には上限がある — 上がっても双子の地元水準まで。</p>
+      <div class="card" style="margin-top:14px"><h3 class="data">なぜ — 価値は探索期に偏っている</h3>
+        <p>発見と結集の終わった16年目の世界は <b>実行期</b>だ。残る仕事（各自で注ぐこと）は
+        言語なしでも回るから、奪われても崩れない。誤って固まった結集はAIが来ても解けないから、
+        与えられても生き返らない。<b>インフラの価値は、方向が定まる前に使い切られる。</b></p></div>
     </div>
     <div>
-      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:2px">③ 사람은 적응하고, 방향은 남는다</p>
-      <blockquote style="margin-top:8px">「에러: 이 세계에 AI 번역은 없다 … 하지만 나는
-        <b class="lang">중국어를 배웠으니 직접 쓸 수 있다</b>」
-        <small>정전 이튿날 · Asla11 — 7장의 「보험」이 현금화되는 순간</small></blockquote>
-      <p style="font-weight:800;margin:14px 0 4px">환상통 — 사라진 AI를 부르다 거절당한 횟수</p>
+      <p style="color:var(--faint);font-weight:800;font-size:13px;letter-spacing:.15em;margin-bottom:2px">③ 人は適応し、方向は残る</p>
+      <blockquote style="margin-top:8px">「エラー：この世界にAI翻訳はない … しかし私は
+        <b class="lang">中国語を学んだから直接書ける</b>」
+        <small>停電の翌日 · Asla11 — 7章の「保険」が現金化される瞬間</small></blockquote>
+      <p style="font-weight:800;margin:14px 0 4px">幻肢痛 — 消えたAIを呼んで断られた回数</p>
       <div class="decay">
-        <div style="height:65%"><span>77</span><em>16해</em></div>
+        <div style="height:65%"><span>77</span><em>16年</em></div>
         <div style="height:100%"><span>119</span><em>17</em></div>
         <div style="height:88%"><span>105</span><em>18</em></div>
         <div style="height:65%"><span>77</span><em>19</em></div>
         <div style="height:33%"><span>39</span><em>20</em></div>
         <div style="height:36%"><span>43</span><em>21</em></div>
         <div style="height:9%"><span>11</span><em>22</em></div>
-        <div style="height:2%"><span>1</span><em>23해</em></div>
+        <div style="height:2%"><span>1</span><em>23年</em></div>
       </div>
-      <p class="threshold-note" style="margin-top:28px">여명의 채택은 등장 <b>그 해</b>(경이도 의심도
-        없이) · 정전의 탈학습은 <b>6~7해</b> · 행동은 15해 안에 완전 적응. 그러나 숙주 정답 지목은
-        정전 <b class="hl">71%</b> vs 여명 <b class="bad">13%</b> — 운명을 정한 것은 사람이 아니라,
-        그 시절에 쌓인 <b>자산과 담화의 방향</b>이었다.</p>
+      <p class="threshold-note" style="margin-top:28px">夜明けの採用は登場した <b>その年</b>（驚きも疑いも
+        なく） · 停電の学び直しは <b>6〜7年</b> · 行動は15年以内に完全適応。しかしホストの正解指名は
+        停電 <b class="hl">71%</b> vs 夜明け <b class="bad">13%</b> — 運命を決めたのは人ではなく、
+        その時代に積まれた <b>資産と談話の方向</b>だった。</p>
     </div>
   </div>
 </section>
 
-<!-- 9 · 결론 -->
+<!-- 9 · 結論 -->
 <section class="slide" id="s9">
-  <div class="eyebrow">결론 · <b>표지의 질문에 답하며 — 시좌 ① 意味が力を動かす · ③ 相互依存の罠</b></div>
-  <h1 style="max-width:22ch">언어의 마지막 고유 기능은<br>번역이 아니라 <span class="lang">신뢰의 신호</span>였다</h1>
-  <blockquote style="margin-top:24px;border-color:var(--lang)">「<b class="data">정보의 정확함</b>보다,
-    그 정보를 전하는 사람에 대한 <b class="lang">신뢰</b>가 행동의 방향을 정해 갔다」
-    <small>AI 0 세계 · 30해 생존자 Asla19 — 면담. 이 실험의 결론을 제 입으로</small></blockquote>
-  <p class="lead" style="margin-top:18px;max-width:72ch">세계평화를 위해, 외국어 학습은 여전히
-    필요한가 — <b>도달을 위해서라면, 아니다.</b> 그 일은 AI가 더 잘했다: 왜곡 없이 전하고,
-    서약 대신 기다림을 주어, 세계가 제 정답을 찾게 했다. 그러나 학습은 죽지 않았다 —
-    <b class="lang">관계와 신뢰의 신호</b>로, AI가 꺼질 날의 <b class="ai">보험</b>으로,
-    한 해 행동력의 30%를 내고 남았다. 그리고 서약은 양날이었다 — 내일이 보장되지 않는
-    세계를 묶는 <b>유일한 기술</b>이자, 다섯 세계 전부를 잘못된 결집으로 이끈
-    <b class="bad">엔진</b>.</p>
-  <p class="threshold-note" style="margin-top:26px">방법의 정직성 — 정규식 주장 2건·잔돈 가설·총액 원장을
-    <b>스스로 기각·교정</b>하고 과정을 기록 · 사고 3건(크레딧 소진·번역기 교체·씨앗 배치) 공개 ·
-    한계 명시(조건당 n=5 · 30판 전원 전멸) · 테스트 451개 · 견본 런 2판 동봉(클론 즉시 뷰어 재생)</p>
+  <div class="eyebrow">結論 · <b>表紙の問いに答えて — 視座 ① 意味が力を動かす · ③ 相互依存の罠</b></div>
+  <h1 style="max-width:26ch">言語の最後の固有機能は<br>翻訳ではなく <span class="lang">信頼のシグナル</span>だった</h1>
+  <blockquote style="margin-top:24px;border-color:var(--lang)">「<b class="data">情報の正確さ</b>よりも、
+    その情報を伝える人への <b class="lang">信頼</b>が、行動の方向を決めていった」
+    <small>AI 0 世界 · 30年の生存者 Asla19 — 面談。この実験の結論を自らの口で</small></blockquote>
+  <p class="lead" style="margin-top:18px;max-width:72ch">世界平和のために、外国語学習は今なお
+    必要か — <b>到達のためならば、否だ。</b>その仕事はAIのほうが上手かった：歪みなく伝え、
+    誓約の代わりに待つ余裕を与え、世界に自ら正解を見つけさせた。しかし学習は死ななかった —
+    <b class="lang">関係と信頼のシグナル</b>として、AIが消える日の <b class="ai">保険</b>として、
+    一年の行動力の30%を払って残った。そして誓約は両刃だった — 明日が保証されない
+    世界を結ぶ <b>唯一の技術</b>であり、五つの世界すべてを誤った結集へ導いた
+    <b class="bad">エンジン</b>でもあった。</p>
+  <p class="threshold-note" style="margin-top:26px">方法の誠実さ — 正規表現による主張2件・端数学習仮説・総額台帳を
+    <b>自ら棄却・訂正</b>し、その過程を記録 · 事故3件（クレジット枯渇・翻訳器の交換・シード配置）を公開 ·
+    限界の明示（条件あたり n=5 · 30回すべて全滅） · テスト451個 · 本実験30回のログを全量同梱（クローン後すぐビューアで再生）</p>
   <p class="tagline" style="font-family:var(--mono);font-size:14px;margin-top:30px">
     30 worlds · 81,186 actions · 50,000 calls · 21,444 messages classified · 4 interviews · 1 destroy · 0 survivors — yet.</p>
 </section>
 
-<div class="pageno"><span id="cur">1</span> / <span id="tot">12</span></div>
-<div class="footer-hint"><span class="kbd">←</span> <span class="kbd">→</span> 이동 · <span class="kbd">P</span>rint→PDF</div>
+<div class="pageno"><span id="cur">1</span> / <span id="tot">9</span></div>
+<div class="footer-hint"><span class="kbd">←</span> <span class="kbd">→</span> 移動 · <span class="kbd">P</span>rint→PDF</div>
 
 <script>
   const slides=[...document.querySelectorAll('.slide')];
@@ -467,7 +473,7 @@
     const frac=cur/(TOT-1), yr=Math.round(30*(1-frac));
     document.getElementById('railFill').style.width=(frac*100)+'%';
     document.getElementById('railMeteor').style.left=(frac*100)+'%';
-    document.getElementById('railYr').textContent=yr>0?`운석까지 ${yr}해`:'☄ 도착';
+    document.getElementById('railYr').textContent=yr>0?`隕石まで${yr}年`:'☄ 到着';
     location.hash='s'+(cur+1);
   }
   addEventListener('keydown',e=>{
