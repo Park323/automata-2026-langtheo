@@ -6,11 +6,11 @@ for p in sorted(pathlib.Path("runs").iterdir()):
     if not p.is_dir() or not (p.name.startswith("260827-0") or p.name.startswith("260828-0")): continue
     if "dark" in p.name or "dawn" in p.name or p.name.endswith(("003-ai012","004-ai024","002-ai006")): continue
     if not (p/"metrics.jsonl").exists(): continue
-    mt=[r for r in [json.loads(l) for l in (p/"metrics.jsonl").read_text().splitlines() if l.strip()] if r.get("step") is None]
+    mt=[r for r in [json.loads(l) for l in (p/"metrics.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()] if r.get("step") is None]
     if not mt or mt[-1]["turn"]<30: continue
     k = KN[p.name.split("-")[-1]]
     if k in ("0.12","0.24"): continue
-    for l in (p/"events.jsonl").read_text().splitlines():
+    for l in (p/"events.jsonl").read_text(encoding="utf-8").splitlines():
         e = json.loads(l)
         if e.get("type")!="agent_turn": continue
         rs = e.get("reasonings",[])
@@ -33,4 +33,4 @@ for k in ("0.06","no-ai"):
     for name,pat in KW.items():
         n = sum(1 for x in OUT[k] if re.search(pat, x["think"]))
         print(f"   {name:<8} {100*n/len(OUT[k]):5.1f}")
-json.dump(dict(OUT), open(pathlib.Path(__file__).parent/"learn_thinks.json","w"), ensure_ascii=False)
+json.dump(dict(OUT), open(pathlib.Path(__file__).parent/"learn_thinks.json","w",encoding="utf-8"), ensure_ascii=False)

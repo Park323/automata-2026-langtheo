@@ -31,7 +31,7 @@ for p in sorted(ROOT.joinpath("runs").iterdir()):
     if not q.exists(): continue
     knob = KN[p.name.split("-")[-1]]
     per_run = []
-    with q.open() as f:
+    with q.open(encoding="utf-8") as f:
         for line in f:
             if '"reasoning"' not in line: continue
             try: r = json.loads(line)
@@ -49,7 +49,7 @@ print(f"표본 {len(items)}개", flush=True)
 
 done = set()
 if OUT.exists():
-    for l in OUT.read_text().splitlines():
+    for l in OUT.read_text(encoding="utf-8").splitlines():
         try:
             r=json.loads(l)
             if r.get("c")!="unk": done.add(r["gid"])
@@ -103,7 +103,7 @@ def work(fout):
         one(fout, s0)
         if Q.qsize() % 40 == 0: print(f"  남은 {Q.qsize()}/{TOT}", flush=True)
 
-with OUT.open("a") as fout:
+with OUT.open("a", encoding="utf-8") as fout:
     ts = [threading.Thread(target=work, args=(fout,)) for _ in range(8)]
     for t in ts: t.start()
     for t in ts: t.join()

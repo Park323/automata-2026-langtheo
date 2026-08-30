@@ -23,17 +23,17 @@ SYS = ("Each numbered message proposes where to concentrate investment (which na
        'Output ONLY a JSON array like [{"i":1,"t":"Ranoa"},...]')
 
 lab = {}
-for l in (HERE/"msg_labels.jsonl").read_text().splitlines():
+for l in (HERE/"msg_labels.jsonl").read_text(encoding="utf-8").splitlines():
     r = json.loads(l); lab[r["id"]] = r
 sub = {}
-for l in (HERE/"msg_sublabels.jsonl").read_text().splitlines():
+for l in (HERE/"msg_sublabels.jsonl").read_text(encoding="utf-8").splitlines():
     r = json.loads(l); sub[r["id"]] = r["sub"]
 todo = [r for i, r in lab.items() if sub.get(i) == "host_prop"]
 print(f"host_prop {len(todo)}통", flush=True)
 
 done = set()
 if OUT.exists():
-    for l in OUT.read_text().splitlines():
+    for l in OUT.read_text(encoding="utf-8").splitlines():
         try: done.add(json.loads(l)["id"])
         except Exception: pass
 todo = [r for r in todo if r["id"] not in done]
@@ -80,7 +80,7 @@ def work(fout):
         one(fout, s0)
         if Q.qsize() % 30 == 0: print(f"  남은 {Q.qsize()}/{TOT}", flush=True)
 
-with OUT.open("a") as fout:
+with OUT.open("a", encoding="utf-8") as fout:
     ts = [threading.Thread(target=work, args=(fout,)) for _ in range(8)]
     for t in ts: t.start()
     for t in ts: t.join()

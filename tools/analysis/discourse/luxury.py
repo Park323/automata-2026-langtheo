@@ -23,10 +23,10 @@ for p in sorted(pathlib.Path("runs").iterdir()):
     if not p.is_dir() or not (p.name.startswith("260827-0") or p.name.startswith("260828-0")): continue
     if "dark" in p.name or "dawn" in p.name or p.name.endswith(("003-ai012","004-ai024","002-ai006")): continue
     if not (p/"metrics.jsonl").exists(): continue
-    mt=[r for r in [json.loads(l) for l in (p/"metrics.jsonl").read_text().splitlines() if l.strip()] if r.get("step") is None]
+    mt=[r for r in [json.loads(l) for l in (p/"metrics.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()] if r.get("step") is None]
     if not mt or mt[-1]["turn"]<30: continue
     k = KN[p.name.split("-")[-1]]; knob = KNOB[k]
-    for l in (p/"events.jsonl").read_text().splitlines():
+    for l in (p/"events.jsonl").read_text(encoding="utf-8").splitlines():
         e = json.loads(l)
         if e.get("type")!="agent_turn" or not e.get("actions"): continue
         acts = e["actions"]; left = 1.0

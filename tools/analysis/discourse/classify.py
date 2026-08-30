@@ -30,7 +30,7 @@ for p in sorted(ROOT.joinpath("runs").iterdir()):
     if p.name.endswith(("003-ai012", "004-ai024", "002-ai006")): continue
     if not (p/"messages.jsonl").exists(): continue
     knob = KN[p.name.split("-")[-1]]
-    for m in (json.loads(l) for l in (p/"messages.jsonl").read_text().splitlines() if l.strip()):
+    for m in (json.loads(l) for l in (p/"messages.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()):
         t = (m["meta"].get("text_written") or "").strip()
         if not t: continue
         msgs.append(dict(run=p.name, knob=knob, turn=m["turn"], frm=m["from"], to=m["to"],
@@ -39,7 +39,7 @@ print(f"메시지 {len(msgs)}통", flush=True)
 
 done = set()
 if OUT.exists():
-    for l in OUT.read_text().splitlines():
+    for l in OUT.read_text(encoding="utf-8").splitlines():
         try: done.add(json.loads(l)["id"])
         except Exception: pass
 print(f"이미 라벨 {len(done)}통 — 건너뜀", flush=True)
@@ -94,7 +94,7 @@ def work(fout):
         if Q.qsize() % 50 == 0:
             print(f"  남은 배치 {Q.qsize()}/{TOT}", flush=True)
 
-with OUT.open("a") as fout:
+with OUT.open("a", encoding="utf-8") as fout:
     ts = [threading.Thread(target=work, args=(fout,)) for _ in range(8)]
     for t in ts: t.start()
     for t in ts: t.join()

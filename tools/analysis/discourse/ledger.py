@@ -19,15 +19,15 @@ for p in sorted(pathlib.Path("runs").iterdir()):
     if not p.is_dir() or not (p.name.startswith("260827-0") or p.name.startswith("260828-0")): continue
     if "dark" in p.name or "dawn" in p.name or p.name.endswith(("003-ai012","004-ai024","002-ai006")): continue
     if not (p/"metrics.jsonl").exists(): continue
-    mt = [r for r in [json.loads(l) for l in (p/"metrics.jsonl").read_text().splitlines() if l.strip()] if r.get("step") is None]
+    mt = [r for r in [json.loads(l) for l in (p/"metrics.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()] if r.get("step") is None]
     if mt and mt[-1]["turn"] >= 30: runs.append(p)
 
 AGG = collections.defaultdict(lambda: collections.defaultdict(list))
 XHAT = collections.defaultdict(list)
 for p in runs:
     k = KN[p.name.split("-")[-1]]
-    ev = [json.loads(l) for l in (p/"events.jsonl").read_text().splitlines() if l.strip()]
-    ms = [json.loads(l) for l in (p/"messages.jsonl").read_text().splitlines() if l.strip()]
+    ev = [json.loads(l) for l in (p/"events.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    ms = [json.loads(l) for l in (p/"messages.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
     # ── 원장 ──
     learn_calls = sum(1 for e in ev for a in e.get("actions", []) if a["type"] == "learn")
     learnAP = 0.1 * learn_calls

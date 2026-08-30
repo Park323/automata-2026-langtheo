@@ -28,14 +28,14 @@ SYSFMT = ("You label messages from a simulation. All messages were already class
           "Output ONLY a JSON array like [{{\"i\":1,\"c\":\"code\"}},...].\n\n{tax}")
 
 rows = {}
-for l in SRC.read_text().splitlines():
+for l in SRC.read_text(encoding="utf-8").splitlines():
     r = json.loads(l); rows[r["id"]] = r
 todo = [r for r in rows.values() if r["cat"] in ("ask", "info")]
 print(f"대상 {len(todo)}통 (ask {sum(1 for r in todo if r['cat']=='ask')} · info {sum(1 for r in todo if r['cat']=='info')})", flush=True)
 
 done = set()
 if OUT.exists():
-    for l in OUT.read_text().splitlines():
+    for l in OUT.read_text(encoding="utf-8").splitlines():
         try: done.add(json.loads(l)["id"])
         except Exception: pass
 todo = [r for r in todo if r["id"] not in done]
@@ -86,7 +86,7 @@ def work(fout):
         one(fout, parent, s0)
         if Q.qsize() % 50 == 0: print(f"  남은 {Q.qsize()}/{TOT}", flush=True)
 
-with OUT.open("a") as fout:
+with OUT.open("a", encoding="utf-8") as fout:
     ts = [threading.Thread(target=work, args=(fout,)) for _ in range(8)]
     for t in ts: t.start()
     for t in ts: t.join()

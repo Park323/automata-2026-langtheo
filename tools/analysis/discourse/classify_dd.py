@@ -75,7 +75,7 @@ GROUP = {r: ("dark" if "dark" in r else "dawn") for r in RUNS}
 msgs = []
 for rid in RUNS:
     p = ROOT/"runs"/rid
-    for m in (json.loads(l) for l in (p/"messages.jsonl").read_text().splitlines() if l.strip()):
+    for m in (json.loads(l) for l in (p/"messages.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()):
         if m["turn"] < 16: continue
         t = (m["meta"].get("text_written") or "").strip()
         if not t: continue
@@ -86,7 +86,7 @@ print(f"A. 메시지 {len(msgs)}통", flush=True)
 OUTA = HERE/"dd_msg_labels.jsonl"
 done = set()
 if OUTA.exists():
-    for l in OUTA.read_text().splitlines():
+    for l in OUTA.read_text(encoding="utf-8").splitlines():
         try:
             r = json.loads(l)
             if r.get("cat") != "unk": done.add(r["id"])
@@ -103,21 +103,21 @@ def do_msg(s0, LOCK):
     for attempt in range(4):
         try:
             lab = {int(x["i"]): str(x["c"]) for x in call(SYSA, listing)}
-            with LOCK, OUTA.open("a") as f:
+            with LOCK, OUTA.open("a", encoding="utf-8") as f:
                 for k, (g, m) in enumerate(batch):
                     f.write(json.dumps({"id": g, **m, "cat": lab.get(k+1, "unk")},
                                        ensure_ascii=False) + "\n")
             return
         except Exception:
             time.sleep(3*(attempt+1))
-    with LOCK, OUTA.open("a") as f:
+    with LOCK, OUTA.open("a", encoding="utf-8") as f:
         for g, m in batch:
             f.write(json.dumps({"id": g, **m, "cat": "unk"}, ensure_ascii=False) + "\n")
 runpool([s for s in range(0, len(msgs), B)], do_msg)
 print("A 완료", flush=True)
 
 lab = {}
-for l in OUTA.read_text().splitlines():
+for l in OUTA.read_text(encoding="utf-8").splitlines():
     r = json.loads(l)
     if r["id"] not in lab or lab[r["id"]]["cat"] == "unk": lab[r["id"]] = r
 
@@ -125,7 +125,7 @@ for l in OUTA.read_text().splitlines():
 OUTB = HERE/"dd_msg_sublabels.jsonl"
 doneb = set()
 if OUTB.exists():
-    for l in OUTB.read_text().splitlines():
+    for l in OUTB.read_text(encoding="utf-8").splitlines():
         try:
             r = json.loads(l)
             if r.get("sub") != "unk": doneb.add(r["id"])
@@ -142,19 +142,19 @@ for parent in ("ask", "info"):
         for attempt in range(4):
             try:
                 m = {int(x["i"]): str(x["c"]) for x in call(SYSB, listing)}
-                with LOCK, OUTB.open("a") as f:
+                with LOCK, OUTB.open("a", encoding="utf-8") as f:
                     for k, r in enumerate(batch):
                         f.write(json.dumps({"id": r["id"], "sub": m.get(k+1, "unk")}) + "\n")
                 return
             except Exception:
                 time.sleep(3*(attempt+1))
-        with LOCK, OUTB.open("a") as f:
+        with LOCK, OUTB.open("a", encoding="utf-8") as f:
             for r in batch: f.write(json.dumps({"id": r["id"], "sub": "unk"}) + "\n")
     runpool([s for s in range(0, len(items), B)], do_sub)
 print("B 완료", flush=True)
 
 sub = {}
-for l in OUTB.read_text().splitlines():
+for l in OUTB.read_text(encoding="utf-8").splitlines():
     r = json.loads(l)
     if r["id"] not in sub or sub[r["id"]] == "unk": sub[r["id"]] = r["sub"]
 
@@ -162,7 +162,7 @@ for l in OUTB.read_text().splitlines():
 OUTC = HERE/"dd_hostprop.jsonl"
 donec = set()
 if OUTC.exists():
-    for l in OUTC.read_text().splitlines():
+    for l in OUTC.read_text(encoding="utf-8").splitlines():
         try: donec.add(json.loads(l)["id"])
         except Exception: pass
 items = [lab[i] for i, s in sub.items() if s == "host_prop" and i not in donec]
@@ -177,13 +177,13 @@ def do_host(s0, LOCK):
     for attempt in range(4):
         try:
             m = {int(x["i"]): str(x["t"]) for x in call(SYSC, listing, 900)}
-            with LOCK, OUTC.open("a") as f:
+            with LOCK, OUTC.open("a", encoding="utf-8") as f:
                 for k, r in enumerate(batch):
                     f.write(json.dumps({"id": r["id"], "t": m.get(k+1, "unk")}) + "\n")
             return
         except Exception:
             time.sleep(3*(attempt+1))
-    with LOCK, OUTC.open("a") as f:
+    with LOCK, OUTC.open("a", encoding="utf-8") as f:
         for r in batch: f.write(json.dumps({"id": r["id"], "t": "unk"}) + "\n")
 runpool([s for s in range(0, len(items), B)], do_host)
 print("C 완료", flush=True)
@@ -192,7 +192,7 @@ print("C 완료", flush=True)
 OUTD = HERE/"dd_think_labels.jsonl"
 doned = set()
 if OUTD.exists():
-    for l in OUTD.read_text().splitlines():
+    for l in OUTD.read_text(encoding="utf-8").splitlines():
         try:
             r = json.loads(l)
             if r.get("c") != "unk": doned.add(r["gid"])
@@ -200,7 +200,7 @@ if OUTD.exists():
 titems = []
 for rid in RUNS:
     per = []
-    with (ROOT/"runs"/rid/"raw_calls.jsonl").open() as f:
+    with (ROOT/"runs"/rid/"raw_calls.jsonl").open(encoding="utf-8") as f:
         for line in f:
             if '"reasoning"' not in line: continue
             try: r = json.loads(line)
@@ -225,7 +225,7 @@ def do_think(s0, LOCK):
         try:
             arr = call(SYSD, listing, 600)
             m2 = {int(x["i"]): x for x in arr}
-            with LOCK, OUTD.open("a") as f:
+            with LOCK, OUTD.open("a", encoding="utf-8") as f:
                 for k, (g, m) in enumerate(batch):
                     x = m2.get(k+1, {})
                     f.write(json.dumps({"gid": g, "run": m["run"], "grp": m["grp"],
@@ -234,7 +234,7 @@ def do_think(s0, LOCK):
             return
         except Exception:
             time.sleep(3*(attempt+1))
-    with LOCK, OUTD.open("a") as f:
+    with LOCK, OUTD.open("a", encoding="utf-8") as f:
         for g, m in batch:
             f.write(json.dumps({"gid": g, "run": m["run"], "grp": m["grp"],
                                 "turn": m["turn"], "c": "unk", "conf": 0}) + "\n")
