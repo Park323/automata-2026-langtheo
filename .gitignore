@@ -1,5 +1,5 @@
 # Claude Code (machine-local settings)
-.claude/settings.local.json
+.claude/
 
 # Python
 __pycache__/
@@ -17,6 +17,8 @@ venv/
 
 # Simulation outputs
 outputs/
+# 제출용 PDF 등 — 배포는 드라이브로 한다
+output/
 results/
 
 # 손으로 파본 흔적 — raw_calls 조각 같은 것. 저장소에 남을 것이 아니다
