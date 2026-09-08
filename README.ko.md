@@ -519,10 +519,3 @@ python3 scripts/smoke_3turns.py --turns 30 --knob 0.06 --seed 1 --run-id r-ai006
 https://park323.github.io/automata-2026-langtheo/
 python3 -m http.server 8000   # → localhost:8000/viewer/board.html?run=r-ai006
 ```
-
-| 진행 | |
-|---|---|
-| ✅ | 파일럿 · Phase 0 · 엔진 · 본실험 4×5 · 교차 2×5 · 3층 분류 · think 분류 |
-| 🚧 | RESULTS.md 최종 표 · 발표자료 |
-
-제출 마감 **2026-08-30 23:59**
