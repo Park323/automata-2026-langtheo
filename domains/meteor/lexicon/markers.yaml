@@ -12,7 +12,7 @@
 
 meta:
   version: 1
-  derived_from: docs/pilot/sentences.md
+  derived_from: domains/meteor/pilot/sentences.md
   note: |
     파일럿(12.2 ①)에서 검증하고 갱신할 것.
     S4 의 ja→fr / zh→fr 에서 subject 생성이 잡히지 않으면 이 파일이 틀린 것이다.

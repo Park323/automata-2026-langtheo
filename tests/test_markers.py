@@ -56,7 +56,7 @@ def test_lexicon_covers_pilot_corpus(lex):
     문법이 강제하는 자질(주어·시제)은 fr 에서만 필수 — ja/zh 의 부재는 결함이 아니라
     관측 대상이다 (fr 로 갈 때 생성되는 것이 생성률).
     """
-    data = json.loads((ROOT / "docs/pilot/sentences.json").read_text(encoding="utf-8"))
+    data = json.loads((ROOT / "domains/meteor/pilot/sentences.json").read_text(encoding="utf-8"))
     required = {"subject": ("fr",), "tense": ("fr",),
                 "hedge": ("ja", "zh", "fr"), "condition": ("ja", "zh", "fr")}
     for s in data["sentences"]:

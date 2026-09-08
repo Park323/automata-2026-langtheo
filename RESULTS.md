@@ -14,7 +14,7 @@
 ### 설정
 
 ```
-문장      docs/pilot/sentences.json  10개 × ja/zh/fr
+문장      domains/meteor/pilot/sentences.json  10개 × ja/zh/fr
 방향      6개 (ja→zh ja→fr zh→ja zh→fr fr→ja fr→zh)
 지시      3종 (무지시 / 정확히 / 간결히) — S1·S2·S6·S10 에만
 모델      mistral-small-3.2-24b · gemma-3-27b · llama-3.3-70b  (OpenRouter)

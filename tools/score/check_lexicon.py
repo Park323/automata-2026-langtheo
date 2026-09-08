@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """화용 표지 사전 검증. spec 6.2.
 
-파일럿 문장(`docs/pilot/sentences.json`)에는 문장마다 `tests` 가 있다 — **어느 자질을
+파일럿 문장(`domains/meteor/pilot/sentences.json`)에는 문장마다 `tests` 가 있다 — **어느 자질을
 시험하려고 쓴 문장인지가 정답으로 들어 있다.** 사전이 그 자질을 세 언어 모두에서
 잡아내는지 확인한다.
 
@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from tools.score import markers  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-PILOT = ROOT / "docs" / "pilot" / "sentences.json"
+PILOT = ROOT / "domains" / "meteor" / "pilot" / "sentences.json"
 LANGS = ("ja", "zh", "fr")
 
 

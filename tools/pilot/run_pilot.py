@@ -15,7 +15,7 @@ import argparse, json, os, pathlib, re, sys, time, urllib.error, urllib.request
 from collections import defaultdict
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-DATA = ROOT / "docs" / "pilot" / "sentences.json"
+DATA = ROOT / "domains" / "meteor" / "pilot" / "sentences.json"
 LANGS = ["ja", "zh", "fr"]
 LANG_NAME = {"ja": "Japanese", "zh": "Chinese", "fr": "French"}
 
