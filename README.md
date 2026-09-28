@@ -1,6 +1,6 @@
 # カキガワ言語研究班
 
-**AUTOMATA HACKATHON Vol.2 提出作** · AIエージェント社会シミュレーション  
+**AUTOMATA HACKATHON Vol.2 [最優秀作品](https://hackathon.automata-lab.jp/works/?tag=awarded#w-0135)**（兵頭先生 選出・継続開発作品） · AIエージェント社会シミュレーション  
 **[日本語](README.md) | [한국어](README.ko.md)**
 
 > **言語の最後の役割は、翻訳ではなかった。**
