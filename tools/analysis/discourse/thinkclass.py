@@ -1,9 +1,9 @@
 """think 분류 — 판당 150개 층화 표본(해 균등)에 「결정 동인」 라벨 + 혼란 플래그."""
 import json, pathlib, re, sys, time, urllib.request, threading, queue, collections
-sys.path.insert(0, "/Users/supergene/Documents/eddie/Personal/park-world-sim")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 from core import llm
 KEY = llm.load_key()
-ROOT = pathlib.Path("/Users/supergene/Documents/eddie/Personal/park-world-sim")
+ROOT = pathlib.Path(__file__).resolve().parents[3]
 HERE = pathlib.Path(__file__).parent
 OUT = HERE / "think_labels.jsonl"
 

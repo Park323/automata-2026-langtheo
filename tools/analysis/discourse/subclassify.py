@@ -1,6 +1,6 @@
 """2차 분류 — ask 와 info 를 하위 장르로 쪼갠다. 국내·국제 전부."""
 import json, pathlib, re, sys, time, urllib.request, threading, queue
-sys.path.insert(0, "/Users/supergene/Documents/eddie/Personal/park-world-sim")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 from core import llm
 KEY = llm.load_key()
 HERE = pathlib.Path(__file__).parent

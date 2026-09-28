@@ -7,7 +7,7 @@
   none                 : 대상 불특정 (그냥 「한 곳에 모으자」)
 """
 import json, pathlib, re, sys, time, urllib.request, threading, queue
-sys.path.insert(0, "/Users/supergene/Documents/eddie/Personal/park-world-sim")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 from core import llm
 KEY = llm.load_key()
 HERE = pathlib.Path(__file__).parent

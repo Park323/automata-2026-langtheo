@@ -1,9 +1,9 @@
 """대화 전수 분류 — 20판(토박이) 모든 메시지에 장르 하나씩. 워커 8 병렬."""
 import json, pathlib, re, sys, time, urllib.request, threading, queue
-sys.path.insert(0, "/Users/supergene/Documents/eddie/Personal/park-world-sim")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))
 from core import llm
 KEY = llm.load_key()
-ROOT = pathlib.Path("/Users/supergene/Documents/eddie/Personal/park-world-sim")
+ROOT = pathlib.Path(__file__).resolve().parents[3]
 OUT = pathlib.Path(__file__).parent / "msg_labels.jsonl"
 
 CATS = """info: 사실 전달 — 관측치·진척·자기 상태 보고
